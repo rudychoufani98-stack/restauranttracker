@@ -1,0 +1,365 @@
+"use client";
+
+import { useState, useMemo } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { Warehouse, TrendingDown, TrendingUp, AlertTriangle, Check, Loader2, History, ClipboardList } from "lucide-react";
+import clsx from "clsx";
+
+type Ingredient = {
+  id: string;
+  name: string;
+  category: string;
+  unit: string;
+  stock_qty: number | null;
+  cmup: number | null;
+  cost_per_base_unit: number | null;
+  pack_price: number | null;
+  suppliers?: { name: string } | null;
+};
+
+type Movement = {
+  ingredient_id: string;
+  movement_type: "in" | "out" | "adjustment";
+  qty: number;
+  unit_cost: number | null;
+  reference_type: string;
+  created_at: string;
+};
+
+interface Props {
+  restaurantId: string;
+  ingredients: Ingredient[];
+  recentMovements: Movement[];
+}
+
+const UNIT_LABELS: Record<string, string> = {
+  g: "g", kg: "g", ml: "ml", l: "ml", unit: "u", piece: "u",
+};
+
+function formatQty(qty: number | null, unit: string): string {
+  if (qty === null || qty === undefined) return "—";
+  const base = UNIT_LABELS[unit] ?? unit;
+  if ((unit === "kg" || unit === "g") && qty >= 1000) return `${(qty / 1000).toFixed(2)} kg`;
+  if ((unit === "l" || unit === "ml") && qty >= 1000) return `${(qty / 1000).toFixed(2)} L`;
+  return `${qty % 1 === 0 ? qty : qty.toFixed(1)} ${base}`;
+}
+
+export default function InventaireClient({ restaurantId, ingredients, recentMovements }: Props) {
+  const supabase = createClient();
+  const [tab, setTab] = useState<"stock" | "history">("stock");
+  const [adjustId, setAdjustId] = useState<string | null>(null);
+  const [adjustQty, setAdjustQty] = useState("");
+  const [adjustNotes, setAdjustNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [localIngredients, setLocalIngredients] = useState<Ingredient[]>(ingredients);
+  const [filterCat, setFilterCat] = useState("Toutes");
+  const [search, setSearch] = useState("");
+
+  const categories = useMemo(() => {
+    const cats = Array.from(new Set(ingredients.map((i) => i.category).filter(Boolean)));
+    return ["Toutes", ...cats.sort()];
+  }, [ingredients]);
+
+  const filtered = useMemo(() => {
+    return localIngredients.filter((i) => {
+      const matchCat = filterCat === "Toutes" || i.category === filterCat;
+      const matchSearch = !search || i.name.toLowerCase().includes(search.toLowerCase());
+      return matchCat && matchSearch;
+    });
+  }, [localIngredients, filterCat, search]);
+
+  const totalValue = useMemo(() => {
+    return localIngredients.reduce((sum, i) => {
+      const qty = Number(i.stock_qty ?? 0);
+      const cmup = Number(i.cmup ?? i.cost_per_base_unit ?? 0);
+      return sum + qty * cmup;
+    }, 0);
+  }, [localIngredients]);
+
+  const lowStockCount = localIngredients.filter((i) => Number(i.stock_qty ?? 0) <= 0).length;
+
+  async function handleAdjust(ing: Ingredient) {
+    const newQty = parseFloat(adjustQty);
+    if (isNaN(newQty) || newQty < 0) return;
+    setSaving(true);
+
+    const currentQty = Number(ing.stock_qty ?? 0);
+    const diff = newQty - currentQty; // positive = ajout, negative = retrait
+    const cmup = Number(ing.cmup ?? ing.cost_per_base_unit ?? 0);
+
+    await supabase.from("ingredients").update({ stock_qty: newQty }).eq("id", ing.id);
+
+    await supabase.from("stock_movements").insert({
+      restaurant_id: restaurantId,
+      ingredient_id: ing.id,
+      movement_type: "adjustment",
+      qty: Math.abs(diff),
+      unit_cost: cmup,
+      reference_type: "adjustment",
+      notes: adjustNotes || `Inventaire: ${currentQty} → ${newQty}`,
+    });
+
+    setLocalIngredients((prev) =>
+      prev.map((i) => i.id === ing.id ? { ...i, stock_qty: newQty } : i)
+    );
+    setAdjustId(null);
+    setAdjustQty("");
+    setAdjustNotes("");
+    setSaving(false);
+  }
+
+  // Group movements by date for display
+  const movementsByDay = useMemo(() => {
+    const groups: Record<string, (Movement & { ingredientName: string })[]> = {};
+    const ingMap = new Map(ingredients.map((i) => [i.id, i.name]));
+    for (const m of recentMovements) {
+      const day = m.created_at.slice(0, 10);
+      if (!groups[day]) groups[day] = [];
+      groups[day].push({ ...m, ingredientName: ingMap.get(m.ingredient_id) ?? "?" });
+    }
+    return groups;
+  }, [recentMovements, ingredients]);
+
+  return (
+    <div className="p-8 max-w-5xl mx-auto">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-xl font-medium text-gray-900 flex items-center gap-2">
+            <Warehouse size={20} className="text-gray-400" /> Inventaire
+          </h1>
+          <p className="text-sm text-gray-500 mt-0.5">Stock théorique mis à jour automatiquement via les réceptions et les ventes</p>
+        </div>
+        {/* KPI pills */}
+        <div className="flex items-center gap-3">
+          <div className="text-right bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2">
+            <p className="text-xs text-emerald-600 font-medium">Valeur du stock</p>
+            <p className="text-lg font-bold text-emerald-700">€{totalValue.toFixed(2)}</p>
+          </div>
+          {lowStockCount > 0 && (
+            <div className="text-right bg-red-50 border border-red-200 rounded-lg px-4 py-2 flex items-center gap-2">
+              <AlertTriangle size={16} className="text-red-500" />
+              <div>
+                <p className="text-xs text-red-600 font-medium">Stock épuisé</p>
+                <p className="text-lg font-bold text-red-600">{lowStockCount}</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 mb-5 border-b border-gray-200">
+        {[
+          { key: "stock", label: "Stock actuel", icon: ClipboardList },
+          { key: "history", label: "Historique des mouvements", icon: History },
+        ].map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            onClick={() => setTab(key as any)}
+            className={clsx(
+              "flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition",
+              tab === key ? "border-emerald-500 text-emerald-600" : "border-transparent text-gray-500 hover:text-gray-700"
+            )}
+          >
+            <Icon size={14} /> {label}
+          </button>
+        ))}
+      </div>
+
+      {/* STOCK TAB */}
+      {tab === "stock" && (
+        <>
+          {/* Filters */}
+          <div className="flex gap-2 mb-4">
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Rechercher…"
+              className="px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-emerald-500 w-52"
+            />
+            <select
+              value={filterCat}
+              onChange={(e) => setFilterCat(e.target.value)}
+              className="px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-emerald-500"
+            >
+              {categories.map((c) => <option key={c}>{c}</option>)}
+            </select>
+          </div>
+
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 text-xs font-medium text-gray-500 uppercase tracking-wide">
+                  <th className="text-left px-4 py-3">Ingrédient</th>
+                  <th className="text-left px-4 py-3">Catégorie</th>
+                  <th className="text-right px-4 py-3">Stock théorique</th>
+                  <th className="text-right px-4 py-3">CMUP</th>
+                  <th className="text-right px-4 py-3">Valeur</th>
+                  <th className="text-right px-4 py-3">Ajuster</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filtered.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="text-center py-10 text-gray-400 text-sm">
+                      Aucun ingrédient trouvé
+                    </td>
+                  </tr>
+                )}
+                {filtered.map((ing) => {
+                  const qty = Number(ing.stock_qty ?? 0);
+                  const cmup = Number(ing.cmup ?? ing.cost_per_base_unit ?? 0);
+                  const value = qty * cmup;
+                  const isEmpty = qty <= 0;
+                  const isAdjusting = adjustId === ing.id;
+
+                  return (
+                    <tr key={ing.id} className={clsx("hover:bg-gray-50 transition", isEmpty && "bg-red-50/30")}>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          {isEmpty && <AlertTriangle size={13} className="text-red-400 shrink-0" />}
+                          <span className={clsx("font-medium", isEmpty ? "text-red-700" : "text-gray-900")}>{ing.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-gray-500">{ing.category || "—"}</td>
+                      <td className="px-4 py-3 text-right">
+                        <span className={clsx("font-medium", isEmpty ? "text-red-500" : "text-gray-900")}>
+                          {formatQty(qty, ing.unit)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right text-gray-600">
+                        {cmup > 0 ? `€${cmup.toFixed(4)}` : "—"}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <span className={value > 0 ? "text-emerald-700 font-medium" : "text-gray-400"}>
+                          {value > 0 ? `€${value.toFixed(2)}` : "—"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {isAdjusting ? (
+                          <div className="flex items-center gap-2 justify-end">
+                            <div>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={adjustQty}
+                                onChange={(e) => setAdjustQty(e.target.value)}
+                                placeholder={formatQty(qty, ing.unit)}
+                                className="w-24 px-2 py-1 text-sm text-right border border-emerald-400 rounded-lg outline-none focus:ring-1 focus:ring-emerald-300"
+                                autoFocus
+                              />
+                              <input
+                                type="text"
+                                value={adjustNotes}
+                                onChange={(e) => setAdjustNotes(e.target.value)}
+                                placeholder="Raison (optionnel)"
+                                className="mt-1 w-36 px-2 py-1 text-xs border border-gray-200 rounded-lg outline-none focus:border-emerald-400"
+                              />
+                            </div>
+                            <button
+                              onClick={() => handleAdjust(ing)}
+                              disabled={saving || !adjustQty}
+                              className="p-1.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 disabled:opacity-40 transition"
+                            >
+                              {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                            </button>
+                            <button
+                              onClick={() => { setAdjustId(null); setAdjustQty(""); setAdjustNotes(""); }}
+                              className="p-1.5 text-gray-400 hover:text-gray-600 border border-gray-200 rounded-lg"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => { setAdjustId(ing.id); setAdjustQty(String(qty)); }}
+                            className="px-3 py-1.5 text-xs text-gray-600 border border-gray-200 rounded-lg hover:border-emerald-400 hover:text-emerald-600 transition"
+                          >
+                            Corriger
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              {filtered.length > 0 && (
+                <tfoot>
+                  <tr className="bg-gray-50 border-t-2 border-gray-200">
+                    <td colSpan={4} className="px-4 py-3 text-sm font-medium text-gray-700">Total stock</td>
+                    <td className="px-4 py-3 text-right font-bold text-emerald-700">€{totalValue.toFixed(2)}</td>
+                    <td />
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+
+          <p className="text-xs text-gray-400 mt-3">
+            Le stock théorique est calculé automatiquement : +entrées lors des réceptions facturées, -sorties lors de la saisie des ventes mensuelles.
+            Utilisez &quot;Corriger&quot; pour ajuster après un inventaire physique.
+          </p>
+        </>
+      )}
+
+      {/* HISTORY TAB */}
+      {tab === "history" && (
+        <div className="space-y-4">
+          {Object.keys(movementsByDay).length === 0 && (
+            <div className="bg-white border border-gray-200 rounded-xl p-10 text-center text-gray-400 text-sm">
+              Aucun mouvement de stock pour l&apos;instant.<br />
+              Les mouvements apparaîtront après validation de factures et saisie de ventes.
+            </div>
+          )}
+          {Object.entries(movementsByDay).map(([day, moves]) => (
+            <div key={day} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+              <div className="px-4 py-2 bg-gray-50 border-b border-gray-100">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  {new Date(day).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+                </p>
+              </div>
+              <div className="divide-y divide-gray-50">
+                {moves.map((m, i) => (
+                  <div key={i} className="flex items-center gap-3 px-4 py-3">
+                    <div className={clsx(
+                      "w-7 h-7 rounded-full flex items-center justify-center shrink-0",
+                      m.movement_type === "in" ? "bg-emerald-100" :
+                      m.movement_type === "out" ? "bg-red-100" : "bg-amber-100"
+                    )}>
+                      {m.movement_type === "in"
+                        ? <TrendingUp size={13} className="text-emerald-600" />
+                        : m.movement_type === "out"
+                        ? <TrendingDown size={13} className="text-red-500" />
+                        : <AlertTriangle size={13} className="text-amber-500" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900">{m.ingredientName}</p>
+                      <p className="text-xs text-gray-400">
+                        {m.movement_type === "in" ? "Réception" : m.movement_type === "out" ? "Vente" : "Ajustement"} ·{" "}
+                        {m.reference_type}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className={clsx(
+                        "text-sm font-semibold",
+                        m.movement_type === "in" ? "text-emerald-600" :
+                        m.movement_type === "out" ? "text-red-500" : "text-amber-600"
+                      )}>
+                        {m.movement_type === "in" ? "+" : m.movement_type === "out" ? "-" : "~"}{m.qty.toFixed(1)}
+                      </p>
+                      {m.unit_cost && m.unit_cost > 0 && (
+                        <p className="text-xs text-gray-400">CMUP €{m.unit_cost.toFixed(4)}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

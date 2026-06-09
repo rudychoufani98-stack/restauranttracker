@@ -88,7 +88,17 @@ export default function InvoiceClient({ po, deliveryNote, restaurantId }: Props)
 
       if (invErr) throw new Error(invErr.message);
 
-      // 2. Insert invoice lines + update ingredient costs
+      // 2. Fetch current stock_qty + cmup for CMUP calculation
+      const ingredientIds = lines.map((l) => l.ingredient_id);
+      const { data: currentIngData } = await supabase
+        .from("ingredients")
+        .select("id, stock_qty, cmup")
+        .in("id", ingredientIds);
+      const ingStockMap = new Map((currentIngData ?? []).map((i) => [i.id, i]));
+
+      // 3. Insert invoice lines + update ingredient costs + stock + CMUP
+      const stockMovements: any[] = [];
+
       for (const line of lines) {
         const invoicePrice = parseFloat(line.invoice_price) || line.expected_price;
         const priceChanged = Math.abs(invoicePrice - line.expected_price) > 0.001;
@@ -101,45 +111,69 @@ export default function InvoiceClient({ po, deliveryNote, restaurantId }: Props)
           price_changed: priceChanged,
         });
 
-        // 3. Update ingredient cost_per_base_unit based on actual invoice price
-        if (priceChanged || true) { // always update from invoice (source of truth)
-          const packQty = line.pack_quantity || 1;
-          let baseQty = packQty;
-          if (line.unit === "kg") baseQty = packQty * 1000;
-          else if (line.unit === "l") baseQty = packQty * 1000;
+        // Compute base qty received (in base units: g, ml, or unit)
+        const packQty = line.pack_quantity || 1;
+        let baseQtyPerPack = packQty;
+        if (line.unit === "kg") baseQtyPerPack = packQty * 1000;
+        else if (line.unit === "l") baseQtyPerPack = packQty * 1000;
+        const receivedBaseQty = line.qty_received * baseQtyPerPack;
 
-          const newCostPerBase = invoicePrice / baseQty;
+        const newCostPerBase = invoicePrice / (baseQtyPerPack || 1);
 
-          await supabase
-            .from("ingredients")
-            .update({
-              pack_price: invoicePrice,
-              cost_per_base_unit: newCostPerBase,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", line.ingredient_id);
+        // CMUP = (stock_actuel × cmup_actuel + qté_reçue × nouveau_coût) / (stock_actuel + qté_reçue)
+        const current = ingStockMap.get(line.ingredient_id);
+        const currentStock = Number(current?.stock_qty ?? 0);
+        const currentCmup = Number(current?.cmup ?? newCostPerBase);
+        const newStock = currentStock + receivedBaseQty;
+        const newCmup = newStock > 0
+          ? (currentStock * currentCmup + receivedBaseQty * newCostPerBase) / newStock
+          : newCostPerBase;
 
-          if (priceChanged) {
-            await supabase.from("ingredient_price_history").insert({
-              ingredient_id: line.ingredient_id,
-              old_price: line.expected_price,
-              new_price: invoicePrice,
-              source: "invoice",
-              delivery_note_id: deliveryNote?.id ?? null,
-            });
-          }
+        await supabase
+          .from("ingredients")
+          .update({
+            pack_price: invoicePrice,
+            cost_per_base_unit: newCostPerBase,
+            stock_qty: newStock,
+            cmup: newCmup,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", line.ingredient_id);
+
+        if (priceChanged) {
+          await supabase.from("ingredient_price_history").insert({
+            ingredient_id: line.ingredient_id,
+            old_price: line.expected_price,
+            new_price: invoicePrice,
+            source: "invoice",
+            delivery_note_id: deliveryNote?.id ?? null,
+          });
         }
+
+        stockMovements.push({
+          restaurant_id: restaurantId,
+          ingredient_id: line.ingredient_id,
+          movement_type: "in",
+          qty: receivedBaseQty,
+          unit_cost: newCmup,
+          reference_type: "invoice",
+          reference_id: invoice.id,
+        });
       }
 
-      // 4. Recalculate recipes that use these ingredients
-      const ingredientIds = lines.map((l) => l.ingredient_id);
+      // 4. Insert stock movements
+      if (stockMovements.length > 0) {
+        await supabase.from("stock_movements").insert(stockMovements);
+      }
+
+      // 5. Recalculate recipes that use these ingredients
       await fetch("/api/recalculate-recipes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ restaurantId, changedIngredientIds: ingredientIds }),
       });
 
-      // 5. Mark PO as Invoiced
+      // 6. Mark PO as Invoiced
       await supabase
         .from("purchase_orders")
         .update({ status: "Invoiced" })

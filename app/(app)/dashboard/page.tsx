@@ -38,7 +38,7 @@ export default async function DashboardPage() {
     <div className="p-7 max-w-5xl mx-auto">
       <PageHeader
         title={restaurant.name}
-        subtitle={`${restaurant.cuisine_type} · Target food cost ${restaurant.target_food_cost_pct}%`}
+        subtitle={`${restaurant.cuisine_type} · Objectif food cost ${restaurant.target_food_cost_pct}%`}
       />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">

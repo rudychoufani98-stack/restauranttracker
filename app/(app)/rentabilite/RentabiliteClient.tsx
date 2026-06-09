@@ -165,6 +165,21 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
     const { error: lErr } = await supabase.from("sales_lines").insert(linesToInsert);
     if (lErr) { setError(lErr.message); setSaving(false); return; }
 
+    // Trigger stock deductions for sold items
+    await fetch("/api/record-sale-movements", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        restaurantId,
+        periodId,
+        salesLines: linesToInsert.map((l) => ({
+          recipe_id: l.recipe_id ?? undefined,
+          ingredient_id: l.ingredient_id ?? undefined,
+          qty_sold: l.qty_sold,
+        })),
+      }),
+    });
+
     // Rebuild period object for local state
     const newPeriod: Period = {
       id: periodId,

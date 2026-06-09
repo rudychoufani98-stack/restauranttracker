@@ -11,6 +11,7 @@ import {
   ShoppingCart,
   Truck,
   TrendingUp,
+  Warehouse,
   Settings,
   LogOut,
 } from "lucide-react";
@@ -23,6 +24,7 @@ const NAV = [
   { href: "/menu",        label: "Menu",            icon: UtensilsCrossed },
   { href: "/orders",      label: "Commandes",       icon: ShoppingCart },
   { href: "/suppliers",   label: "Fournisseurs",    icon: Truck },
+  { href: "/inventaire",  label: "Inventaire",      icon: Warehouse },
   { href: "/rentabilite", label: "Rentabilité",     icon: TrendingUp },
 ];
 

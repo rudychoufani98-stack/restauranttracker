@@ -208,7 +208,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
       <div className="flex flex-wrap gap-2.5 mb-5">
         <div className="relative">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search…"
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher…"
             className="pl-8 pr-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition w-52" />
         </div>
         <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}
