@@ -22,13 +22,23 @@ function getStatus(foodCostPct: number, target: number): "green" | "amber" | "re
   return "red";
 }
 
+type SimpleProduct = {
+  id: string;
+  name: string;
+  category: string;
+  pack_price: number;
+  selling_price: number;
+  unit: string;
+};
+
 interface Props {
   restaurantId: string;
   targetFoodCostPct: number;
   initialRecipes: Recipe[];
+  simpleProducts: SimpleProduct[];
 }
 
-export default function MenuClient({ restaurantId: _restaurantId, targetFoodCostPct, initialRecipes }: Props) {
+export default function MenuClient({ restaurantId: _restaurantId, targetFoodCostPct, initialRecipes, simpleProducts }: Props) {
   const supabase = createClient();
   const [recipes, setRecipes] = useState<Recipe[]>(initialRecipes);
   const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
@@ -187,6 +197,72 @@ export default function MenuClient({ restaurantId: _restaurantId, targetFoodCost
           </button>
         ))}
       </div>
+
+      {/* Produits revendus directement */}
+      {simpleProducts.length > 0 && (
+        <div className="mb-6">
+          <h2 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />
+            Produits revendus directement
+          </h2>
+          <div className="bg-white border border-[#E5E7EB] rounded-card overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[#E5E7EB] bg-gray-50">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Produit</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Catégorie</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide">Coût achat</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide">Prix vente</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide">Marge €</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide">Marge %</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#E5E7EB]">
+                {simpleProducts.map((p) => {
+                  const marge = p.selling_price - p.pack_price;
+                  const margePct = p.selling_price > 0 ? (marge / p.selling_price) * 100 : 0;
+                  const foodCostPct = p.selling_price > 0 ? (p.pack_price / p.selling_price) * 100 : 0;
+                  const status = foodCostPct <= targetFoodCostPct ? "green" : foodCostPct <= targetFoodCostPct * 1.2 ? "amber" : "red";
+                  return (
+                    <tr key={p.id} className={clsx(
+                      "transition",
+                      status === "green" ? "bg-emerald-50/40 hover:bg-emerald-50" :
+                      status === "amber" ? "bg-amber-50/40 hover:bg-amber-50" :
+                      "bg-red-50/40 hover:bg-red-50"
+                    )}>
+                      <td className="px-4 py-3 font-medium text-gray-900">{p.name}</td>
+                      <td className="px-4 py-3">
+                        <span className="px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-500">{p.category}</span>
+                      </td>
+                      <td className="px-4 py-3 text-right text-gray-600">€{p.pack_price.toFixed(2)}</td>
+                      <td className="px-4 py-3 text-right text-gray-900 font-medium">€{p.selling_price.toFixed(2)}</td>
+                      <td className="px-4 py-3 text-right">
+                        <span className={marge >= 0 ? "font-semibold text-emerald-600" : "font-semibold text-red-500"}>
+                          €{marge.toFixed(2)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <span className={clsx("font-semibold",
+                          status === "green" ? "text-emerald-600" :
+                          status === "amber" ? "text-amber-500" : "text-red-500"
+                        )}>
+                          {margePct.toFixed(1)}%
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Recettes */}
+      <h2 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+        <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />
+        Recettes
+      </h2>
 
       {/* Table */}
       {recipes.length === 0 ? (

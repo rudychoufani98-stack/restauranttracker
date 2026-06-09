@@ -14,7 +14,16 @@ type Recipe = {
   menu_price: number | null;
 };
 
-type SalesLine = { recipe_id: string; qty_sold: number };
+type SimpleProduct = {
+  id: string;
+  name: string;
+  category: string;
+  pack_price: number;
+  selling_price: number;
+  unit: string;
+};
+
+type SalesLine = { recipe_id?: string; ingredient_id?: string; qty_sold: number };
 type Period = {
   id: string;
   month: string; // "2025-06"
@@ -28,6 +37,7 @@ interface Props {
   restaurantId: string;
   targetFoodCostPct: number;
   recipes: Recipe[];
+  simpleProducts: SimpleProduct[];
   initialPeriods: Period[];
 }
 
@@ -37,14 +47,21 @@ function monthLabel(month: string) {
   return date.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
 }
 
-function calcPeriodStats(period: Period, recipes: Recipe[]) {
+function calcPeriodStats(period: Period, recipes: Recipe[], simpleProducts: SimpleProduct[]) {
   let ca = 0, coutMatiere = 0;
   for (const line of period.sales_lines) {
-    const recipe = recipes.find((r) => r.id === line.recipe_id);
-    if (!recipe || !recipe.menu_price) continue;
-    const cpp = recipe.total_cost / (recipe.yield_portions || 1);
-    ca += line.qty_sold * recipe.menu_price;
-    coutMatiere += line.qty_sold * cpp;
+    if (line.recipe_id) {
+      const recipe = recipes.find((r) => r.id === line.recipe_id);
+      if (!recipe || !recipe.menu_price) continue;
+      const cpp = recipe.total_cost / (recipe.yield_portions || 1);
+      ca += line.qty_sold * recipe.menu_price;
+      coutMatiere += line.qty_sold * cpp;
+    } else if (line.ingredient_id) {
+      const prod = simpleProducts.find((p) => p.id === line.ingredient_id);
+      if (!prod) continue;
+      ca += line.qty_sold * prod.selling_price;
+      coutMatiere += line.qty_sold * prod.pack_price;
+    }
   }
   const margeB = ca - coutMatiere;
   const foodCostPct = ca > 0 ? (coutMatiere / ca) * 100 : null;
@@ -52,7 +69,7 @@ function calcPeriodStats(period: Period, recipes: Recipe[]) {
   return { ca, coutMatiere, margeB, foodCostPct, totalCouverts };
 }
 
-export default function RentabiliteClient({ restaurantId, targetFoodCostPct, recipes, initialPeriods }: Props) {
+export default function RentabiliteClient({ restaurantId, targetFoodCostPct, recipes, simpleProducts, initialPeriods }: Props) {
   const supabase = createClient();
   const [periods, setPeriods] = useState<Period[]>(initialPeriods);
   const [showForm, setShowForm] = useState(false);
@@ -64,9 +81,10 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
   const currentMonth = new Date().toISOString().slice(0, 7); // "2025-06"
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);
   const [notes, setNotes] = useState("");
-  const [draftLines, setDraftLines] = useState<DraftLine[]>(
-    recipes.map((r) => ({ recipe_id: r.id, qty_sold: "" }))
-  );
+  const [draftLines, setDraftLines] = useState<DraftLine[]>([
+    ...recipes.map((r) => ({ recipe_id: r.id, qty_sold: "" })),
+    ...simpleProducts.map((p) => ({ recipe_id: `__sp__${p.id}`, qty_sold: "" })),
+  ]);
 
   function updateQty(recipeId: string, val: string) {
     setDraftLines((p) => p.map((l) => l.recipe_id === recipeId ? { ...l, qty_sold: val } : l));
@@ -78,20 +96,32 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
     for (const dl of draftLines) {
       const qty = parseFloat(dl.qty_sold) || 0;
       if (qty === 0) continue;
-      const recipe = recipes.find((r) => r.id === dl.recipe_id);
-      if (!recipe || !recipe.menu_price) continue;
-      const cpp = recipe.total_cost / (recipe.yield_portions || 1);
-      ca += qty * recipe.menu_price;
-      cout += qty * cpp;
-      couverts += qty;
+      if (dl.recipe_id.startsWith("__sp__")) {
+        const prodId = dl.recipe_id.replace("__sp__", "");
+        const prod = simpleProducts.find((p) => p.id === prodId);
+        if (!prod) continue;
+        ca += qty * prod.selling_price;
+        cout += qty * prod.pack_price;
+        couverts += qty;
+      } else {
+        const recipe = recipes.find((r) => r.id === dl.recipe_id);
+        if (!recipe || !recipe.menu_price) continue;
+        const cpp = recipe.total_cost / (recipe.yield_portions || 1);
+        ca += qty * recipe.menu_price;
+        cout += qty * cpp;
+        couverts += qty;
+      }
     }
     return { ca, cout, margeB: ca - cout, foodCostPct: ca > 0 ? (cout / ca) * 100 : null, couverts };
-  }, [draftLines, recipes]);
+  }, [draftLines, recipes, simpleProducts]);
 
   function openForm() {
     setSelectedMonth(currentMonth);
     setNotes("");
-    setDraftLines(recipes.map((r) => ({ recipe_id: r.id, qty_sold: "" })));
+    setDraftLines([
+      ...recipes.map((r) => ({ recipe_id: r.id, qty_sold: "" })),
+      ...simpleProducts.map((p) => ({ recipe_id: `__sp__${p.id}`, qty_sold: "" })),
+    ]);
     setError(null);
     setShowForm(true);
   }
@@ -125,7 +155,12 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
     // Insert sales lines (only non-zero)
     const linesToInsert = draftLines
       .filter((l) => parseFloat(l.qty_sold) > 0)
-      .map((l) => ({ period_id: periodId, recipe_id: l.recipe_id, qty_sold: parseFloat(l.qty_sold) }));
+      .map((l) => {
+        if (l.recipe_id.startsWith("__sp__")) {
+          return { period_id: periodId, ingredient_id: l.recipe_id.replace("__sp__", ""), recipe_id: null, qty_sold: parseFloat(l.qty_sold) };
+        }
+        return { period_id: periodId, recipe_id: l.recipe_id, ingredient_id: null, qty_sold: parseFloat(l.qty_sold) };
+      });
 
     const { error: lErr } = await supabase.from("sales_lines").insert(linesToInsert);
     if (lErr) { setError(lErr.message); setSaving(false); return; }
@@ -135,7 +170,7 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
       id: periodId,
       month: selectedMonth,
       notes: notes || null,
-      sales_lines: linesToInsert.map((l) => ({ recipe_id: l.recipe_id, qty_sold: l.qty_sold })),
+      sales_lines: linesToInsert.map((l) => ({ recipe_id: l.recipe_id ?? undefined, ingredient_id: l.ingredient_id ?? undefined, qty_sold: l.qty_sold })),
     };
 
     setPeriods((p) => {
@@ -150,8 +185,8 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
   // Trend arrow between last two periods
   const trend = useMemo(() => {
     if (periods.length < 2) return null;
-    const s0 = calcPeriodStats(periods[0], recipes);
-    const s1 = calcPeriodStats(periods[1], recipes);
+    const s0 = calcPeriodStats(periods[0], recipes, simpleProducts);
+    const s1 = calcPeriodStats(periods[1], recipes, simpleProducts);
     if (s1.margeB === 0) return null;
     return ((s0.margeB - s1.margeB) / Math.abs(s1.margeB)) * 100;
   }, [periods, recipes]);
@@ -213,41 +248,71 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
                 </div>
               </div>
 
-              {/* Recipes list */}
+              {/* Recipes + produits simples */}
               <div className="border border-[#E5E7EB] rounded-lg overflow-hidden">
                 <div className="grid grid-cols-12 px-4 py-2 bg-gray-50 border-b border-[#E5E7EB] text-xs font-medium text-gray-500 uppercase tracking-wide">
-                  <div className="col-span-5">Plat</div>
-                  <div className="col-span-2 text-right">Prix</div>
-                  <div className="col-span-2 text-right">Coût/portion</div>
+                  <div className="col-span-5">Produit / Plat</div>
+                  <div className="col-span-2 text-right">Prix vente</div>
+                  <div className="col-span-2 text-right">Coût</div>
                   <div className="col-span-3 text-right">Qté vendue</div>
                 </div>
-                <div className="divide-y divide-[#E5E7EB] max-h-80 overflow-y-auto">
-                  {pricedRecipes.map((recipe) => {
-                    const cpp = recipe.total_cost / (recipe.yield_portions || 1);
-                    const dl = draftLines.find((l) => l.recipe_id === recipe.id);
-                    const qty = parseFloat(dl?.qty_sold || "0") || 0;
-                    return (
-                      <div key={recipe.id} className={clsx("grid grid-cols-12 px-4 py-2.5 items-center", qty > 0 && "bg-emerald-50/50")}>
-                        <div className="col-span-5">
-                          <p className="text-sm font-medium text-gray-900">{recipe.name}</p>
-                          <p className="text-xs text-gray-400">{recipe.category}</p>
-                        </div>
-                        <div className="col-span-2 text-right text-sm text-gray-600">€{Number(recipe.menu_price).toFixed(2)}</div>
-                        <div className="col-span-2 text-right text-sm text-gray-500">€{cpp.toFixed(2)}</div>
-                        <div className="col-span-3 text-right">
-                          <input
-                            type="number"
-                            min="0"
-                            step="1"
-                            value={dl?.qty_sold ?? ""}
-                            onChange={(e) => updateQty(recipe.id, e.target.value)}
-                            placeholder="0"
-                            className="w-20 px-2 py-1.5 text-sm text-right border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
-                          />
-                        </div>
+                <div className="divide-y divide-[#E5E7EB] max-h-96 overflow-y-auto">
+                  {/* Produits revendus */}
+                  {simpleProducts.length > 0 && (
+                    <>
+                      <div className="px-4 py-1.5 bg-blue-50 border-b border-blue-100">
+                        <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Produits revendus</p>
                       </div>
-                    );
-                  })}
+                      {simpleProducts.map((prod) => {
+                        const key = `__sp__${prod.id}`;
+                        const dl = draftLines.find((l) => l.recipe_id === key);
+                        const qty = parseFloat(dl?.qty_sold || "0") || 0;
+                        return (
+                          <div key={prod.id} className={clsx("grid grid-cols-12 px-4 py-2.5 items-center", qty > 0 && "bg-blue-50/50")}>
+                            <div className="col-span-5">
+                              <p className="text-sm font-medium text-gray-900">{prod.name}</p>
+                              <p className="text-xs text-gray-400">{prod.category}</p>
+                            </div>
+                            <div className="col-span-2 text-right text-sm text-gray-600">€{prod.selling_price.toFixed(2)}</div>
+                            <div className="col-span-2 text-right text-sm text-gray-500">€{prod.pack_price.toFixed(2)}</div>
+                            <div className="col-span-3 text-right">
+                              <input type="number" min="0" step="1" value={dl?.qty_sold ?? ""}
+                                onChange={(e) => updateQty(key, e.target.value)} placeholder="0"
+                                className="w-20 px-2 py-1.5 text-sm text-right border border-[#E5E7EB] rounded-lg outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-300 transition" />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
+                  {/* Recettes */}
+                  {pricedRecipes.length > 0 && (
+                    <>
+                      <div className="px-4 py-1.5 bg-emerald-50 border-b border-emerald-100">
+                        <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wide">Recettes</p>
+                      </div>
+                      {pricedRecipes.map((recipe) => {
+                        const cpp = recipe.total_cost / (recipe.yield_portions || 1);
+                        const dl = draftLines.find((l) => l.recipe_id === recipe.id);
+                        const qty = parseFloat(dl?.qty_sold || "0") || 0;
+                        return (
+                          <div key={recipe.id} className={clsx("grid grid-cols-12 px-4 py-2.5 items-center", qty > 0 && "bg-emerald-50/50")}>
+                            <div className="col-span-5">
+                              <p className="text-sm font-medium text-gray-900">{recipe.name}</p>
+                              <p className="text-xs text-gray-400">{recipe.category}</p>
+                            </div>
+                            <div className="col-span-2 text-right text-sm text-gray-600">€{Number(recipe.menu_price).toFixed(2)}</div>
+                            <div className="col-span-2 text-right text-sm text-gray-500">€{cpp.toFixed(2)}</div>
+                            <div className="col-span-3 text-right">
+                              <input type="number" min="0" step="1" value={dl?.qty_sold ?? ""}
+                                onChange={(e) => updateQty(recipe.id, e.target.value)} placeholder="0"
+                                className="w-20 px-2 py-1.5 text-sm text-right border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition" />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -318,7 +383,7 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
           )}
 
           {periods.map((period) => {
-            const stats = calcPeriodStats(period, recipes);
+            const stats = calcPeriodStats(period, recipes, simpleProducts);
             const isExpanded = expandedId === period.id;
             const fcStatus = stats.foodCostPct === null ? null :
               stats.foodCostPct <= targetFoodCostPct ? "green" :

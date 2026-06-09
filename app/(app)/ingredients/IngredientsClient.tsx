@@ -23,14 +23,15 @@ type Ingredient = {
   id: string; name: string; category: string; supplier_id: string | null;
   pack_description: string | null; pack_price: number; pack_quantity: number;
   unit: string; cost_per_base_unit: number; vat_rate: number;
+  selling_price: number | null;
   suppliers?: { name: string } | null;
   ingredient_tags?: { tag_id: string; tags: TagInfo }[];
 };
 
 const EMPTY_FORM = {
-  name: "", category: "Produce", supplier_id: "",
+  name: "", category: "Légumes/Fruits", supplier_id: "",
   pack_description: "", pack_price: "", pack_quantity: "",
-  unit: "g", vat_rate: "0",
+  unit: "g", vat_rate: "0", selling_price: "",
 };
 
 function calcCostPerBase(packPrice: number, packQty: number, unit: string): number {
@@ -101,6 +102,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
       pack_description: ing.pack_description ?? "", pack_price: String(ing.pack_price),
       pack_quantity: String(ing.pack_quantity), unit: ing.unit,
       vat_rate: String(ing.vat_rate ?? 0),
+      selling_price: ing.selling_price != null ? String(ing.selling_price) : "",
     });
     setSelectedTagIds((ing.ingredient_tags ?? []).map((it) => it.tag_id));
     setError(null);
@@ -124,12 +126,14 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
     setSaving(true);
 
     const cost_per_base_unit = calcCostPerBase(price, qty, form.unit);
+    const selling = form.selling_price !== "" ? parseFloat(form.selling_price) : null;
     const payload = {
       name: form.name.trim(), category: form.category,
       supplier_id: form.supplier_id || null,
       pack_description: form.pack_description || null,
       pack_price: price, pack_quantity: qty, unit: form.unit,
       cost_per_base_unit, vat_rate: vat,
+      selling_price: selling,
       restaurant_id: restaurantId,
       updated_at: new Date().toISOString(),
     };
@@ -320,6 +324,35 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
               </div>
             </div>
 
+            {/* Prix de vente (produit revendu directement) */}
+            <div className="bg-blue-50 rounded-lg p-4 space-y-2 border border-blue-100">
+              <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Revente directe (optionnel)</p>
+              <p className="text-xs text-blue-500">Remplissez si ce produit est revendu tel quel (canette, bouteille…). Laissez vide pour les ingrédients de recettes.</p>
+              <div className="grid grid-cols-2 gap-3 items-end">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Prix de vente TTC (€)</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">€</span>
+                    <input type="number" min="0" step="0.01" value={form.selling_price}
+                      onChange={(e) => setForm({ ...form, selling_price: e.target.value })}
+                      placeholder="ex. 2.00"
+                      className="w-full pl-6 pr-3 py-2 text-sm bg-white border border-blue-200 rounded-lg outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition" />
+                  </div>
+                </div>
+                {form.selling_price && parseFloat(form.selling_price) > 0 && priceHT > 0 && (
+                  <div className="px-3 py-2.5 bg-white border border-blue-200 rounded-lg">
+                    <p className="text-xs text-gray-400">Marge unitaire</p>
+                    <p className="text-sm font-semibold text-emerald-600">
+                      €{(parseFloat(form.selling_price) - priceHT).toFixed(2)}
+                      <span className="text-xs text-gray-400 font-normal ml-1">
+                        ({priceHT > 0 ? (((parseFloat(form.selling_price) - priceHT) / parseFloat(form.selling_price)) * 100).toFixed(0) : 0}%)
+                      </span>
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* Tags section */}
             {allTags.length > 0 && (
               <div>
@@ -408,6 +441,8 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
               <Th right>TVA</Th>
               <Th right>Prix TTC</Th>
               <Th right>Coût / unité de base</Th>
+              <Th right>Prix vente</Th>
+              <Th right>Marge</Th>
               <Th>Fournisseur</Th>
               <Th><span className="sr-only">Actions</span></Th>
             </tr>
@@ -447,6 +482,24 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                     <span className="font-medium text-green">
                       €{Number(ing.cost_per_base_unit).toFixed(4)}/{baseUnitLabel(ing.unit)}
                     </span>
+                  </Td>
+                  <Td right>
+                    {ing.selling_price != null
+                      ? <span className="text-gray-700">€{Number(ing.selling_price).toFixed(2)}</span>
+                      : <span className="text-gray-300 text-xs">—</span>}
+                  </Td>
+                  <Td right>
+                    {ing.selling_price != null
+                      ? (() => {
+                          const marge = ing.selling_price - ing.pack_price;
+                          const pct = ing.selling_price > 0 ? (marge / ing.selling_price) * 100 : 0;
+                          return (
+                            <span className={marge >= 0 ? "font-medium text-emerald-600" : "font-medium text-red-500"}>
+                              €{marge.toFixed(2)} <span className="text-xs text-gray-400">({pct.toFixed(0)}%)</span>
+                            </span>
+                          );
+                        })()
+                      : <span className="text-gray-300 text-xs">—</span>}
                   </Td>
                   <Td muted>{ing.suppliers?.name ?? "—"}</Td>
                   <Td right>
