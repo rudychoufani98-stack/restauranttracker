@@ -51,26 +51,38 @@ export function StatCard({
   value,
   sub,
   color = "default",
+  icon,
 }: {
   label: string;
   value: string | number;
   sub?: string;
   color?: "default" | "green" | "amber" | "red" | "blue";
+  icon?: ReactNode;
 }) {
-  const valueColor = {
-    default: "text-gray-900",
-    green: "text-green-600",
-    amber: "text-amber-600",
-    red: "text-red-500",
-    blue: "text-blue-600",
+  const cfg = {
+    default: { value: "text-gray-900", bg: "bg-gray-100", icon: "text-gray-500", bar: "bg-gray-200" },
+    green:   { value: "text-emerald-700", bg: "bg-emerald-50", icon: "text-emerald-600", bar: "bg-emerald-400" },
+    amber:   { value: "text-amber-700", bg: "bg-amber-50", icon: "text-amber-600", bar: "bg-amber-400" },
+    red:     { value: "text-red-600", bg: "bg-red-50", icon: "text-red-500", bar: "bg-red-400" },
+    blue:    { value: "text-blue-700", bg: "bg-blue-50", icon: "text-blue-600", bar: "bg-blue-400" },
   }[color];
 
   return (
-    <Card>
-      <p className="text-xs text-gray-500 mb-1">{label}</p>
-      <p className={clsx("text-2xl font-semibold tracking-tight", valueColor)}>{value}</p>
-      {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
-    </Card>
+    <div className="bg-white border border-gray-200 rounded-card shadow-card overflow-hidden">
+      <div className={clsx("h-1 w-full", cfg.bar)} />
+      <div className="p-5">
+        <div className="flex items-start justify-between mb-3">
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{label}</p>
+          {icon && (
+            <div className={clsx("w-8 h-8 rounded-lg flex items-center justify-center", cfg.bg)}>
+              <span className={cfg.icon}>{icon}</span>
+            </div>
+          )}
+        </div>
+        <p className={clsx("text-2xl font-bold tracking-tight", cfg.value)}>{value}</p>
+        {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
+      </div>
+    </div>
   );
 }
 

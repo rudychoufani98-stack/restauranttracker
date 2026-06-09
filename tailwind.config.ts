@@ -32,9 +32,11 @@ const config: Config = {
         sm: "6px",
       },
       boxShadow: {
-        card: "0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.06)",
+        card: "0 1px 4px 0 rgb(0 0 0 / 0.07), 0 1px 2px -1px rgb(0 0 0 / 0.05)",
+        "card-hover": "0 4px 16px 0 rgb(0 0 0 / 0.10), 0 1px 3px -1px rgb(0 0 0 / 0.06)",
         modal: "0 20px 60px -10px rgb(0 0 0 / 0.18), 0 0 0 1px rgb(0 0 0 / 0.05)",
         sm: "0 1px 2px 0 rgb(0 0 0 / 0.05)",
+        inner: "inset 0 1px 3px 0 rgb(0 0 0 / 0.06)",
       },
       fontSize: {
         "2xs": ["11px", "16px"],
