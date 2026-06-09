@@ -24,6 +24,7 @@ const TAG_COLORS = [
 type Restaurant = {
   id: string; name: string; cuisine_type: string;
   target_food_cost_pct: number; digest_enabled?: boolean; digest_day?: string;
+  address?: string; phone?: string; siret?: string;
 };
 type Tag = { id: string; name: string; color: string };
 
@@ -42,6 +43,9 @@ export default function SettingsClient({ restaurant, email, initialTags }: Props
     target_food_cost_pct: String(restaurant.target_food_cost_pct),
     digest_enabled: restaurant.digest_enabled ?? true,
     digest_day: restaurant.digest_day ?? "Monday",
+    address: restaurant.address ?? "",
+    phone: restaurant.phone ?? "",
+    siret: restaurant.siret ?? "",
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -54,6 +58,9 @@ export default function SettingsClient({ restaurant, email, initialTags }: Props
       target_food_cost_pct: parseFloat(form.target_food_cost_pct),
       digest_enabled: form.digest_enabled,
       digest_day: form.digest_day,
+      address: form.address || null,
+      phone: form.phone || null,
+      siret: form.siret || null,
     }).eq("id", restaurant.id);
     setSaving(false); setSaved(true);
     setTimeout(() => setSaved(false), 2500);
@@ -153,6 +160,33 @@ export default function SettingsClient({ restaurant, email, initialTags }: Props
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
                   </div>
                 </div>
+              </div>
+            </div>
+          </Card>
+
+          <Card>
+            <h2 className="text-sm font-semibold text-gray-900 mb-1">Business details</h2>
+            <p className="text-xs text-gray-500 mb-4">These appear on your purchase order PDFs.</p>
+            <div className="space-y-3">
+              <Input
+                label="Address"
+                value={form.address}
+                onChange={(e) => setForm({ ...form, address: e.target.value })}
+                placeholder="12 rue de la Paix, 75001 Paris"
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  label="Phone"
+                  value={form.phone}
+                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                  placeholder="+33 1 23 45 67 89"
+                />
+                <Input
+                  label="SIRET"
+                  value={form.siret}
+                  onChange={(e) => setForm({ ...form, siret: e.target.value })}
+                  placeholder="123 456 789 00012"
+                />
               </div>
             </div>
           </Card>

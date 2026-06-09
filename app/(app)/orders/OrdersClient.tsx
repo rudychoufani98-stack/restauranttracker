@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Trash2, X, Send, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Trash2, X, Send, Download, ChevronDown, ChevronUp } from "lucide-react";
 import clsx from "clsx";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -228,18 +228,29 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
                   </div>
                   <span className="text-sm font-medium text-gray-900">€{Number(order.expected_total ?? 0).toFixed(2)}</span>
                   <div className="flex items-center gap-1">
+                    {/* Download PDF — always available */}
+                    <a
+                      href={`/api/orders/${order.id}/pdf`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="flex items-center gap-1 px-3 py-1.5 text-xs text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition"
+                    >
+                      <Download size={12} /> PDF
+                    </a>
+
                     {order.status === "Draft" && (
                       <button
                         onClick={(e) => { e.stopPropagation(); handleSend(order); }}
                         disabled={sending === order.id}
                         className="flex items-center gap-1 px-3 py-1.5 text-xs text-white bg-blue-500 rounded-lg hover:bg-blue-600 disabled:opacity-50 transition">
-                        <Send size={12} />{sending === order.id ? "Sending…" : "Send"}
+                        <Send size={12} />{sending === order.id ? "Envoi…" : "Envoyer"}
                       </button>
                     )}
                     {order.status === "Sent" && (
                       <a href={`/orders/${order.id}/receive`}
                         className="flex items-center gap-1 px-3 py-1.5 text-xs text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 transition">
-                        Receive delivery
+                        Réceptionner
                       </a>
                     )}
                     <button onClick={(e) => { e.stopPropagation(); handleDelete(order.id); }}
