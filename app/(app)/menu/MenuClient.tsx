@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { TrendingUp, TrendingDown, AlertTriangle, Pencil, Check, X } from "lucide-react";
+import { Pencil, Check, X } from "lucide-react";
 import clsx from "clsx";
 
 type Recipe = {
