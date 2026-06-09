@@ -173,26 +173,35 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
     const { error: lineErr } = await supabase.from("recipe_lines").insert(linePayload);
     if (lineErr) { setError(lineErr.message); setSaving(false); return; }
 
-    // Reload recipes
-    try {
-      const { data: updated, error: reloadErr } = await supabase
-        .from("recipes")
-        .select("*, recipe_lines(*, ingredients(name, cost_per_base_unit, unit), sub_recipe:recipes!recipe_lines_sub_recipe_id_fkey(name, total_cost, yield_portions))")
-        .eq("restaurant_id", restaurantId)
-        .order("name");
+    // Build local recipe object to update UI immediately (no reload needed)
+    const builtLines = validLines.map((l) => {
+      const ing = ingredients.find((i) => i.id === l.ingredient_id);
+      return {
+        ingredient_id: l.ingredient_id || null,
+        sub_recipe_id: l.sub_recipe_id || null,
+        quantity: parseFloat(l.quantity),
+        unit: l.unit,
+        ingredients: ing ? { name: ing.name, cost_per_base_unit: ing.cost_per_base_unit, unit: ing.unit } : null,
+        sub_recipe: null,
+      };
+    });
 
-      if (reloadErr) throw reloadErr;
-      setRecipes(updated ?? []);
-      setAllRecipes(updated ?? []);
-    } catch (e: any) {
-      // Reload failed — fetch without sub-recipe join as fallback
-      const { data: fallback } = await supabase
-        .from("recipes")
-        .select("*, recipe_lines(*, ingredients(name, cost_per_base_unit, unit))")
-        .eq("restaurant_id", restaurantId)
-        .order("name");
-      setRecipes(fallback ?? []);
-      setAllRecipes(fallback ?? []);
+    const builtRecipe: Recipe = {
+      id: recipeId!,
+      name: name.trim(),
+      category,
+      yield_portions: yp,
+      total_cost: totalCost,
+      menu_price: null,
+      recipe_lines: builtLines,
+    };
+
+    if (editingId) {
+      setRecipes((p) => p.map((r) => r.id === editingId ? builtRecipe : r));
+      setAllRecipes((p) => p.map((r) => r.id === editingId ? builtRecipe : r));
+    } else {
+      setRecipes((p) => [...p, builtRecipe].sort((a, b) => a.name.localeCompare(b.name)));
+      setAllRecipes((p) => [...p, builtRecipe].sort((a, b) => a.name.localeCompare(b.name)));
     }
 
     setSaving(false);
