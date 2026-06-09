@@ -11,5 +11,17 @@ export default async function SettingsPage() {
     .eq("owner_id", user!.id)
     .single();
 
-  return <SettingsClient restaurant={restaurant} email={user!.email!} />;
+  const { data: tags } = await supabase
+    .from("tags")
+    .select("*")
+    .eq("restaurant_id", restaurant!.id)
+    .order("name");
+
+  return (
+    <SettingsClient
+      restaurant={restaurant}
+      email={user!.email!}
+      initialTags={tags ?? []}
+    />
+  );
 }

@@ -28,7 +28,7 @@ interface Props {
   initialRecipes: Recipe[];
 }
 
-export default function MenuClient({ restaurantId, targetFoodCostPct, initialRecipes }: Props) {
+export default function MenuClient({ restaurantId: _restaurantId, targetFoodCostPct, initialRecipes }: Props) {
   const supabase = createClient();
   const [recipes, setRecipes] = useState<Recipe[]>(initialRecipes);
   const [editingPriceId, setEditingPriceId] = useState<string | null>(null);

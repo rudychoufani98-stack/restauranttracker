@@ -11,15 +11,20 @@ export default async function IngredientsPage() {
     .eq("owner_id", user!.id)
     .single();
 
-  const [{ data: ingredients }, { data: suppliers }] = await Promise.all([
+  const [{ data: ingredients }, { data: suppliers }, { data: tags }] = await Promise.all([
     supabase
       .from("ingredients")
-      .select("*, suppliers(name)")
+      .select("*, suppliers(name), ingredient_tags(tag_id, tags(id, name, color))")
       .eq("restaurant_id", restaurant!.id)
       .order("name"),
     supabase
       .from("suppliers")
       .select("id, name")
+      .eq("restaurant_id", restaurant!.id)
+      .order("name"),
+    supabase
+      .from("tags")
+      .select("id, name, color")
       .eq("restaurant_id", restaurant!.id)
       .order("name"),
   ]);
@@ -29,6 +34,7 @@ export default async function IngredientsPage() {
       restaurantId={restaurant!.id}
       initialIngredients={ingredients ?? []}
       suppliers={suppliers ?? []}
+      allTags={tags ?? []}
     />
   );
 }
