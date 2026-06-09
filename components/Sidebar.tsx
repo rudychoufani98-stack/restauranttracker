@@ -10,6 +10,7 @@ import {
   UtensilsCrossed,
   ShoppingCart,
   Truck,
+  TrendingUp,
   Settings,
   LogOut,
 } from "lucide-react";
@@ -22,6 +23,7 @@ const NAV = [
   { href: "/menu",        label: "Menu",            icon: UtensilsCrossed },
   { href: "/orders",      label: "Commandes",       icon: ShoppingCart },
   { href: "/suppliers",   label: "Fournisseurs",    icon: Truck },
+  { href: "/rentabilite", label: "Rentabilité",     icon: TrendingUp },
 ];
 
 export default function Sidebar({ restaurantName }: { restaurantName: string }) {
