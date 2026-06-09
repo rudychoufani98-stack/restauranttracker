@@ -1,0 +1,25 @@
+import { createClient } from "@/lib/supabase/server";
+import { notFound } from "next/navigation";
+import ReceiveClient from "./ReceiveClient";
+
+export default async function ReceivePage({ params }: { params: { id: string } }) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const { data: restaurant } = await supabase
+    .from("restaurants")
+    .select("id")
+    .eq("owner_id", user!.id)
+    .single();
+
+  const { data: po } = await supabase
+    .from("purchase_orders")
+    .select("*, suppliers(name, email), purchase_order_lines(*, ingredients(id, name, unit, pack_price, cost_per_base_unit))")
+    .eq("id", params.id)
+    .eq("restaurant_id", restaurant!.id)
+    .single();
+
+  if (!po) return notFound();
+
+  return <ReceiveClient po={po} restaurantId={restaurant!.id} />;
+}

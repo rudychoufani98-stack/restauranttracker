@@ -1,8 +1,26 @@
-export default function SuppliersPage() {
+import { createClient } from "@/lib/supabase/server";
+import SuppliersClient from "./SuppliersClient";
+
+export default async function SuppliersPage() {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const { data: restaurant } = await supabase
+    .from("restaurants")
+    .select("id")
+    .eq("owner_id", user!.id)
+    .single();
+
+  const { data: suppliers } = await supabase
+    .from("suppliers")
+    .select("*")
+    .eq("restaurant_id", restaurant!.id)
+    .order("name");
+
   return (
-    <div className="p-8 max-w-5xl mx-auto">
-      <h1 className="text-xl font-medium text-gray-900 mb-2">Suppliers</h1>
-      <p className="text-sm text-gray-500">Coming in Phase 5.</p>
-    </div>
+    <SuppliersClient
+      restaurantId={restaurant!.id}
+      initialSuppliers={suppliers ?? []}
+    />
   );
 }

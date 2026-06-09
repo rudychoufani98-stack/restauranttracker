@@ -1,8 +1,35 @@
-export default function RecipesPage() {
+import { createClient } from "@/lib/supabase/server";
+import RecipesClient from "./RecipesClient";
+
+export default async function RecipesPage() {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const { data: restaurant } = await supabase
+    .from("restaurants")
+    .select("id")
+    .eq("owner_id", user!.id)
+    .single();
+
+  const [{ data: recipes }, { data: ingredients }] = await Promise.all([
+    supabase
+      .from("recipes")
+      .select("*, recipe_lines(*, ingredients(name, cost_per_base_unit, unit), sub_recipe:recipes!recipe_lines_sub_recipe_id_fkey(name, total_cost, yield_portions))")
+      .eq("restaurant_id", restaurant!.id)
+      .order("name"),
+    supabase
+      .from("ingredients")
+      .select("id, name, cost_per_base_unit, unit")
+      .eq("restaurant_id", restaurant!.id)
+      .order("name"),
+  ]);
+
   return (
-    <div className="p-8 max-w-5xl mx-auto">
-      <h1 className="text-xl font-medium text-gray-900 mb-2">Recipes</h1>
-      <p className="text-sm text-gray-500">Coming in Phase 3.</p>
-    </div>
+    <RecipesClient
+      restaurantId={restaurant!.id}
+      initialRecipes={recipes ?? []}
+      ingredients={ingredients ?? []}
+      allRecipes={recipes ?? []}
+    />
   );
 }
