@@ -170,17 +170,31 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
       quantity: parseFloat(l.quantity),
       unit: l.unit,
     }));
-    await supabase.from("recipe_lines").insert(linePayload);
+    const { error: lineErr } = await supabase.from("recipe_lines").insert(linePayload);
+    if (lineErr) { setError(lineErr.message); setSaving(false); return; }
 
     // Reload recipes
-    const { data: updated } = await supabase
-      .from("recipes")
-      .select("*, recipe_lines(*, ingredients(name, cost_per_base_unit, unit), sub_recipe:recipes!recipe_lines_sub_recipe_id_fkey(name, total_cost, yield_portions))")
-      .eq("restaurant_id", restaurantId)
-      .order("name");
+    try {
+      const { data: updated, error: reloadErr } = await supabase
+        .from("recipes")
+        .select("*, recipe_lines(*, ingredients(name, cost_per_base_unit, unit), sub_recipe:recipes!recipe_lines_sub_recipe_id_fkey(name, total_cost, yield_portions))")
+        .eq("restaurant_id", restaurantId)
+        .order("name");
 
-    setRecipes(updated ?? []);
-    setAllRecipes(updated ?? []);
+      if (reloadErr) throw reloadErr;
+      setRecipes(updated ?? []);
+      setAllRecipes(updated ?? []);
+    } catch (e: any) {
+      // Reload failed — fetch without sub-recipe join as fallback
+      const { data: fallback } = await supabase
+        .from("recipes")
+        .select("*, recipe_lines(*, ingredients(name, cost_per_base_unit, unit))")
+        .eq("restaurant_id", restaurantId)
+        .order("name");
+      setRecipes(fallback ?? []);
+      setAllRecipes(fallback ?? []);
+    }
+
     setSaving(false);
     setShowForm(false);
   }
