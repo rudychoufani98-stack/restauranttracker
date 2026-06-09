@@ -10,6 +10,7 @@ const STATUS_COLORS: Record<string, string> = {
   Sent: "bg-blue-50 text-blue-600",
   "Partially received": "bg-amber-50 text-amber-600",
   Received: "bg-emerald-50 text-emerald-600",
+  Invoiced: "bg-purple-50 text-purple-600",
   Cancelled: "bg-red-50 text-red-500",
 };
 
@@ -97,6 +98,18 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
     setShowForm(false);
     setSupplierId("");
     setLines([{ ingredient_id: "", quantity: "", expected_price: "" }]);
+  }
+
+  async function handleMarkSent(id: string) {
+    setSending(id);
+    await supabase.from("purchase_orders").update({ status: "Sent", sent_at: new Date().toISOString() }).eq("id", id);
+    const { data: updated } = await supabase
+      .from("purchase_orders")
+      .select("*, suppliers(name), purchase_order_lines(*, ingredients(name, unit))")
+      .eq("restaurant_id", restaurantId)
+      .order("created_at", { ascending: false });
+    setOrders(updated ?? []);
+    setSending(null);
   }
 
   async function handleSend(po: PO) {
@@ -239,18 +252,30 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
                       <Download size={12} /> PDF
                     </a>
 
-                    {order.status === "Draft" && (
+                    {order.status === "Draft" && (<>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleMarkSent(order.id); }}
+                        disabled={sending === order.id}
+                        className="flex items-center gap-1 px-3 py-1.5 text-xs text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition">
+                        {sending === order.id ? "…" : "Marquer envoyé"}
+                      </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); handleSend(order); }}
                         disabled={sending === order.id}
                         className="flex items-center gap-1 px-3 py-1.5 text-xs text-white bg-blue-500 rounded-lg hover:bg-blue-600 disabled:opacity-50 transition">
                         <Send size={12} />{sending === order.id ? "Envoi…" : "Envoyer"}
                       </button>
-                    )}
-                    {order.status === "Sent" && (
+                    </>)}
+                    {(order.status === "Sent" || order.status === "Partially received") && (
                       <a href={`/orders/${order.id}/receive`}
                         className="flex items-center gap-1 px-3 py-1.5 text-xs text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 transition">
                         Réceptionner
+                      </a>
+                    )}
+                    {(order.status === "Received" || order.status === "Partially received") && (
+                      <a href={`/orders/${order.id}/invoice`}
+                        className="flex items-center gap-1 px-3 py-1.5 text-xs text-white bg-purple-500 rounded-lg hover:bg-purple-600 transition">
+                        Facturer
                       </a>
                     )}
                     <button onClick={(e) => { e.stopPropagation(); handleDelete(order.id); }}

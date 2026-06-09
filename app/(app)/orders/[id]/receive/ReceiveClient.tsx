@@ -37,7 +37,7 @@ export default function ReceiveClient({ po, restaurantId }: Props) {
         ingredient_name: l.ingredients!.name,
         expected_price: l.expected_price ?? l.ingredients!.pack_price,
         qty_ordered: l.quantity,
-        qty_received: String(l.quantity),
+        qty_received: String(l.quantity), // pre-fill with ordered qty; user corrects if partial
         actual_price: String(l.expected_price ?? l.ingredients!.pack_price),
         unit: l.ingredients!.unit,
       }))
@@ -114,66 +114,23 @@ export default function ReceiveClient({ po, restaurantId }: Props) {
 
     if (dnErr) { setError(dnErr.message); setValidating(false); return; }
 
-    // 3. Insert delivery note lines + update ingredient prices
-    const changedIngredients: { id: string; oldPrice: number; newPrice: number; name: string }[] = [];
-
+    // 3. Insert delivery note lines (quantities only — prices updated at invoice step)
     for (const line of lines) {
-      const actualPrice = parseFloat(line.actual_price);
-      const qtyReceived = parseFloat(line.qty_received);
-      const priceChanged = Math.abs(actualPrice - line.expected_price) > 0.001;
-
+      const qtyReceived = parseFloat(line.qty_received) || 0;
       await supabase.from("delivery_note_lines").insert({
         delivery_note_id: dn.id,
         ingredient_id: line.ingredient_id,
         quantity_received: qtyReceived,
-        actual_price: actualPrice,
-        price_changed: priceChanged,
-      });
-
-      if (priceChanged) {
-        // Get current pack info to recalculate cost_per_base_unit
-        const { data: ing } = await supabase.from("ingredients").select("pack_quantity, unit, pack_price").eq("id", line.ingredient_id).single();
-        if (ing) {
-          let base = ing.pack_quantity;
-          if (ing.unit === "kg") base = ing.pack_quantity * 1000;
-          if (ing.unit === "l") base = ing.pack_quantity * 1000;
-          const newCostPerBase = actualPrice / base;
-
-          await supabase.from("ingredients").update({
-            pack_price: actualPrice,
-            cost_per_base_unit: newCostPerBase,
-            updated_at: new Date().toISOString(),
-          }).eq("id", line.ingredient_id);
-
-          await supabase.from("ingredient_price_history").insert({
-            ingredient_id: line.ingredient_id,
-            old_price: ing.pack_price,
-            new_price: actualPrice,
-            source: "delivery_note",
-            delivery_note_id: dn.id,
-          });
-
-          changedIngredients.push({ id: line.ingredient_id, oldPrice: ing.pack_price, newPrice: actualPrice, name: line.ingredient_name });
-        }
-      }
-    }
-
-    // 4. Update PO status
-    await supabase.from("purchase_orders").update({ status: "Received" }).eq("id", po.id);
-
-    // 5. Ripple: recalculate recipes
-    if (changedIngredients.length > 0) {
-      await fetch("/api/recalculate-recipes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ restaurantId, changedIngredientIds: changedIngredients.map((c) => c.id) }),
+        actual_price: line.expected_price, // store expected price for now; invoice will override
+        price_changed: false,
       });
     }
 
-    // 6. Store ripple summary in sessionStorage for dashboard display
-    if (changedIngredients.length > 0) {
-      sessionStorage.setItem("rippleSummary", JSON.stringify({ changedIngredients, deliveryId: dn.id }));
-    }
+    // 4. Update PO status — partial if any line received less than ordered
+    const isPartial = lines.some((l) => parseFloat(l.qty_received) < l.qty_ordered);
+    await supabase.from("purchase_orders").update({
+      status: isPartial ? "Partially received" : "Received",
+    }).eq("id", po.id);
 
     setValidating(false);
     router.push("/orders?validated=1");
@@ -184,7 +141,7 @@ export default function ReceiveClient({ po, restaurantId }: Props) {
       <div className="mb-6">
         <a href="/orders" className="text-sm text-gray-400 hover:text-gray-600 mb-2 inline-block">← Back to orders</a>
         <h1 className="text-xl font-medium text-gray-900">Receive delivery</h1>
-        <p className="text-sm text-gray-500 mt-0.5">From: {po.suppliers?.name} · Confirm quantities and prices from the bon de livraison</p>
+        <p className="text-sm text-gray-500 mt-0.5">From: {po.suppliers?.name} · Confirm quantities received — prices are confirmed at the invoice step</p>
       </div>
 
       {/* BL upload + scan */}
@@ -218,35 +175,30 @@ export default function ReceiveClient({ po, restaurantId }: Props) {
         </div>
         <div className="divide-y divide-[#E5E7EB]">
           {lines.map((line, i) => {
-            const priceChanged = Math.abs(parseFloat(line.actual_price) - line.expected_price) > 0.001;
+            const qtyPartial = parseFloat(line.qty_received) < line.qty_ordered;
             return (
               <div key={i} className="px-5 py-4">
                 <div className="flex items-center justify-between mb-2">
                   <span className="font-medium text-gray-900 text-sm">{line.ingredient_name}</span>
-                  {priceChanged && (
+                  {qtyPartial && (
                     <span className="flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
-                      <AlertTriangle size={11} /> Price changed
+                      <AlertTriangle size={11} /> Partial
                     </span>
                   )}
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
+                <div className="flex items-center gap-3">
+                  <div className="flex-1">
                     <label className="block text-xs text-gray-500 mb-1">Quantity received ({line.unit})</label>
                     <input type="number" min="0" step="any" value={line.qty_received}
                       onChange={(e) => updateLine(i, "qty_received", e.target.value)}
-                      className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition" />
+                      className={clsx("w-full px-3 py-2 text-sm border rounded-lg outline-none focus:ring-1 transition",
+                        qtyPartial ? "border-amber-400 focus:border-amber-500 focus:ring-amber-300" : "border-[#E5E7EB] focus:border-emerald-500 focus:ring-emerald-500"
+                      )} />
                     <p className="text-xs text-gray-400 mt-0.5">Ordered: {line.qty_ordered}</p>
                   </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">
-                      Price on BL (€)
-                      {priceChanged && <span className="text-amber-500 ml-1">— was €{line.expected_price.toFixed(2)}</span>}
-                    </label>
-                    <input type="number" min="0" step="0.01" value={line.actual_price}
-                      onChange={(e) => updateLine(i, "actual_price", e.target.value)}
-                      className={clsx("w-full px-3 py-2 text-sm border rounded-lg outline-none focus:ring-1 transition",
-                        priceChanged ? "border-amber-400 focus:border-amber-500 focus:ring-amber-300" : "border-[#E5E7EB] focus:border-emerald-500 focus:ring-emerald-500"
-                      )} />
+                  <div className="text-right text-xs text-gray-400 pt-4">
+                    Prix attendu:<br />
+                    <span className="text-gray-600 font-medium">€{line.expected_price.toFixed(2)}</span>
                   </div>
                 </div>
               </div>
@@ -261,7 +213,7 @@ export default function ReceiveClient({ po, restaurantId }: Props) {
         <a href="/orders" className="flex-1 py-2 text-center text-sm text-gray-600 border border-[#E5E7EB] rounded-lg hover:bg-gray-50 transition">Cancel</a>
         <button onClick={handleValidate} disabled={validating}
           className="flex-1 py-2 text-sm text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 disabled:opacity-50 transition flex items-center justify-center gap-2">
-          {validating ? <><Loader2 size={14} className="animate-spin" /> Validating…</> : <><Check size={14} /> Validate & update prices</>}
+          {validating ? <><Loader2 size={14} className="animate-spin" /> Enregistrement…</> : <><Check size={14} /> Valider la réception</>}
         </button>
       </div>
     </div>
