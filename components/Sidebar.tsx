@@ -16,12 +16,12 @@ import {
 import clsx from "clsx";
 
 const NAV = [
-  { href: "/dashboard",   label: "Dashboard",   icon: LayoutDashboard },
-  { href: "/ingredients", label: "Ingredients", icon: Package },
-  { href: "/recipes",     label: "Recipes",     icon: ChefHat },
-  { href: "/menu",        label: "Menu",        icon: UtensilsCrossed },
-  { href: "/orders",      label: "Orders",      icon: ShoppingCart },
-  { href: "/suppliers",   label: "Suppliers",   icon: Truck },
+  { href: "/dashboard",   label: "Tableau de bord", icon: LayoutDashboard },
+  { href: "/ingredients", label: "Ingrédients",     icon: Package },
+  { href: "/recipes",     label: "Recettes",        icon: ChefHat },
+  { href: "/menu",        label: "Menu",            icon: UtensilsCrossed },
+  { href: "/orders",      label: "Commandes",       icon: ShoppingCart },
+  { href: "/suppliers",   label: "Fournisseurs",    icon: Truck },
 ];
 
 export default function Sidebar({ restaurantName }: { restaurantName: string }) {
@@ -82,7 +82,7 @@ export default function Sidebar({ restaurantName }: { restaurantName: string }) 
           )}
         >
           <Settings size={15} className={pathname === "/settings" ? "text-green" : "text-gray-400"} strokeWidth={2} />
-          Settings
+          Paramètres
         </Link>
         <form action={logout}>
           <button
@@ -90,7 +90,7 @@ export default function Sidebar({ restaurantName }: { restaurantName: string }) 
             className="flex w-full items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-800 transition-all"
           >
             <LogOut size={15} className="text-gray-400" strokeWidth={2} />
-            Sign out
+            Se déconnecter
           </button>
         </form>
       </div>

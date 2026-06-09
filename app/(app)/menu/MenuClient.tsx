@@ -139,28 +139,28 @@ export default function MenuClient({ restaurantId: _restaurantId, targetFoodCost
     <div className="p-8 max-w-7xl mx-auto">
       <div className="mb-6">
         <h1 className="text-xl font-medium text-gray-900">Menu</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Target food cost: {targetFoodCostPct}% · Click any price to edit it</p>
+        <p className="text-sm text-gray-500 mt-0.5">Objectif food cost : {targetFoodCostPct}% · Cliquez sur un prix pour le modifier</p>
       </div>
 
       {/* Summary cards */}
       {stats && (
         <div className="grid grid-cols-3 gap-4 mb-6">
           <div className="bg-white border border-[#E5E7EB] rounded-card p-4">
-            <p className="text-xs text-gray-500 mb-1">Avg food-cost %</p>
+            <p className="text-xs text-gray-500 mb-1">Food cost moyen</p>
             <p className={clsx("text-2xl font-medium", getStatus(stats.avgFoodCost, targetFoodCostPct) === "green" ? "text-emerald-600" : getStatus(stats.avgFoodCost, targetFoodCostPct) === "amber" ? "text-amber-500" : "text-red-500")}>
               {stats.avgFoodCost.toFixed(1)}%
             </p>
-            <p className="text-xs text-gray-400 mt-0.5">vs {targetFoodCostPct}% target</p>
+            <p className="text-xs text-gray-400 mt-0.5">vs objectif {targetFoodCostPct}%</p>
           </div>
           <div className="bg-white border border-[#E5E7EB] rounded-card p-4">
-            <p className="text-xs text-gray-500 mb-1">Dishes over target</p>
+            <p className="text-xs text-gray-500 mb-1">Plats hors objectif</p>
             <p className={clsx("text-2xl font-medium", stats.belowTarget > 0 ? "text-red-500" : "text-emerald-600")}>
               {stats.belowTarget}
             </p>
-            <p className="text-xs text-gray-400 mt-0.5">of {recipes.filter((r) => r.menu_price).length} priced dishes</p>
+            <p className="text-xs text-gray-400 mt-0.5">sur {recipes.filter((r) => r.menu_price).length} plat{recipes.filter((r) => r.menu_price).length !== 1 ? "s" : ""} tarifé{recipes.filter((r) => r.menu_price).length !== 1 ? "s" : ""}</p>
           </div>
           <div className="bg-white border border-[#E5E7EB] rounded-card p-4">
-            <p className="text-xs text-gray-500 mb-1">Worst performer</p>
+            <p className="text-xs text-gray-500 mb-1">Moins rentable</p>
             <p className="text-base font-medium text-red-500 truncate">{stats.worst.name}</p>
             <p className="text-xs text-gray-400 mt-0.5">{foodCostPct(stats.worst)?.toFixed(1)}% food cost</p>
           </div>
@@ -183,7 +183,7 @@ export default function MenuClient({ restaurantId: _restaurantId, targetFoodCost
                 : "bg-white text-gray-600 border-[#E5E7EB] hover:bg-gray-50"
             )}
           >
-            {s === "all" ? "All dishes" : s === "green" ? "On target" : s === "amber" ? "Slightly over" : "Over budget"}
+            {s === "all" ? "Tous les plats" : s === "green" ? "Dans l'objectif" : s === "amber" ? "Légèrement dépassé" : "Hors budget"}
           </button>
         ))}
       </div>
@@ -192,10 +192,10 @@ export default function MenuClient({ restaurantId: _restaurantId, targetFoodCost
       {recipes.length === 0 ? (
         <div className="bg-white border border-[#E5E7EB] rounded-card p-12 text-center">
           <div className="text-4xl mb-3">📋</div>
-          <h2 className="text-base font-medium text-gray-900 mb-1">No dishes yet</h2>
-          <p className="text-sm text-gray-500 mb-5">Create recipes first, then set their menu prices here to see your margins.</p>
+          <h2 className="text-base font-medium text-gray-900 mb-1">Aucun plat</h2>
+          <p className="text-sm text-gray-500 mb-5">Créez d'abord des recettes, puis définissez leurs prix ici pour voir vos marges.</p>
           <a href="/recipes" className="px-4 py-2 text-sm text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 transition inline-block">
-            Go to Recipes →
+            Aller aux recettes →
           </a>
         </div>
       ) : (
@@ -203,14 +203,14 @@ export default function MenuClient({ restaurantId: _restaurantId, targetFoodCost
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[#E5E7EB] bg-gray-50">
-                <SortTh label="Dish" k="name" />
+                <SortTh label="Plat" k="name" />
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Cat.</th>
-                <SortTh label="Recipe cost" k="cost" />
-                <SortTh label="Menu price" k="price" />
+                <SortTh label="Coût recette" k="cost" />
+                <SortTh label="Prix carte" k="price" />
                 <SortTh label="Food cost %" k="food_cost_pct" />
-                <SortTh label="Margin %" k="margin_pct" />
-                <SortTh label="Gross profit" k="gross_profit" />
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Suggested price</th>
+                <SortTh label="Marge %" k="margin_pct" />
+                <SortTh label="Marge brute" k="gross_profit" />
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Prix suggéré</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#E5E7EB]">
@@ -260,7 +260,7 @@ export default function MenuClient({ restaurantId: _restaurantId, targetFoodCost
                           onClick={() => startEditPrice(recipe)}
                           className="flex items-center gap-1 group text-gray-900 hover:text-emerald-700"
                         >
-                          {recipe.menu_price ? `€${Number(recipe.menu_price).toFixed(2)}` : <span className="text-gray-400 italic text-xs">Set price…</span>}
+                          {recipe.menu_price ? `€${Number(recipe.menu_price).toFixed(2)}` : <span className="text-gray-400 italic text-xs">Saisir le prix…</span>}
                           <Pencil size={11} className="text-gray-300 group-hover:text-emerald-500 transition" />
                         </button>
                       )}

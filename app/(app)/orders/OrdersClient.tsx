@@ -63,9 +63,9 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
 
   async function handleCreate() {
     setError(null);
-    if (!supplierId) return setError("Select a supplier.");
+    if (!supplierId) return setError("Veuillez sélectionner un fournisseur.");
     const valid = lines.filter((l) => l.ingredient_id && parseFloat(l.quantity) > 0);
-    if (valid.length === 0) return setError("Add at least one ingredient line.");
+    if (valid.length === 0) return setError("Ajoutez au moins une ligne d'ingrédient.");
     setSaving(true);
 
     const { data: po, error: poErr } = await supabase.from("purchase_orders").insert({
@@ -145,12 +145,12 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
     <div className="p-8 max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-medium text-gray-900">Purchase Orders</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{orders.length} order{orders.length !== 1 ? "s" : ""}</p>
+          <h1 className="text-xl font-medium text-gray-900">Bons de commande</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{orders.length} commande{orders.length !== 1 ? "s" : ""}</p>
         </div>
         <button onClick={() => { setShowForm(true); setError(null); }}
           className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white text-sm font-medium rounded-lg hover:bg-emerald-600 transition">
-          <Plus size={15} /> New order
+          <Plus size={15} /> Nouvelle commande
         </button>
       </div>
 
@@ -159,31 +159,31 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
         <div className="fixed inset-0 bg-black/30 flex items-start justify-center z-50 p-4 overflow-y-auto">
           <div className="bg-white rounded-card border border-[#E5E7EB] w-full max-w-2xl shadow-xl my-8">
             <div className="flex items-center justify-between px-5 py-4 border-b border-[#E5E7EB]">
-              <h2 className="text-base font-medium text-gray-900">New purchase order</h2>
+              <h2 className="text-base font-medium text-gray-900">Nouvelle commande</h2>
               <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
             <div className="p-5 space-y-4">
               {error && <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</div>}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Supplier</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Fournisseur</label>
                 <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}
                   className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 bg-white transition">
-                  <option value="">Select supplier…</option>
+                  <option value="">Choisir un fournisseur…</option>
                   {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}{s.email ? ` (${s.email})` : ""}</option>)}
                 </select>
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-medium text-gray-600">Order lines</label>
-                  <button onClick={addLine} className="text-xs text-emerald-600 hover:underline flex items-center gap-1"><Plus size={12} /> Add line</button>
+                  <label className="text-xs font-medium text-gray-600">Lignes de commande</label>
+                  <button onClick={addLine} className="text-xs text-emerald-600 hover:underline flex items-center gap-1"><Plus size={12} /> Ajouter une ligne</button>
                 </div>
                 <div className="space-y-2">
                   {lines.map((line, i) => (
                     <div key={i} className="flex gap-2 items-center">
                       <select value={line.ingredient_id} onChange={(e) => updateLine(i, "ingredient_id", e.target.value)}
                         className="flex-1 px-2 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 bg-white transition">
-                        <option value="">Select ingredient…</option>
+                        <option value="">Choisir un ingrédient…</option>
                         {ingredients.map((ing) => <option key={ing.id} value={ing.id}>{ing.name}</option>)}
                       </select>
                       <input type="number" min="0" step="any" value={line.quantity} onChange={(e) => updateLine(i, "quantity", e.target.value)}
@@ -200,14 +200,14 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
               </div>
 
               <div className="flex items-center justify-between px-4 py-3 bg-gray-50 rounded-lg border border-[#E5E7EB]">
-                <span className="text-sm text-gray-600">Expected total</span>
+                <span className="text-sm text-gray-600">Total prévisionnel</span>
                 <span className="text-base font-medium text-gray-900">€{expectedTotal.toFixed(2)}</span>
               </div>
             </div>
             <div className="flex gap-2 px-5 py-4 border-t border-[#E5E7EB]">
-              <button onClick={() => setShowForm(false)} className="flex-1 py-2 text-sm text-gray-600 border border-[#E5E7EB] rounded-lg hover:bg-gray-50 transition">Cancel</button>
+              <button onClick={() => setShowForm(false)} className="flex-1 py-2 text-sm text-gray-600 border border-[#E5E7EB] rounded-lg hover:bg-gray-50 transition">Annuler</button>
               <button onClick={handleCreate} disabled={saving} className="flex-1 py-2 text-sm text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 disabled:opacity-50 transition">
-                {saving ? "Creating…" : "Create order"}
+                {saving ? "Création…" : "Créer la commande"}
               </button>
             </div>
           </div>
@@ -218,9 +218,9 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
       {orders.length === 0 ? (
         <div className="bg-white border border-[#E5E7EB] rounded-card p-12 text-center">
           <div className="text-4xl mb-3">📦</div>
-          <h2 className="text-base font-medium text-gray-900 mb-1">No orders yet</h2>
-          <p className="text-sm text-gray-500 mb-5">Create a purchase order to send to your suppliers.</p>
-          <button onClick={() => setShowForm(true)} className="px-4 py-2 text-sm text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 transition">Create first order</button>
+          <h2 className="text-base font-medium text-gray-900 mb-1">Aucune commande</h2>
+          <p className="text-sm text-gray-500 mb-5">Créez un bon de commande pour l'envoyer à vos fournisseurs.</p>
+          <button onClick={() => setShowForm(true)} className="px-4 py-2 text-sm text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 transition">Créer la première commande</button>
         </div>
       ) : (
         <div className="space-y-3">
@@ -237,7 +237,7 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
                         {order.status}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-400 mt-0.5">{new Date(order.created_at).toLocaleDateString()} · {order.purchase_order_lines.length} line{order.purchase_order_lines.length !== 1 ? "s" : ""}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{new Date(order.created_at).toLocaleDateString("fr-FR")} · {order.purchase_order_lines.length} ligne{order.purchase_order_lines.length !== 1 ? "s" : ""}</p>
                   </div>
                   <span className="text-sm font-medium text-gray-900">€{Number(order.expected_total ?? 0).toFixed(2)}</span>
                   <div className="flex items-center gap-1">
@@ -289,10 +289,10 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="text-xs text-gray-400 uppercase">
-                          <th className="text-left pb-2">Ingredient</th>
-                          <th className="text-right pb-2">Quantity</th>
-                          <th className="text-right pb-2">Expected price</th>
-                          <th className="text-right pb-2">Line total</th>
+                          <th className="text-left pb-2">Ingrédient</th>
+                          <th className="text-right pb-2">Quantité</th>
+                          <th className="text-right pb-2">Prix prévu</th>
+                          <th className="text-right pb-2">Sous-total</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#F3F4F6]">
@@ -307,7 +307,7 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
                       </tbody>
                     </table>
                     {order.sent_at && (
-                      <p className="text-xs text-gray-400 mt-3">Sent on {new Date(order.sent_at).toLocaleString()}</p>
+                      <p className="text-xs text-gray-400 mt-3">Envoyé le {new Date(order.sent_at).toLocaleString("fr-FR")}</p>
                     )}
                   </div>
                 )}

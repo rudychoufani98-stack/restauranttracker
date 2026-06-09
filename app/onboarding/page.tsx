@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 const CUISINE_TYPES = [
-  "French", "Italian", "Japanese", "Mediterranean",
-  "Mexican", "Indian", "American", "Other",
+  "Française", "Italienne", "Japonaise", "Méditerranéenne",
+  "Mexicaine", "Indienne", "Américaine", "Autre",
 ];
 
 export default function OnboardingPage() {
@@ -60,8 +60,8 @@ export default function OnboardingPage() {
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-card bg-emerald-500 mb-4">
             <span className="text-white text-xl">🍽</span>
           </div>
-          <h1 className="text-xl font-medium text-gray-900">Set up your restaurant</h1>
-          <p className="text-sm text-gray-500 mt-1">Just a few details — you can change these later in Settings</p>
+          <h1 className="text-xl font-medium text-gray-900">Configurer votre restaurant</h1>
+          <p className="text-sm text-gray-500 mt-1">Quelques informations — modifiables ensuite dans les Paramètres</p>
         </div>
 
         <div className="bg-white border border-[#E5E7EB] rounded-card p-6">
@@ -74,20 +74,20 @@ export default function OnboardingPage() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Restaurant name
+                Nom du restaurant
               </label>
               <input
                 required
                 value={form.name}
                 onChange={(e) => update("name", e.target.value)}
                 className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
-                placeholder="e.g. Le Petit Bistro"
+                placeholder="ex. Le Petit Bistro"
               />
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Cuisine type
+                Type de cuisine
               </label>
               <select
                 required
@@ -95,7 +95,7 @@ export default function OnboardingPage() {
                 onChange={(e) => update("cuisine_type", e.target.value)}
                 className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition bg-white"
               >
-                <option value="">Select cuisine…</option>
+                <option value="">Choisir un type…</option>
                 {CUISINE_TYPES.map((c) => (
                   <option key={c} value={c}>{c}</option>
                 ))}
@@ -104,7 +104,7 @@ export default function OnboardingPage() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Target food-cost percentage
+                Objectif food cost (%)
               </label>
               <div className="relative">
                 <input
@@ -120,7 +120,7 @@ export default function OnboardingPage() {
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">%</span>
               </div>
               <p className="text-xs text-gray-400 mt-1">
-                28% is the industry standard. This is the food cost % you want every dish to stay under.
+                28% est la norme du secteur. C&apos;est le food cost que vous souhaitez ne pas dépasser par plat.
               </p>
             </div>
 
@@ -129,7 +129,7 @@ export default function OnboardingPage() {
               disabled={loading}
               className="w-full py-2 px-4 bg-emerald-500 text-white text-sm font-medium rounded-lg hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition"
             >
-              {loading ? "Saving…" : "Go to my dashboard →"}
+              {loading ? "Enregistrement…" : "Accéder à mon tableau de bord →"}
             </button>
           </form>
         </div>

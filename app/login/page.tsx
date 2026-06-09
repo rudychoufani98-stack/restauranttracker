@@ -19,11 +19,10 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="w-full max-w-[360px]">
-        {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-green shadow-sm mb-4 text-lg">🍽</div>
-          <h1 className="text-xl font-semibold text-gray-900">Sign in</h1>
-          <p className="text-sm text-gray-500 mt-1">Restaurant Cost & Margin Platform</p>
+          <h1 className="text-xl font-semibold text-gray-900">Connexion</h1>
+          <p className="text-sm text-gray-500 mt-1">Plateforme de coûts et marges restaurant</p>
         </div>
 
         <div className="bg-white rounded-card border border-gray-200 shadow-card p-6">
@@ -38,21 +37,21 @@ export default function LoginPage() {
                 placeholder="chef@restaurant.com" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">Password</label>
+              <label className="block text-xs font-medium text-gray-600 mb-1.5">Mot de passe</label>
               <input name="password" type="password" required autoComplete="current-password"
                 className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition"
                 placeholder="••••••••" />
             </div>
             <button type="submit" disabled={loading}
               className="w-full py-2.5 px-4 bg-green text-white text-sm font-medium rounded-lg hover:bg-green-600 disabled:opacity-50 transition shadow-sm mt-1">
-              {loading ? "Signing in…" : "Sign in"}
+              {loading ? "Connexion…" : "Se connecter"}
             </button>
           </form>
         </div>
 
         <p className="text-center text-sm text-gray-500 mt-5">
-          No account?{" "}
-          <Link href="/signup" className="text-green font-medium hover:underline">Create one free</Link>
+          Pas de compte ?{" "}
+          <Link href="/signup" className="text-green font-medium hover:underline">Créer un compte gratuit</Link>
         </p>
       </div>
     </div>

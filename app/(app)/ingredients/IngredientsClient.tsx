@@ -6,15 +6,15 @@ import { Plus, Search, Pencil, Trash2, Check, ChevronDown } from "lucide-react";
 import { PageHeader, Card, Button, Input, Select, Modal, Alert, Table, Th, Td, EmptyState } from "@/components/ui";
 import clsx from "clsx";
 
-const CATEGORIES = ["Produce", "Meat", "Fish", "Dairy", "Dry goods", "Beverage", "Other"];
+const CATEGORIES = ["Légumes/Fruits", "Viande", "Poisson", "Produits laitiers", "Épicerie", "Boissons", "Autre"];
 const UNITS = ["g", "kg", "ml", "l", "unit"];
 
 // Common EU VAT rates — user can type any value too
 const VAT_PRESETS = [
-  { label: "0% — Exempt", value: "0" },
-  { label: "5.5% — Food (FR)", value: "5.5" },
-  { label: "10% — Prepared food (FR)", value: "10" },
-  { label: "20% — Standard (FR)", value: "20" },
+  { label: "0% — Exonéré", value: "0" },
+  { label: "5,5% — Produits alimentaires", value: "5.5" },
+  { label: "10% — Restauration", value: "10" },
+  { label: "20% — Taux normal", value: "20" },
 ];
 
 type TagInfo = { id: string; name: string; color: string };
@@ -118,9 +118,9 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
     const price = parseFloat(form.pack_price);
     const qty = parseFloat(form.pack_quantity);
     const vat = parseFloat(form.vat_rate) || 0;
-    if (!form.name.trim()) return setError("Name is required.");
-    if (isNaN(price) || price < 0) return setError("Enter a valid pack price (HT).");
-    if (isNaN(qty) || qty <= 0) return setError("Pack quantity must be greater than 0.");
+    if (!form.name.trim()) return setError("Le nom est requis.");
+    if (isNaN(price) || price < 0) return setError("Saisissez un prix d'achat HT valide.");
+    if (isNaN(qty) || qty <= 0) return setError("La quantité du colis doit être supérieure à 0.");
     setSaving(true);
 
     const cost_per_base_unit = calcCostPerBase(price, qty, form.unit);
@@ -195,9 +195,9 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
   return (
     <div className="p-7 max-w-6xl mx-auto">
       <PageHeader
-        title="Ingredients"
-        subtitle={`${ingredients.length} ingredient${ingredients.length !== 1 ? "s" : ""} in your library`}
-        action={<Button variant="primary" onClick={openAdd}><Plus size={14} /> Add ingredient</Button>}
+        title="Ingrédients"
+        subtitle={`${ingredients.length} ingrédient${ingredients.length !== 1 ? "s" : ""} dans votre bibliothèque`}
+        action={<Button variant="primary" onClick={openAdd}><Plus size={14} /> Ajouter un ingrédient</Button>}
       />
 
       {/* Filters */}
@@ -209,13 +209,13 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
         </div>
         <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}
           className="px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green transition">
-          <option value="All">All categories</option>
+          <option value="All">Toutes les catégories</option>
           {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
         </select>
         {allTags.length > 0 && (
           <select value={filterTagId} onChange={(e) => setFilterTagId(e.target.value)}
             className="px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green transition">
-            <option value="All">All tags</option>
+            <option value="All">Tous les tags</option>
             {allTags.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
         )}
@@ -224,14 +224,14 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
       {/* Modal */}
       {showForm && (
         <Modal
-          title={editingId ? "Edit ingredient" : "Add ingredient"}
+          title={editingId ? "Modifier l'ingrédient" : "Ajouter un ingrédient"}
           onClose={() => setShowForm(false)}
           wide
           footer={
             <>
-              <Button variant="secondary" onClick={() => setShowForm(false)} className="flex-1 justify-center">Cancel</Button>
+              <Button variant="secondary" onClick={() => setShowForm(false)} className="flex-1 justify-center">Annuler</Button>
               <Button variant="primary" onClick={handleSave} disabled={saving} className="flex-1 justify-center">
-                {saving ? "Saving…" : editingId ? "Save changes" : "Add ingredient"}
+                {saving ? "Enregistrement…" : editingId ? "Enregistrer" : "Ajouter"}
               </Button>
             </>
           }
@@ -240,29 +240,29 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
             {error && <Alert>{error}</Alert>}
 
             <div className="grid grid-cols-2 gap-3">
-              <Input label="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="e.g. Olive oil" className="col-span-2" />
+              <Input label="Nom" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="ex. Huile d'olive" className="col-span-2" />
 
-              <Select label="Category" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+              <Select label="Catégorie" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
                 {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
               </Select>
 
-              <Select label="Supplier (optional)" value={form.supplier_id} onChange={(e) => setForm({ ...form, supplier_id: e.target.value })}>
-                <option value="">No supplier</option>
+              <Select label="Fournisseur (optionnel)" value={form.supplier_id} onChange={(e) => setForm({ ...form, supplier_id: e.target.value })}>
+                <option value="">Sans fournisseur</option>
                 {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </Select>
 
-              <Input label="Pack description (optional)" value={form.pack_description}
+              <Input label="Description du colis (optionnel)" value={form.pack_description}
                 onChange={(e) => setForm({ ...form, pack_description: e.target.value })}
-                placeholder="e.g. 5kg bag, case of 12" className="col-span-2" />
+                placeholder="ex. sac 5kg, carton de 12" className="col-span-2" />
             </div>
 
             {/* Price + VAT section */}
             <div className="bg-gray-50 rounded-lg p-4 space-y-3 border border-gray-200">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Pricing</p>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Prix</p>
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Pack price HT (€)</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Prix d&apos;achat HT (€)</label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">€</span>
                     <input type="number" min="0" step="0.01" value={form.pack_price}
@@ -273,7 +273,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">VAT rate</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">TVA</label>
                   <select value={form.vat_rate} onChange={(e) => setForm({ ...form, vat_rate: e.target.value })}
                     className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green transition">
                     {VAT_PRESETS.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
@@ -281,17 +281,17 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Price TTC (€)</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Prix TTC (€)</label>
                   <div className="px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg text-gray-700 font-medium">
                     €{priceTTCVal.toFixed(2)}
                   </div>
-                  <p className="text-xs text-gray-400 mt-1">Calculated automatically</p>
+                  <p className="text-xs text-gray-400 mt-1">Calculé automatiquement</p>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Pack quantity</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Quantité par colis</label>
                   <div className="flex gap-2">
                     <input type="number" min="0" step="any" value={form.pack_quantity}
                       onChange={(e) => setForm({ ...form, pack_quantity: e.target.value })}
@@ -309,7 +309,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                     <div className="flex items-center gap-2 px-3 py-2.5 bg-green/5 border border-green/20 rounded-lg w-full">
                       <Check size={13} className="text-green shrink-0" />
                       <div>
-                        <p className="text-xs text-gray-400">Cost / {baseUnitLabel(form.unit)} (HT)</p>
+                        <p className="text-xs text-gray-400">Coût / {baseUnitLabel(form.unit)} (HT)</p>
                         <p className="text-sm font-semibold text-green">
                           €{previewCostPerBase.toFixed(4)}
                         </p>
@@ -323,7 +323,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
             {/* Tags section */}
             {allTags.length > 0 && (
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1.5">Tags</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Tags ingrédient</label>
                 <div className="relative">
                   <button
                     type="button"
@@ -332,7 +332,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                   >
                     <div className="flex flex-wrap gap-1.5 min-h-[22px]">
                       {selectedTagIds.length === 0 ? (
-                        <span className="text-gray-400">Select tags…</span>
+                        <span className="text-gray-400">Choisir des tags…</span>
                       ) : (
                         selectedTagIds.map((id) => {
                           const tag = allTags.find((t) => t.id === id);
@@ -387,12 +387,12 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
         <Card>
           <EmptyState
             icon="🥦"
-            title={ingredients.length === 0 ? "No ingredients yet" : "No results found"}
+            title={ingredients.length === 0 ? "Aucun ingrédient" : "Aucun résultat"}
             description={ingredients.length === 0
-              ? "Add your first ingredient to start building recipes and tracking costs."
-              : "Try adjusting your search or filters."}
+              ? "Ajoutez votre premier ingrédient pour commencer à construire des recettes et suivre vos coûts."
+              : "Essayez de modifier votre recherche ou vos filtres."}
             action={ingredients.length === 0
-              ? <Button variant="primary" onClick={openAdd}><Plus size={14} /> Add first ingredient</Button>
+              ? <Button variant="primary" onClick={openAdd}><Plus size={14} /> Ajouter le premier ingrédient</Button>
               : undefined}
           />
         </Card>
@@ -400,15 +400,15 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
         <Table>
           <thead>
             <tr>
-              <Th>Name</Th>
-              <Th>Category</Th>
+              <Th>Nom</Th>
+              <Th>Catégorie</Th>
               <Th>Tags</Th>
-              <Th>Pack</Th>
-              <Th right>Price HT</Th>
-              <Th right>VAT</Th>
-              <Th right>Price TTC</Th>
-              <Th right>Cost / base unit</Th>
-              <Th>Supplier</Th>
+              <Th>Colis</Th>
+              <Th right>Prix HT</Th>
+              <Th right>TVA</Th>
+              <Th right>Prix TTC</Th>
+              <Th right>Coût / unité de base</Th>
+              <Th>Fournisseur</Th>
               <Th><span className="sr-only">Actions</span></Th>
             </tr>
           </thead>

@@ -42,30 +42,30 @@ export default async function DashboardPage() {
       />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <StatCard label="Ingredients" value={ingredientCount ?? 0} sub="in your library" />
-        <StatCard label="Recipes" value={recipeCount ?? 0} sub="built" />
+        <StatCard label="Ingrédients" value={ingredientCount ?? 0} sub="dans votre bibliothèque" />
+        <StatCard label="Recettes" value={recipeCount ?? 0} sub="créées" />
         <StatCard
-          label="Avg food cost"
+          label="Food cost moyen"
           value={avgFoodCost !== null ? `${avgFoodCost.toFixed(1)}%` : "—"}
-          sub={`target ${restaurant.target_food_cost_pct}%`}
+          sub={`objectif ${restaurant.target_food_cost_pct}%`}
           color={avgFoodCost === null ? "default" : avgFoodCost <= restaurant.target_food_cost_pct ? "green" : avgFoodCost <= restaurant.target_food_cost_pct * 1.2 ? "amber" : "red"}
         />
-        <StatCard label="Purchase orders" value={orderCount ?? 0} sub="total" />
+        <StatCard label="Commandes" value={orderCount ?? 0} sub="total" />
       </div>
 
       {isEmpty ? (
         <Card>
           <EmptyState
             icon="👋"
-            title="Welcome to your restaurant dashboard"
-            description="Start by adding your ingredients, then build recipes to see the true cost of every dish on your menu."
+            title="Bienvenue sur votre tableau de bord"
+            description="Commencez par ajouter vos ingrédients, puis créez des recettes pour connaître le vrai coût de chaque plat."
             action={
               <div className="flex gap-3 justify-center">
                 <Link href="/suppliers">
-                  <Button variant="secondary">Add a supplier</Button>
+                  <Button variant="secondary">Ajouter un fournisseur</Button>
                 </Link>
                 <Link href="/ingredients">
-                  <Button variant="primary">Add ingredients →</Button>
+                  <Button variant="primary">Ajouter des ingrédients →</Button>
                 </Link>
               </div>
             }
@@ -74,9 +74,9 @@ export default async function DashboardPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {[
-            { href: "/ingredients", icon: "📦", label: "Ingredients", sub: `${ingredientCount} items` },
-            { href: "/recipes", icon: "👨‍🍳", label: "Recipes", sub: `${recipeCount} built` },
-            { href: "/menu", icon: "📋", label: "Menu margins", sub: `${priced.length} priced dishes` },
+            { href: "/ingredients", icon: "📦", label: "Ingrédients", sub: `${ingredientCount} produit${(ingredientCount ?? 0) !== 1 ? "s" : ""}` },
+            { href: "/recipes", icon: "👨‍🍳", label: "Recettes", sub: `${recipeCount} créée${(recipeCount ?? 0) !== 1 ? "s" : ""}` },
+            { href: "/menu", icon: "📋", label: "Marges du menu", sub: `${priced.length} plat${priced.length !== 1 ? "s" : ""} tarifé${priced.length !== 1 ? "s" : ""}` },
           ].map((item) => (
             <Link key={item.href} href={item.href}>
               <Card className="hover:border-green/40 hover:shadow-md transition-all cursor-pointer group">

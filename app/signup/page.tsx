@@ -14,8 +14,8 @@ export default function SignupPage() {
     const formData = new FormData(e.currentTarget);
     const password = formData.get("password") as string;
     const confirm = formData.get("confirm") as string;
-    if (password !== confirm) return setError("Passwords do not match.");
-    if (password.length < 6) return setError("Password must be at least 6 characters.");
+    if (password !== confirm) return setError("Les mots de passe ne correspondent pas.");
+    if (password.length < 6) return setError("Le mot de passe doit contenir au moins 6 caractères.");
     setLoading(true);
     const result = await signup(formData);
     if (result?.error) { setError(result.error); setLoading(false); }
@@ -26,8 +26,8 @@ export default function SignupPage() {
       <div className="w-full max-w-[360px]">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-green shadow-sm mb-4 text-lg">🍽</div>
-          <h1 className="text-xl font-semibold text-gray-900">Create account</h1>
-          <p className="text-sm text-gray-500 mt-1">Start tracking your restaurant&apos;s true costs</p>
+          <h1 className="text-xl font-semibold text-gray-900">Créer un compte</h1>
+          <p className="text-sm text-gray-500 mt-1">Commencez à suivre les vrais coûts de votre restaurant</p>
         </div>
 
         <div className="bg-white rounded-card border border-gray-200 shadow-card p-6">
@@ -37,8 +37,8 @@ export default function SignupPage() {
             )}
             {[
               { name: "email", type: "email", label: "Email", placeholder: "chef@restaurant.com", autoComplete: "email" },
-              { name: "password", type: "password", label: "Password", placeholder: "At least 6 characters", autoComplete: "new-password" },
-              { name: "confirm", type: "password", label: "Confirm password", placeholder: "••••••••", autoComplete: "new-password" },
+              { name: "password", type: "password", label: "Mot de passe", placeholder: "Au moins 6 caractères", autoComplete: "new-password" },
+              { name: "confirm", type: "password", label: "Confirmer le mot de passe", placeholder: "••••••••", autoComplete: "new-password" },
             ].map((f) => (
               <div key={f.name}>
                 <label className="block text-xs font-medium text-gray-600 mb-1.5">{f.label}</label>
@@ -49,14 +49,14 @@ export default function SignupPage() {
             ))}
             <button type="submit" disabled={loading}
               className="w-full py-2.5 px-4 bg-green text-white text-sm font-medium rounded-lg hover:bg-green-600 disabled:opacity-50 transition shadow-sm mt-1">
-              {loading ? "Creating account…" : "Create account"}
+              {loading ? "Création du compte…" : "Créer mon compte"}
             </button>
           </form>
         </div>
 
         <p className="text-center text-sm text-gray-500 mt-5">
-          Already have an account?{" "}
-          <Link href="/login" className="text-green font-medium hover:underline">Sign in</Link>
+          Déjà un compte ?{" "}
+          <Link href="/login" className="text-green font-medium hover:underline">Se connecter</Link>
         </p>
       </div>
     </div>

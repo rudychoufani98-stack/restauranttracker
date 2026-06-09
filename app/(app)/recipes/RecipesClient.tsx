@@ -4,7 +4,7 @@ import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Plus, Trash2, X, ChevronDown, ChevronUp } from "lucide-react";
 
-const CATEGORIES = ["Starter", "Main", "Dessert", "Side", "Drink"];
+const CATEGORIES = ["Entrée", "Plat", "Dessert", "Accompagnement", "Boisson"];
 
 type Ingredient = { id: string; name: string; cost_per_base_unit: number; unit: string };
 type RecipeLine = {
@@ -134,11 +134,11 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
 
   async function handleSave() {
     setError(null);
-    if (!name.trim()) return setError("Recipe name is required.");
+    if (!name.trim()) return setError("Le nom de la recette est requis.");
     const yp = parseFloat(yieldPortions);
-    if (isNaN(yp) || yp <= 0) return setError("Yield portions must be greater than 0.");
+    if (isNaN(yp) || yp <= 0) return setError("Le nombre de portions doit être supérieur à 0.");
     const validLines = lines.filter((l) => l.ingredient_id || l.sub_recipe_id);
-    if (validLines.length === 0) return setError("Add at least one ingredient or sub-recipe.");
+    if (validLines.length === 0) return setError("Ajoutez au moins un ingrédient ou une sous-recette.");
 
     setSaving(true);
     const recipePayload = {
@@ -220,15 +220,15 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
     <div className="p-8 max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-medium text-gray-900">Recipes</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{recipes.length} recipe{recipes.length !== 1 ? "s" : ""}</p>
+          <h1 className="text-xl font-medium text-gray-900">Recettes</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{recipes.length} recette{recipes.length !== 1 ? "s" : ""}</p>
         </div>
         <button
           onClick={openAdd}
           className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white text-sm font-medium rounded-lg hover:bg-emerald-600 transition"
         >
           <Plus size={15} />
-          New recipe
+          Nouvelle recette
         </button>
       </div>
 
@@ -237,7 +237,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
         <div className="fixed inset-0 bg-black/30 flex items-start justify-center z-50 p-4 overflow-y-auto">
           <div className="bg-white rounded-card border border-[#E5E7EB] w-full max-w-2xl shadow-xl my-8">
             <div className="flex items-center justify-between px-5 py-4 border-b border-[#E5E7EB]">
-              <h2 className="text-base font-medium text-gray-900">{editingId ? "Edit recipe" : "New recipe"}</h2>
+              <h2 className="text-base font-medium text-gray-900">{editingId ? "Modifier la recette" : "Nouvelle recette"}</h2>
               <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
 
@@ -246,31 +246,31 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
 
               <div className="grid grid-cols-3 gap-4">
                 <div className="col-span-2">
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Recipe name</label>
-                  <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Tomato bisque"
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Nom de la recette</label>
+                  <input value={name} onChange={(e) => setName(e.target.value)} placeholder="ex. Velouté de tomates"
                     className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Category</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Catégorie</label>
                   <select value={category} onChange={(e) => setCategory(e.target.value)}
                     className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 bg-white transition">
                     {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Yield (portions)</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Nombre de portions</label>
                   <input type="number" min="1" step="1" value={yieldPortions} onChange={(e) => setYieldPortions(e.target.value)}
                     className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition" />
-                  <p className="text-xs text-gray-400 mt-1">How many portions does this recipe make?</p>
+                  <p className="text-xs text-gray-400 mt-1">Combien de portions donne cette recette ?</p>
                 </div>
               </div>
 
               {/* Ingredient lines */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-medium text-gray-600">Ingredients & sub-recipes</label>
+                  <label className="text-xs font-medium text-gray-600">Ingrédients et sous-recettes</label>
                   <button onClick={addLine} className="text-xs text-emerald-600 hover:underline flex items-center gap-1">
-                    <Plus size={12} /> Add line
+                    <Plus size={12} /> Ajouter une ligne
                   </button>
                 </div>
 
@@ -279,20 +279,20 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                     <div key={idx} className="flex gap-2 items-start">
                       <select value={line.type} onChange={(e) => updateLine(idx, "type", e.target.value)}
                         className="px-2 py-2 text-xs border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 bg-white transition">
-                        <option value="ingredient">Ingredient</option>
-                        <option value="sub_recipe">Sub-recipe</option>
+                        <option value="ingredient">Ingrédient</option>
+                        <option value="sub_recipe">Sous-recette</option>
                       </select>
 
                       {line.type === "ingredient" ? (
                         <select value={line.ingredient_id} onChange={(e) => updateLine(idx, "ingredient_id", e.target.value)}
                           className="flex-1 px-2 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 bg-white transition">
-                          <option value="">Select ingredient…</option>
+                          <option value="">Choisir un ingrédient…</option>
                           {ingredients.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
                         </select>
                       ) : (
                         <select value={line.sub_recipe_id} onChange={(e) => updateLine(idx, "sub_recipe_id", e.target.value)}
                           className="flex-1 px-2 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 bg-white transition">
-                          <option value="">Select recipe…</option>
+                          <option value="">Choisir une recette…</option>
                           {allRecipes.filter((r) => r.id !== editingId).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
                         </select>
                       )}
@@ -328,11 +328,11 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
               {/* Cost summary */}
               <div className="bg-gray-50 border border-[#E5E7EB] rounded-lg px-4 py-3 flex justify-between items-center">
                 <div>
-                  <p className="text-xs text-gray-500">Total recipe cost</p>
+                  <p className="text-xs text-gray-500">Coût total de la recette</p>
                   <p className="text-lg font-medium text-gray-900">€{totalCost.toFixed(2)}</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-xs text-gray-500">Cost per portion ({yieldPortions || 1} portions)</p>
+                  <p className="text-xs text-gray-500">Coût par portion ({yieldPortions || 1} portion{parseFloat(yieldPortions) !== 1 ? "s" : ""})</p>
                   <p className="text-lg font-medium text-emerald-700">€{costPerPortion.toFixed(2)}</p>
                 </div>
               </div>
@@ -341,11 +341,11 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
             <div className="flex gap-2 px-5 py-4 border-t border-[#E5E7EB]">
               <button onClick={() => setShowForm(false)}
                 className="flex-1 py-2 text-sm text-gray-600 border border-[#E5E7EB] rounded-lg hover:bg-gray-50 transition">
-                Cancel
+                Annuler
               </button>
               <button onClick={handleSave} disabled={saving}
                 className="flex-1 py-2 text-sm text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 disabled:opacity-50 transition">
-                {saving ? "Saving…" : editingId ? "Save changes" : "Create recipe"}
+                {saving ? "Enregistrement…" : editingId ? "Enregistrer" : "Créer la recette"}
               </button>
             </div>
           </div>
@@ -356,10 +356,10 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
       {recipes.length === 0 ? (
         <div className="bg-white border border-[#E5E7EB] rounded-card p-12 text-center">
           <div className="text-4xl mb-3">👨‍🍳</div>
-          <h2 className="text-base font-medium text-gray-900 mb-1">No recipes yet</h2>
-          <p className="text-sm text-gray-500 mb-5">Create your first recipe to start seeing true dish costs.</p>
+          <h2 className="text-base font-medium text-gray-900 mb-1">Aucune recette</h2>
+          <p className="text-sm text-gray-500 mb-5">Créez votre première recette pour connaître le vrai coût de chaque plat.</p>
           <button onClick={openAdd} className="px-4 py-2 text-sm text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 transition">
-            Create first recipe
+            Créer la première recette
           </button>
         </div>
       ) : (
@@ -378,16 +378,17 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                       <span className="font-medium text-gray-900">{recipe.name}</span>
                       <span className="px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-500">{recipe.category}</span>
                     </div>
-                    <p className="text-xs text-gray-500 mt-0.5">{recipe.yield_portions} portion{recipe.yield_portions !== 1 ? "s" : ""}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{recipe.yield_portions} portion{recipe.yield_portions !== 1 ? "s" : ""} · {recipe.category}</p>
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-medium text-gray-900">€{recipe.total_cost.toFixed(2)} total</p>
                     <p className="text-xs text-emerald-600">€{costPerPortion.toFixed(2)} / portion</p>
+
                   </div>
                   <div className="flex items-center gap-1">
                     <button onClick={(e) => { e.stopPropagation(); openEdit(recipe); }}
                       className="px-3 py-1.5 text-xs text-gray-600 border border-[#E5E7EB] rounded-lg hover:bg-gray-100 transition">
-                      Edit
+                      Modifier
                     </button>
                     <button onClick={(e) => { e.stopPropagation(); handleDelete(recipe.id); }}
                       disabled={deletingId === recipe.id}
@@ -403,9 +404,9 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="text-xs text-gray-400 uppercase">
-                          <th className="text-left pb-2">Ingredient / Sub-recipe</th>
-                          <th className="text-right pb-2">Quantity</th>
-                          <th className="text-right pb-2">Cost</th>
+                          <th className="text-left pb-2">Ingrédient / Sous-recette</th>
+                          <th className="text-right pb-2">Quantité</th>
+                          <th className="text-right pb-2">Coût</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#F3F4F6]">
@@ -420,7 +421,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                           return (
                             <tr key={i}>
                               <td className="py-1.5 text-gray-700">
-                                {isSubRecipe && <span className="text-xs text-blue-500 mr-1">[sub-recipe]</span>}
+                                {isSubRecipe && <span className="text-xs text-blue-500 mr-1">[sous-recette]</span>}
                                 {label}
                               </td>
                               <td className="text-right text-gray-500">{line.quantity} {line.unit}</td>
@@ -431,7 +432,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                       </tbody>
                       <tfoot>
                         <tr className="border-t border-[#E5E7EB]">
-                          <td className="pt-2 text-xs font-medium text-gray-500">Total</td>
+                          <td className="pt-2 text-xs font-medium text-gray-500">Total recette</td>
                           <td />
                           <td className="pt-2 text-right font-medium text-gray-900">€{recipe.total_cost.toFixed(2)}</td>
                         </tr>

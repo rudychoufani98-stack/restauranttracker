@@ -4,10 +4,10 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Plus, Pencil, Trash2, X } from "lucide-react";
 
-const CATEGORIES = ["Produce", "Meat", "Fish", "Dairy", "Dry goods", "Beverage", "Other"];
+const CATEGORIES = ["Légumes/Fruits", "Viande", "Poisson", "Produits laitiers", "Épicerie", "Boissons", "Autre"];
 
 type Supplier = { id: string; name: string; email: string | null; contact: string | null; category: string | null };
-const EMPTY = { name: "", email: "", contact: "", category: "Other" };
+const EMPTY = { name: "", email: "", contact: "", category: "Autre" };
 
 interface Props { restaurantId: string; initialSuppliers: Supplier[] }
 
@@ -23,12 +23,12 @@ export default function SuppliersClient({ restaurantId, initialSuppliers }: Prop
   function openAdd() { setEditingId(null); setForm({ ...EMPTY }); setError(null); setShowForm(true); }
   function openEdit(s: Supplier) {
     setEditingId(s.id);
-    setForm({ name: s.name, email: s.email ?? "", contact: s.contact ?? "", category: s.category ?? "Other" });
+    setForm({ name: s.name, email: s.email ?? "", contact: s.contact ?? "", category: s.category ?? "Autre" });
     setError(null); setShowForm(true);
   }
 
   async function handleSave() {
-    if (!form.name.trim()) return setError("Supplier name is required.");
+    if (!form.name.trim()) return setError("Le nom du fournisseur est requis.");
     setSaving(true);
     const payload = { name: form.name.trim(), email: form.email || null, contact: form.contact || null, category: form.category, restaurant_id: restaurantId };
 
@@ -53,11 +53,11 @@ export default function SuppliersClient({ restaurantId, initialSuppliers }: Prop
     <div className="p-8 max-w-4xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-medium text-gray-900">Suppliers</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{suppliers.length} supplier{suppliers.length !== 1 ? "s" : ""}</p>
+          <h1 className="text-xl font-medium text-gray-900">Fournisseurs</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{suppliers.length} fournisseur{suppliers.length !== 1 ? "s" : ""}</p>
         </div>
         <button onClick={openAdd} className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white text-sm font-medium rounded-lg hover:bg-emerald-600 transition">
-          <Plus size={15} /> Add supplier
+          <Plus size={15} /> Ajouter un fournisseur
         </button>
       </div>
 
@@ -65,15 +65,15 @@ export default function SuppliersClient({ restaurantId, initialSuppliers }: Prop
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-card border border-[#E5E7EB] w-full max-w-md shadow-xl">
             <div className="flex items-center justify-between px-5 py-4 border-b border-[#E5E7EB]">
-              <h2 className="text-base font-medium text-gray-900">{editingId ? "Edit supplier" : "New supplier"}</h2>
+              <h2 className="text-base font-medium text-gray-900">{editingId ? "Modifier le fournisseur" : "Nouveau fournisseur"}</h2>
               <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
             <div className="p-5 space-y-4">
               {error && <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</div>}
               {[
-                { label: "Supplier name", key: "name", placeholder: "e.g. Metro Cash & Carry" },
-                { label: "Email (for sending orders)", key: "email", placeholder: "orders@supplier.com" },
-                { label: "Contact person", key: "contact", placeholder: "John Smith" },
+                { label: "Nom du fournisseur", key: "name", placeholder: "ex. Metro Cash & Carry" },
+                { label: "Email (pour l'envoi des commandes)", key: "email", placeholder: "commandes@fournisseur.com" },
+                { label: "Personne de contact", key: "contact", placeholder: "Jean Dupont" },
               ].map(({ label, key, placeholder }) => (
                 <div key={key}>
                   <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
@@ -82,7 +82,7 @@ export default function SuppliersClient({ restaurantId, initialSuppliers }: Prop
                 </div>
               ))}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Category</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Catégorie</label>
                 <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}
                   className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 bg-white transition">
                   {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
@@ -90,9 +90,9 @@ export default function SuppliersClient({ restaurantId, initialSuppliers }: Prop
               </div>
             </div>
             <div className="flex gap-2 px-5 py-4 border-t border-[#E5E7EB]">
-              <button onClick={() => setShowForm(false)} className="flex-1 py-2 text-sm text-gray-600 border border-[#E5E7EB] rounded-lg hover:bg-gray-50 transition">Cancel</button>
+              <button onClick={() => setShowForm(false)} className="flex-1 py-2 text-sm text-gray-600 border border-[#E5E7EB] rounded-lg hover:bg-gray-50 transition">Annuler</button>
               <button onClick={handleSave} disabled={saving} className="flex-1 py-2 text-sm text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 disabled:opacity-50 transition">
-                {saving ? "Saving…" : editingId ? "Save changes" : "Add supplier"}
+                {saving ? "Enregistrement…" : editingId ? "Enregistrer" : "Ajouter"}
               </button>
             </div>
           </div>
@@ -102,17 +102,17 @@ export default function SuppliersClient({ restaurantId, initialSuppliers }: Prop
       {suppliers.length === 0 ? (
         <div className="bg-white border border-[#E5E7EB] rounded-card p-12 text-center">
           <div className="text-4xl mb-3">🚚</div>
-          <h2 className="text-base font-medium text-gray-900 mb-1">No suppliers yet</h2>
-          <p className="text-sm text-gray-500 mb-5">Add your suppliers to link ingredients and send purchase orders.</p>
-          <button onClick={openAdd} className="px-4 py-2 text-sm text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 transition">Add first supplier</button>
+          <h2 className="text-base font-medium text-gray-900 mb-1">Aucun fournisseur</h2>
+          <p className="text-sm text-gray-500 mb-5">Ajoutez vos fournisseurs pour lier les ingrédients et envoyer des bons de commande.</p>
+          <button onClick={openAdd} className="px-4 py-2 text-sm text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 transition">Ajouter le premier fournisseur</button>
         </div>
       ) : (
         <div className="bg-white border border-[#E5E7EB] rounded-card overflow-hidden">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[#E5E7EB] bg-gray-50">
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Name</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Category</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Nom</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Catégorie</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Email</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Contact</th>
                 <th className="px-4 py-3" />

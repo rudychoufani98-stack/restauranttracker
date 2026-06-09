@@ -6,8 +6,8 @@ import { Check, Plus, Trash2, Tag } from "lucide-react";
 import { Card, Button, Input, Select, Alert } from "@/components/ui";
 import clsx from "clsx";
 
-const CUISINE_TYPES = ["French", "Italian", "Japanese", "Mediterranean", "Mexican", "Indian", "American", "Other"];
-const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const CUISINE_TYPES = ["Française", "Italienne", "Japonaise", "Méditerranéenne", "Mexicaine", "Indienne", "Américaine", "Autre"];
+const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 
 const TAG_COLORS = [
   { label: "Gray",    value: "#6B7280" },
@@ -76,9 +76,9 @@ export default function SettingsClient({ restaurant, email, initialTags }: Props
 
   async function handleAddTag() {
     setTagError(null);
-    if (!newTagName.trim()) return setTagError("Tag name is required.");
+    if (!newTagName.trim()) return setTagError("Le nom du tag est requis.");
     if (tags.find((t) => t.name.toLowerCase() === newTagName.trim().toLowerCase())) {
-      return setTagError("A tag with that name already exists.");
+      return setTagError("Un tag avec ce nom existe déjà.");
     }
     setAddingTag(true);
     const { data, error } = await supabase.from("tags").insert({
@@ -102,13 +102,13 @@ export default function SettingsClient({ restaurant, email, initialTags }: Props
   const tabs: { key: Tab; label: string }[] = [
     { key: "restaurant", label: "Restaurant" },
     { key: "tags",       label: "Tags" },
-    { key: "digest",     label: "Weekly digest" },
+    { key: "digest",     label: "Récap hebdo" },
   ];
 
   return (
     <div className="p-7 max-w-2xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-gray-900 tracking-tight">Settings</h1>
+        <h1 className="text-xl font-semibold text-gray-900 tracking-tight">Paramètres</h1>
       </div>
 
       {/* Tab bar */}
@@ -133,23 +133,23 @@ export default function SettingsClient({ restaurant, email, initialTags }: Props
       {tab === "restaurant" && (
         <div className="space-y-5">
           <Card>
-            <h2 className="text-sm font-semibold text-gray-900 mb-4">Restaurant details</h2>
+            <h2 className="text-sm font-semibold text-gray-900 mb-4">Informations restaurant</h2>
             <div className="space-y-4">
               <Input
-                label="Restaurant name"
+                label="Nom du restaurant"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
               />
               <div className="grid grid-cols-2 gap-4">
                 <Select
-                  label="Cuisine type"
+                  label="Type de cuisine"
                   value={form.cuisine_type}
                   onChange={(e) => setForm({ ...form, cuisine_type: e.target.value })}
                 >
                   {CUISINE_TYPES.map((c) => <option key={c}>{c}</option>)}
                 </Select>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Target food-cost %</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Objectif food cost %</label>
                   <div className="relative">
                     <input
                       type="number" min="1" max="100" step="0.1"
@@ -165,18 +165,18 @@ export default function SettingsClient({ restaurant, email, initialTags }: Props
           </Card>
 
           <Card>
-            <h2 className="text-sm font-semibold text-gray-900 mb-1">Business details</h2>
-            <p className="text-xs text-gray-500 mb-4">These appear on your purchase order PDFs.</p>
+            <h2 className="text-sm font-semibold text-gray-900 mb-1">Coordonnées</h2>
+            <p className="text-xs text-gray-500 mb-4">Ces informations apparaissent sur vos bons de commande PDF.</p>
             <div className="space-y-3">
               <Input
-                label="Address"
+                label="Adresse"
                 value={form.address}
                 onChange={(e) => setForm({ ...form, address: e.target.value })}
                 placeholder="12 rue de la Paix, 75001 Paris"
               />
               <div className="grid grid-cols-2 gap-3">
                 <Input
-                  label="Phone"
+                  label="Téléphone"
                   value={form.phone}
                   onChange={(e) => setForm({ ...form, phone: e.target.value })}
                   placeholder="+33 1 23 45 67 89"
@@ -192,8 +192,8 @@ export default function SettingsClient({ restaurant, email, initialTags }: Props
           </Card>
 
           <Card>
-            <h2 className="text-sm font-semibold text-gray-900 mb-2">Account</h2>
-            <p className="text-xs text-gray-400 mb-3">Email cannot be changed here.</p>
+            <h2 className="text-sm font-semibold text-gray-900 mb-2">Compte</h2>
+            <p className="text-xs text-gray-400 mb-3">L&apos;email ne peut pas être modifié ici.</p>
             <Input label="Email" value={email} disabled />
           </Card>
 
@@ -202,7 +202,7 @@ export default function SettingsClient({ restaurant, email, initialTags }: Props
             onClick={handleSaveRestaurant}
             disabled={saving}
           >
-            {saved ? <><Check size={13} /> Saved</> : saving ? "Saving…" : "Save settings"}
+            {saved ? <><Check size={13} /> Enregistré</> : saving ? "Enregistrement…" : "Enregistrer les paramètres"}
           </Button>
         </div>
       )}
@@ -211,25 +211,25 @@ export default function SettingsClient({ restaurant, email, initialTags }: Props
       {tab === "tags" && (
         <div className="space-y-5">
           <Card>
-            <h2 className="text-sm font-semibold text-gray-900 mb-1">Ingredient tags</h2>
+            <h2 className="text-sm font-semibold text-gray-900 mb-1">Tags ingrédients</h2>
             <p className="text-xs text-gray-500 mb-5">
-              Create tags to organise your ingredients — e.g. &ldquo;Local&rdquo;, &ldquo;Seasonal&rdquo;, &ldquo;Allergen&rdquo;, &ldquo;Premium&rdquo;. You can assign multiple tags to each ingredient.
+              Créez des tags pour organiser vos ingrédients — ex. &ldquo;Local&rdquo;, &ldquo;Saisonnier&rdquo;, &ldquo;Allergène&rdquo;, &ldquo;Premium&rdquo;. Vous pouvez en affecter plusieurs par ingrédient.
             </p>
 
             {/* Add new tag */}
             <div className="flex gap-2 items-end mb-5">
               <div className="flex-1">
-                <label className="block text-xs font-medium text-gray-600 mb-1.5">Tag name</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Nom du tag</label>
                 <input
                   value={newTagName}
                   onChange={(e) => setNewTagName(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleAddTag()}
-                  placeholder="e.g. Seasonal, Local, Allergen…"
+                  placeholder="ex. Saisonnier, Local, Allergène…"
                   className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1.5">Colour</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Couleur</label>
                 <div className="flex gap-1.5 flex-wrap">
                   {TAG_COLORS.map((c) => (
                     <button
@@ -246,7 +246,7 @@ export default function SettingsClient({ restaurant, email, initialTags }: Props
                 </div>
               </div>
               <Button variant="primary" onClick={handleAddTag} disabled={addingTag}>
-                <Plus size={13} /> Add
+                <Plus size={13} /> Ajouter
               </Button>
             </div>
 
@@ -256,7 +256,7 @@ export default function SettingsClient({ restaurant, email, initialTags }: Props
             {tags.length === 0 ? (
               <div className="py-8 text-center">
                 <Tag size={28} className="mx-auto text-gray-200 mb-3" />
-                <p className="text-sm text-gray-500">No tags yet. Add your first one above.</p>
+                <p className="text-sm text-gray-500">Aucun tag. Ajoutez-en un ci-dessus.</p>
               </div>
             ) : (
               <div className="space-y-1">
@@ -295,15 +295,15 @@ export default function SettingsClient({ restaurant, email, initialTags }: Props
       {tab === "digest" && (
         <div className="space-y-5">
           <Card>
-            <h2 className="text-sm font-semibold text-gray-900 mb-1">Weekly digest email</h2>
+            <h2 className="text-sm font-semibold text-gray-900 mb-1">Email récapitulatif hebdomadaire</h2>
             <p className="text-xs text-gray-500 mb-5">
-              A weekly summary sent to {email}: average food costs, dishes over target, biggest price increases from validated deliveries, and your worst-performing dish.
+              Un résumé hebdomadaire envoyé à {email} : food cost moyen, plats hors objectif, plus fortes hausses de prix depuis les livraisons validées, et le plat le moins rentable.
             </p>
 
             <div className="flex items-center justify-between py-3 border-b border-gray-100">
               <div>
-                <p className="text-sm font-medium text-gray-800">Enable digest</p>
-                <p className="text-xs text-gray-400 mt-0.5">Turn off to stop receiving weekly emails</p>
+                <p className="text-sm font-medium text-gray-800">Activer le récapitulatif</p>
+                <p className="text-xs text-gray-400 mt-0.5">Désactivez pour arrêter les emails hebdomadaires</p>
               </div>
               <button
                 onClick={() => setForm({ ...form, digest_enabled: !form.digest_enabled })}
@@ -322,7 +322,7 @@ export default function SettingsClient({ restaurant, email, initialTags }: Props
             {form.digest_enabled && (
               <div className="pt-4">
                 <Select
-                  label="Send on"
+                  label="Envoyer le"
                   value={form.digest_day}
                   onChange={(e) => setForm({ ...form, digest_day: e.target.value })}
                   className="w-48"
@@ -334,7 +334,7 @@ export default function SettingsClient({ restaurant, email, initialTags }: Props
           </Card>
 
           <Button variant="primary" onClick={handleSaveRestaurant} disabled={saving}>
-            {saved ? <><Check size={13} /> Saved</> : saving ? "Saving…" : "Save settings"}
+            {saved ? <><Check size={13} /> Enregistré</> : saving ? "Enregistrement…" : "Enregistrer les paramètres"}
           </Button>
         </div>
       )}
