@@ -147,53 +147,80 @@ export default function MenuClient({ restaurantId: _restaurantId, targetFoodCost
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-xl font-medium text-gray-900">Menu</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Objectif food cost : {targetFoodCostPct}% · Cliquez sur un prix pour le modifier</p>
+      {/* Page header */}
+      <div className="mb-6 pb-5 border-b border-gray-200">
+        <div className="flex items-end justify-between">
+          <div>
+            <p className="text-xs font-semibold text-emerald-600 uppercase tracking-widest mb-1">Menu</p>
+            <h1 className="text-2xl font-bold text-gray-900">Analyse des marges</h1>
+            <p className="text-sm text-gray-500 mt-1">Objectif food cost : <span className="font-semibold text-gray-700">{targetFoodCostPct}%</span> · Cliquez sur un prix pour le modifier</p>
+          </div>
+        </div>
       </div>
 
       {/* Summary cards */}
       {stats && (
         <div className="grid grid-cols-3 gap-4 mb-6">
-          <div className="bg-white border border-[#E5E7EB] rounded-card p-4">
-            <p className="text-xs text-gray-500 mb-1">Food cost moyen</p>
-            <p className={clsx("text-2xl font-medium", getStatus(stats.avgFoodCost, targetFoodCostPct) === "green" ? "text-emerald-600" : getStatus(stats.avgFoodCost, targetFoodCostPct) === "amber" ? "text-amber-500" : "text-red-500")}>
-              {stats.avgFoodCost.toFixed(1)}%
-            </p>
-            <p className="text-xs text-gray-400 mt-0.5">vs objectif {targetFoodCostPct}%</p>
+          {/* Food cost moyen */}
+          {(() => {
+            const st = getStatus(stats.avgFoodCost, targetFoodCostPct);
+            const bar = st === "green" ? "bg-emerald-400" : st === "amber" ? "bg-amber-400" : "bg-red-400";
+            const val = st === "green" ? "text-emerald-700" : st === "amber" ? "text-amber-700" : "text-red-600";
+            const bg = st === "green" ? "bg-emerald-50" : st === "amber" ? "bg-amber-50" : "bg-red-50";
+            return (
+              <div className="bg-white border border-gray-200 rounded-card shadow-card overflow-hidden">
+                <div className={`h-1 ${bar}`} />
+                <div className="p-5">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Food cost moyen</p>
+                  <p className={`text-3xl font-bold ${val}`}>{stats.avgFoodCost.toFixed(1)}%</p>
+                  <div className="mt-2 flex items-center gap-2">
+                    <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full ${bar}`} style={{ width: `${Math.min(100, (stats.avgFoodCost / (targetFoodCostPct * 1.5)) * 100)}%` }} />
+                    </div>
+                    <span className="text-xs text-gray-400">obj. {targetFoodCostPct}%</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+          {/* Hors objectif */}
+          <div className="bg-white border border-gray-200 rounded-card shadow-card overflow-hidden">
+            <div className={`h-1 ${stats.belowTarget > 0 ? "bg-red-400" : "bg-emerald-400"}`} />
+            <div className="p-5">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Plats hors objectif</p>
+              <p className={`text-3xl font-bold ${stats.belowTarget > 0 ? "text-red-600" : "text-emerald-700"}`}>{stats.belowTarget}</p>
+              <p className="text-xs text-gray-400 mt-2">sur {recipes.filter((r) => r.menu_price).length} plat{recipes.filter((r) => r.menu_price).length !== 1 ? "s" : ""} tarifé{recipes.filter((r) => r.menu_price).length !== 1 ? "s" : ""}</p>
+            </div>
           </div>
-          <div className="bg-white border border-[#E5E7EB] rounded-card p-4">
-            <p className="text-xs text-gray-500 mb-1">Plats hors objectif</p>
-            <p className={clsx("text-2xl font-medium", stats.belowTarget > 0 ? "text-red-500" : "text-emerald-600")}>
-              {stats.belowTarget}
-            </p>
-            <p className="text-xs text-gray-400 mt-0.5">sur {recipes.filter((r) => r.menu_price).length} plat{recipes.filter((r) => r.menu_price).length !== 1 ? "s" : ""} tarifé{recipes.filter((r) => r.menu_price).length !== 1 ? "s" : ""}</p>
-          </div>
-          <div className="bg-white border border-[#E5E7EB] rounded-card p-4">
-            <p className="text-xs text-gray-500 mb-1">Moins rentable</p>
-            <p className="text-base font-medium text-red-500 truncate">{stats.worst.name}</p>
-            <p className="text-xs text-gray-400 mt-0.5">{foodCostPct(stats.worst)?.toFixed(1)}% food cost</p>
+          {/* Moins rentable */}
+          <div className="bg-white border border-gray-200 rounded-card shadow-card overflow-hidden">
+            <div className="h-1 bg-orange-400" />
+            <div className="p-5">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Moins rentable</p>
+              <p className="text-base font-bold text-gray-900 truncate">{stats.worst.name}</p>
+              <p className="text-xs text-red-500 mt-1 font-medium">{foodCostPct(stats.worst)?.toFixed(1)}% food cost</p>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Filter */}
-      <div className="flex gap-2 mb-4">
+      {/* Filter tabs */}
+      <div className="flex gap-2 mb-5">
         {(["all", "green", "amber", "red"] as const).map((s) => (
           <button
             key={s}
             onClick={() => setFilterStatus(s)}
             className={clsx(
-              "px-3 py-1.5 text-xs rounded-lg border transition",
+              "px-4 py-2 text-xs font-semibold rounded-lg border transition",
               filterStatus === s
-                ? s === "all" ? "bg-gray-900 text-white border-gray-900"
-                  : s === "green" ? "bg-emerald-500 text-white border-emerald-500"
-                  : s === "amber" ? "bg-amber-500 text-white border-amber-500"
-                  : "bg-red-500 text-white border-red-500"
-                : "bg-white text-gray-600 border-[#E5E7EB] hover:bg-gray-50"
+                ? s === "all" ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                  : s === "green" ? "bg-emerald-500 text-white border-emerald-500 shadow-sm"
+                  : s === "amber" ? "bg-amber-500 text-white border-amber-500 shadow-sm"
+                  : "bg-red-500 text-white border-red-500 shadow-sm"
+                : "bg-white text-gray-500 border-gray-200 hover:bg-gray-50 hover:text-gray-700"
             )}
           >
-            {s === "all" ? "Tous les plats" : s === "green" ? "Dans l'objectif" : s === "amber" ? "Légèrement dépassé" : "Hors budget"}
+            {s === "all" ? "Tous les plats" : s === "green" ? "✓ Dans l'objectif" : s === "amber" ? "⚠ Légèrement dépassé" : "✗ Hors budget"}
           </button>
         ))}
       </div>

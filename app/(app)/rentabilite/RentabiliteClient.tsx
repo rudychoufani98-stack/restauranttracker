@@ -210,14 +210,15 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
 
   return (
     <div className="p-8 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-end justify-between mb-6 pb-5 border-b border-gray-200">
         <div>
-          <h1 className="text-xl font-medium text-gray-900">Rentabilité</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Saisissez vos ventes mensuelles pour calculer vos marges réelles</p>
+          <p className="text-xs font-semibold text-emerald-600 uppercase tracking-widest mb-1">Analyse</p>
+          <h1 className="text-2xl font-bold text-gray-900">Rentabilité</h1>
+          <p className="text-sm text-gray-500 mt-1">Saisissez vos ventes mensuelles pour calculer vos marges réelles</p>
         </div>
         <button
           onClick={openForm}
-          className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white text-sm font-medium rounded-lg hover:bg-emerald-600 transition"
+          className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 transition shadow-sm"
         >
           <Plus size={15} /> Saisir un mois
         </button>
@@ -403,51 +404,60 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
             const fcStatus = stats.foodCostPct === null ? null :
               stats.foodCostPct <= targetFoodCostPct ? "green" :
               stats.foodCostPct <= targetFoodCostPct * 1.2 ? "amber" : "red";
+            const fcBarColor = fcStatus === "green" ? "bg-emerald-400" : fcStatus === "amber" ? "bg-amber-400" : fcStatus === "red" ? "bg-red-400" : "bg-gray-200";
 
             return (
-              <div key={period.id} className="bg-white border border-[#E5E7EB] rounded-card overflow-hidden">
+              <div key={period.id} className="bg-white border border-gray-200 rounded-card shadow-card overflow-hidden">
+                {/* Color bar top */}
+                <div className={`h-1 w-full ${fcBarColor}`} />
                 <div
-                  className="flex items-center gap-4 px-5 py-4 cursor-pointer hover:bg-gray-50 transition"
+                  className="flex items-center gap-4 px-5 py-4 cursor-pointer hover:bg-gray-50/70 transition"
                   onClick={() => setExpandedId(isExpanded ? null : period.id)}
                 >
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-gray-900 capitalize">{monthLabel(period.month)}</span>
-                      {period.notes && <span className="text-xs text-gray-400">· {period.notes}</span>}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-gray-900 capitalize text-base">{monthLabel(period.month)}</span>
+                      {period.notes && <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">· {period.notes}</span>}
                     </div>
                     <p className="text-xs text-gray-400 mt-0.5">{stats.totalCouverts} couvert{stats.totalCouverts !== 1 ? "s" : ""}</p>
                   </div>
 
                   {/* Mini stats */}
-                  <div className="hidden md:flex items-center gap-6 text-sm">
+                  <div className="hidden md:flex items-center gap-5 text-sm">
                     <div className="text-right">
-                      <p className="text-xs text-gray-400">CA</p>
-                      <p className="font-medium text-gray-900">€{stats.ca.toFixed(0)}</p>
+                      <p className="text-2xs text-gray-400 uppercase tracking-wide font-medium">CA</p>
+                      <p className="font-bold text-gray-900">€{stats.ca.toFixed(0)}</p>
                     </div>
+                    <div className="w-px h-8 bg-gray-100" />
                     <div className="text-right">
-                      <p className="text-xs text-gray-400">Coût matière</p>
-                      <p className="font-medium text-red-500">€{stats.coutMatiere.toFixed(0)}</p>
+                      <p className="text-2xs text-gray-400 uppercase tracking-wide font-medium">Coût</p>
+                      <p className="font-semibold text-red-500">€{stats.coutMatiere.toFixed(0)}</p>
                     </div>
+                    <div className="w-px h-8 bg-gray-100" />
                     <div className="text-right">
-                      <p className="text-xs text-gray-400">Marge brute</p>
-                      <p className={clsx("font-semibold", stats.margeB >= 0 ? "text-emerald-600" : "text-red-500")}>
+                      <p className="text-2xs text-gray-400 uppercase tracking-wide font-medium">Marge</p>
+                      <p className={clsx("font-bold", stats.margeB >= 0 ? "text-emerald-600" : "text-red-500")}>
                         €{stats.margeB.toFixed(0)}
                       </p>
                     </div>
                     {stats.foodCostPct !== null && (
-                      <div className="text-right">
-                        <p className="text-xs text-gray-400">Food cost</p>
-                        <p className={clsx("font-semibold",
-                          fcStatus === "green" ? "text-emerald-600" :
-                          fcStatus === "amber" ? "text-amber-500" : "text-red-500"
-                        )}>
-                          {stats.foodCostPct.toFixed(1)}%
-                        </p>
-                      </div>
+                      <>
+                        <div className="w-px h-8 bg-gray-100" />
+                        <div className="text-right">
+                          <p className="text-2xs text-gray-400 uppercase tracking-wide font-medium mb-1">Food cost</p>
+                          <span className={clsx(
+                            "inline-block px-2 py-0.5 rounded-full text-xs font-bold",
+                            fcStatus === "green" ? "bg-emerald-100 text-emerald-700" :
+                            fcStatus === "amber" ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"
+                          )}>
+                            {stats.foodCostPct.toFixed(1)}%
+                          </span>
+                        </div>
+                      </>
                     )}
                   </div>
 
-                  {isExpanded ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+                  {isExpanded ? <ChevronUp size={16} className="text-gray-400 ml-2" /> : <ChevronDown size={16} className="text-gray-400 ml-2" />}
                 </div>
 
                 {isExpanded && (

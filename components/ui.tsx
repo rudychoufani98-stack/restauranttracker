@@ -6,16 +6,21 @@ export function PageHeader({
   title,
   subtitle,
   action,
+  eyebrow,
 }: {
   title: string;
   subtitle?: string;
   action?: ReactNode;
+  eyebrow?: string;
 }) {
   return (
-    <div className="flex items-start justify-between mb-6">
+    <div className="flex items-end justify-between mb-6 pb-5 border-b border-gray-200">
       <div>
-        <h1 className="text-xl font-semibold text-gray-900 tracking-tight">{title}</h1>
-        {subtitle && <p className="text-sm text-gray-500 mt-0.5">{subtitle}</p>}
+        {eyebrow && (
+          <p className="text-xs font-semibold text-emerald-600 uppercase tracking-widest mb-1">{eyebrow}</p>
+        )}
+        <h1 className="text-2xl font-bold text-gray-900 tracking-tight">{title}</h1>
+        {subtitle && <p className="text-sm text-gray-500 mt-1">{subtitle}</p>}
       </div>
       {action && <div className="ml-4 shrink-0">{action}</div>}
     </div>

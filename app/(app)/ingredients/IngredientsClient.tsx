@@ -199,6 +199,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
   return (
     <div className="p-7 max-w-6xl mx-auto">
       <PageHeader
+        eyebrow="Catalogue"
         title="Ingrédients"
         subtitle={`${ingredients.length} ingrédient${ingredients.length !== 1 ? "s" : ""} dans votre bibliothèque`}
         action={<Button variant="primary" onClick={openAdd}><Plus size={14} /> Ajouter un ingrédient</Button>}

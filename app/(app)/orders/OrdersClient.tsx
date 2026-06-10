@@ -143,13 +143,14 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
 
   return (
     <div className="p-8 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-end justify-between mb-6 pb-5 border-b border-gray-200">
         <div>
-          <h1 className="text-xl font-medium text-gray-900">Bons de commande</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{orders.length} commande{orders.length !== 1 ? "s" : ""}</p>
+          <p className="text-xs font-semibold text-emerald-600 uppercase tracking-widest mb-1">Opérations</p>
+          <h1 className="text-2xl font-bold text-gray-900">Bons de commande</h1>
+          <p className="text-sm text-gray-500 mt-1">{orders.length} commande{orders.length !== 1 ? "s" : ""}</p>
         </div>
         <button onClick={() => { setShowForm(true); setError(null); }}
-          className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white text-sm font-medium rounded-lg hover:bg-emerald-600 transition">
+          className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 transition shadow-sm">
           <Plus size={15} /> Nouvelle commande
         </button>
       </div>
