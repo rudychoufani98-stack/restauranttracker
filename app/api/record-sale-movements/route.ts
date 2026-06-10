@@ -3,10 +3,23 @@ import { createClient } from "@/lib/supabase/server";
 
 export async function POST(req: NextRequest) {
   try {
+    const supabase = createClient();
+
+    // Auth check
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+
     const { restaurantId, periodId, salesLines } = await req.json();
     // salesLines: Array<{ recipe_id?: string; ingredient_id?: string; qty_sold: number }>
 
-    const supabase = createClient();
+    // Ownership check
+    const { data: restaurant } = await supabase
+      .from("restaurants")
+      .select("id")
+      .eq("id", restaurantId)
+      .eq("owner_id", user.id)
+      .single();
+    if (!restaurant) return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
 
     // Load recipe lines for all recipes involved
     const recipeIds = salesLines.filter((l: any) => l.recipe_id).map((l: any) => l.recipe_id);
@@ -95,7 +108,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, movements: movements.length });
   } catch (e: any) {
-    console.error("record-sale-movements error", e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    console.error("[record-sale-movements] error:", (e as Error).message);
+    return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }
 }

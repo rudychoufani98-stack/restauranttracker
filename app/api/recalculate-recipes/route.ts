@@ -39,8 +39,22 @@ const calcRecipeCost = (
 
 export async function POST(req: NextRequest) {
   try {
-    const { restaurantId } = await req.json();
     const supabase = createClient();
+
+    // Auth check
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+
+    const { restaurantId } = await req.json();
+
+    // Ownership check
+    const { data: restaurant } = await supabase
+      .from("restaurants")
+      .select("id")
+      .eq("id", restaurantId)
+      .eq("owner_id", user.id)
+      .single();
+    if (!restaurant) return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
 
     const { data: recipes } = await supabase
       .from("recipes")
@@ -68,7 +82,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, updated: recipeCosts.size });
   } catch (e: any) {
-    console.error("recalculate-recipes error", e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    console.error("[recalculate-recipes] error:", (e as Error).message);
+    return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }
 }
