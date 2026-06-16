@@ -3,8 +3,10 @@
 import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Plus, Trash2, X, ChevronDown, ChevronUp } from "lucide-react";
+import clsx from "clsx";
 
 const CATEGORIES = ["Entrée", "Plat", "Dessert", "Accompagnement", "Boisson"];
+const PREP_CATEGORIES = ["Sauce", "Fond/Bouillon", "Pâte", "Garniture", "Marinade", "Base", "Autre"];
 
 type Ingredient = { id: string; name: string; cost_per_base_unit: number; unit: string };
 type RecipeLine = {
@@ -23,6 +25,7 @@ type Recipe = {
   yield_portions: number;
   total_cost: number;
   menu_price: number | null;
+  is_prep: boolean;
   recipe_lines: RecipeLine[];
 };
 
@@ -73,10 +76,17 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  const [tab, setTab] = useState<"recipe" | "prep">("recipe");
   const [name, setName] = useState("");
-  const [category, setCategory] = useState("Main");
+  const [category, setCategory] = useState("Plat");
+  const [isPrep, setIsPrep] = useState(false);
   const [yieldPortions, setYieldPortions] = useState("1");
   const [lines, setLines] = useState<DraftLine[]>([{ ...EMPTY_LINE }]);
+
+  // Split recipes by type
+  const menuRecipes = useMemo(() => recipes.filter((r) => !r.is_prep), [recipes]);
+  const prepRecipes = useMemo(() => recipes.filter((r) => r.is_prep), [recipes]);
+  const visibleRecipes = tab === "recipe" ? menuRecipes : prepRecipes;
 
   const totalCost = useMemo(() =>
     lines.reduce((sum, l) => sum + calcLineCost(l, ingredients, allRecipes), 0),
@@ -86,7 +96,11 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
 
   function openAdd() {
     setEditingId(null);
-    setName(""); setCategory("Main"); setYieldPortions("1");
+    const prep = tab === "prep";
+    setIsPrep(prep);
+    setName("");
+    setCategory(prep ? PREP_CATEGORIES[0] : "Plat");
+    setYieldPortions("1");
     setLines([{ ...EMPTY_LINE }]);
     setError(null);
     setShowForm(true);
@@ -95,6 +109,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
   function openEdit(recipe: Recipe) {
     setEditingId(recipe.id);
     setName(recipe.name);
+    setIsPrep(recipe.is_prep);
     setCategory(recipe.category);
     setYieldPortions(String(recipe.yield_portions));
     setLines(
@@ -145,6 +160,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
       restaurant_id: restaurantId,
       name: name.trim(),
       category,
+      is_prep: isPrep,
       yield_portions: yp,
       total_cost: totalCost,
     };
@@ -190,9 +206,10 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
       id: recipeId!,
       name: name.trim(),
       category,
+      is_prep: isPrep,
       yield_portions: yp,
       total_cost: totalCost,
-      menu_price: null,
+      menu_price: editingId ? (recipes.find((r) => r.id === editingId)?.menu_price ?? null) : null,
       recipe_lines: builtLines,
     };
 
@@ -218,19 +235,40 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
 
   return (
     <div className="p-8 max-w-5xl mx-auto">
-      <div className="flex items-end justify-between mb-6 pb-5 border-b border-gray-200">
+      <div className="flex items-end justify-between mb-5 pb-5 border-b border-gray-200">
         <div>
           <p className="text-xs font-semibold text-emerald-600 uppercase tracking-widest mb-1">Catalogue</p>
           <h1 className="text-2xl font-bold text-gray-900">Recettes</h1>
-          <p className="text-sm text-gray-500 mt-1">{recipes.length} recette{recipes.length !== 1 ? "s" : ""}</p>
+          <p className="text-sm text-gray-500 mt-1">
+            {menuRecipes.length} fiche{menuRecipes.length !== 1 ? "s" : ""} technique{menuRecipes.length !== 1 ? "s" : ""} · {prepRecipes.length} mise{prepRecipes.length !== 1 ? "s" : ""} en place
+          </p>
         </div>
         <button
           onClick={openAdd}
           className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 transition shadow-sm"
         >
           <Plus size={15} />
-          Nouvelle recette
+          {tab === "prep" ? "Nouvelle mise en place" : "Nouvelle recette"}
         </button>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 mb-6 p-1 bg-gray-100 rounded-lg w-fit">
+        {([
+          { key: "recipe" as const, label: "Fiches techniques", count: menuRecipes.length },
+          { key: "prep" as const, label: "Mises en place", count: prepRecipes.length },
+        ]).map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={clsx(
+              "px-4 py-2 text-sm font-medium rounded-md transition",
+              tab === t.key ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+            )}
+          >
+            {t.label} <span className={clsx("ml-1 text-xs", tab === t.key ? "text-emerald-600" : "text-gray-400")}>{t.count}</span>
+          </button>
+        ))}
       </div>
 
       {/* Recipe form modal */}
@@ -255,7 +293,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                   <label className="block text-xs font-medium text-gray-600 mb-1">Catégorie</label>
                   <select value={category} onChange={(e) => setCategory(e.target.value)}
                     className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 bg-white transition">
-                    {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+                    {(isPrep ? PREP_CATEGORIES : CATEGORIES).map((c) => <option key={c}>{c}</option>)}
                   </select>
                 </div>
                 <div>
@@ -265,6 +303,26 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                   <p className="text-xs text-gray-400 mt-1">Combien de portions donne cette recette ?</p>
                 </div>
               </div>
+
+              {/* Type toggle */}
+              <label className="flex items-start gap-3 px-4 py-3 rounded-lg border border-[#E5E7EB] bg-gray-50 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isPrep}
+                  onChange={(e) => {
+                    const v = e.target.checked;
+                    setIsPrep(v);
+                    setCategory(v ? PREP_CATEGORIES[0] : "Plat");
+                  }}
+                  className="mt-0.5 w-4 h-4 accent-emerald-600"
+                />
+                <span>
+                  <span className="block text-sm font-medium text-gray-800">Mise en place (sous-recette)</span>
+                  <span className="block text-xs text-gray-500 mt-0.5">
+                    Préparation de base (sauce, fond, pâte…) qui alimente d'autres fiches techniques. N'apparaît pas au menu.
+                  </span>
+                </span>
+              </label>
 
               {/* Ingredient lines */}
               <div>
@@ -354,18 +412,24 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
       )}
 
       {/* Recipe list */}
-      {recipes.length === 0 ? (
+      {visibleRecipes.length === 0 ? (
         <div className="bg-white border border-[#E5E7EB] rounded-card p-12 text-center">
-          <div className="text-4xl mb-3">👨‍🍳</div>
-          <h2 className="text-base font-medium text-gray-900 mb-1">Aucune recette</h2>
-          <p className="text-sm text-gray-500 mb-5">Créez votre première recette pour connaître le vrai coût de chaque plat.</p>
+          <div className="text-4xl mb-3">{tab === "prep" ? "🥣" : "👨‍🍳"}</div>
+          <h2 className="text-base font-medium text-gray-900 mb-1">
+            {tab === "prep" ? "Aucune mise en place" : "Aucune fiche technique"}
+          </h2>
+          <p className="text-sm text-gray-500 mb-5">
+            {tab === "prep"
+              ? "Créez vos préparations de base (sauces, fonds, pâtes…) réutilisables dans vos fiches techniques."
+              : "Créez votre première recette pour connaître le vrai coût de chaque plat."}
+          </p>
           <button onClick={openAdd} className="px-4 py-2 text-sm text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 transition">
-            Créer la première recette
+            {tab === "prep" ? "Créer la première mise en place" : "Créer la première recette"}
           </button>
         </div>
       ) : (
         <div className="space-y-3">
-          {recipes.map((recipe) => {
+          {visibleRecipes.map((recipe) => {
             const isExpanded = expandedId === recipe.id;
             const costPerPortion = recipe.total_cost / (recipe.yield_portions || 1);
             return (

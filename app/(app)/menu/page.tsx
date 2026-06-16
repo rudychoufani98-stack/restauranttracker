@@ -16,6 +16,7 @@ export default async function MenuPage() {
       .from("recipes")
       .select("id, name, category, total_cost, menu_price, yield_portions")
       .eq("restaurant_id", restaurant!.id)
+      .eq("is_prep", false)
       .order("name"),
     supabase
       .from("ingredients")

@@ -17,6 +17,7 @@ export default async function RentabilitePage() {
       .from("recipes")
       .select("id, name, category, total_cost, yield_portions, menu_price")
       .eq("restaurant_id", restaurant!.id)
+      .eq("is_prep", false)
       .order("name"),
     supabase
       .from("ingredients")

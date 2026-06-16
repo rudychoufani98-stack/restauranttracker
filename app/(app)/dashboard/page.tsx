@@ -26,9 +26,9 @@ export default async function DashboardPage() {
     { data: recipes },
   ] = await Promise.all([
     supabase.from("ingredients").select("*", { count: "exact", head: true }).eq("restaurant_id", restaurant.id),
-    supabase.from("recipes").select("*", { count: "exact", head: true }).eq("restaurant_id", restaurant.id),
+    supabase.from("recipes").select("*", { count: "exact", head: true }).eq("restaurant_id", restaurant.id).eq("is_prep", false),
     supabase.from("purchase_orders").select("*", { count: "exact", head: true }).eq("restaurant_id", restaurant.id),
-    supabase.from("recipes").select("name, total_cost, menu_price, yield_portions").eq("restaurant_id", restaurant.id),
+    supabase.from("recipes").select("name, total_cost, menu_price, yield_portions").eq("restaurant_id", restaurant.id).eq("is_prep", false),
   ]);
 
   const priced = (recipes ?? []).filter((r) => r.menu_price && r.menu_price > 0);
