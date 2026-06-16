@@ -12,6 +12,7 @@ import {
   Truck,
   TrendingUp,
   Warehouse,
+  Tags,
   Settings,
   LogOut,
 } from "lucide-react";
@@ -30,6 +31,7 @@ const NAV_GROUPS = [
       { href: "/ingredients", label: "Ingrédients", icon: Package },
       { href: "/recipes",     label: "Recettes",    icon: ChefHat },
       { href: "/menu",        label: "Menu",        icon: UtensilsCrossed },
+      { href: "/categories",  label: "Catégories",  icon: Tags },
     ],
   },
   {

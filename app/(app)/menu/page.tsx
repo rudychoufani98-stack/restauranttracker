@@ -11,7 +11,7 @@ export default async function MenuPage() {
     .eq("owner_id", user!.id)
     .single();
 
-  const [{ data: recipes }, { data: simpleProducts }] = await Promise.all([
+  const [{ data: recipes }, { data: simpleProducts }, { data: cats }] = await Promise.all([
     supabase
       .from("recipes")
       .select("id, name, category, total_cost, menu_price, yield_portions")
@@ -24,7 +24,15 @@ export default async function MenuPage() {
       .eq("restaurant_id", restaurant!.id)
       .not("selling_price", "is", null)
       .order("name"),
+    supabase
+      .from("categories")
+      .select("name, position")
+      .eq("restaurant_id", restaurant!.id)
+      .eq("type", "menu")
+      .order("position"),
   ]);
+
+  const categoryOrder = (cats ?? []).map((c) => c.name);
 
   return (
     <MenuClient
@@ -32,6 +40,7 @@ export default async function MenuPage() {
       targetFoodCostPct={restaurant!.target_food_cost_pct}
       initialRecipes={recipes ?? []}
       simpleProducts={simpleProducts ?? []}
+      categoryOrder={categoryOrder}
     />
   );
 }

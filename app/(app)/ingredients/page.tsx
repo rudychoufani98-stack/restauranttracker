@@ -11,7 +11,7 @@ export default async function IngredientsPage() {
     .eq("owner_id", user!.id)
     .single();
 
-  const [{ data: ingredients }, { data: suppliers }, { data: tags }] = await Promise.all([
+  const [{ data: ingredients }, { data: suppliers }, { data: tags }, { data: cats }] = await Promise.all([
     supabase
       .from("ingredients")
       .select("*, suppliers(name), ingredient_tags(tag_id, tags(id, name, color))")
@@ -27,7 +27,15 @@ export default async function IngredientsPage() {
       .select("id, name, color")
       .eq("restaurant_id", restaurant!.id)
       .order("name"),
+    supabase
+      .from("categories")
+      .select("name, position")
+      .eq("restaurant_id", restaurant!.id)
+      .eq("type", "ingredient")
+      .order("position"),
   ]);
+
+  const categories = (cats ?? []).map((c) => c.name);
 
   return (
     <IngredientsClient
@@ -35,6 +43,7 @@ export default async function IngredientsPage() {
       initialIngredients={ingredients ?? []}
       suppliers={suppliers ?? []}
       allTags={tags ?? []}
+      categories={categories.length ? categories : ["Légumes/Fruits", "Viande", "Poisson", "Produits laitiers", "Épicerie", "Boissons", "Autre"]}
     />
   );
 }

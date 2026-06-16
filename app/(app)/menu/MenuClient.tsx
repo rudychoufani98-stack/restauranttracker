@@ -40,19 +40,19 @@ function getStatus(foodCostPct: number, target: number): "green" | "amber" | "re
   return "red";
 }
 
-// Category display order (caisse-like). Unknown categories appended alphabetically.
-const CATEGORY_ORDER = [
-  "Entrée", "Plat", "Accompagnement", "Dessert", "Boisson", "Menu",
-];
-
 interface Props {
   restaurantId: string;
   targetFoodCostPct: number;
   initialRecipes: Recipe[];
   simpleProducts: SimpleProduct[];
+  categoryOrder: string[];
 }
 
-export default function MenuClient({ restaurantId: _restaurantId, targetFoodCostPct, initialRecipes, simpleProducts }: Props) {
+export default function MenuClient({ restaurantId: _restaurantId, targetFoodCostPct, initialRecipes, simpleProducts, categoryOrder }: Props) {
+  // Category display order (caisse-like). Unknown categories appended alphabetically.
+  const CATEGORY_ORDER = categoryOrder.length
+    ? categoryOrder
+    : ["Entrée", "Plat", "Accompagnement", "Dessert", "Boisson", "Menu"];
   const supabase = createClient();
   const [recipes, setRecipes] = useState<Recipe[]>(initialRecipes);
   const [products, setProducts] = useState<SimpleProduct[]>(simpleProducts);
@@ -135,7 +135,7 @@ export default function MenuClient({ restaurantId: _restaurantId, targetFoodCost
       category: cat,
       items: map.get(cat)!.sort((a, b) => a.name.localeCompare(b.name)),
     }));
-  }, [items, filterStatus]);
+  }, [items, filterStatus, categoryOrder]);
 
   function startEdit(it: MenuItem) {
     setEditingKey(it.key);

@@ -5,8 +5,6 @@ import { createClient } from "@/lib/supabase/client";
 import { Plus, Trash2, X, ChevronDown, ChevronUp } from "lucide-react";
 import clsx from "clsx";
 
-const CATEGORIES = ["Entrée", "Plat", "Dessert", "Accompagnement", "Boisson"];
-const PREP_CATEGORIES = ["Sauce", "Fond/Bouillon", "Pâte", "Garniture", "Marinade", "Base", "Autre"];
 
 type Ingredient = { id: string; name: string; cost_per_base_unit: number; unit: string };
 type RecipeLine = {
@@ -63,9 +61,11 @@ interface Props {
   initialRecipes: Recipe[];
   ingredients: Ingredient[];
   allRecipes: Recipe[];
+  menuCategories: string[];
+  prepCategories: string[];
 }
 
-export default function RecipesClient({ restaurantId, initialRecipes, ingredients, allRecipes: allRecipesProp }: Props) {
+export default function RecipesClient({ restaurantId, initialRecipes, ingredients, allRecipes: allRecipesProp, menuCategories, prepCategories }: Props) {
   const supabase = createClient();
   const [recipes, setRecipes] = useState<Recipe[]>(initialRecipes);
   const [allRecipes, setAllRecipes] = useState<Recipe[]>(allRecipesProp);
@@ -99,7 +99,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
     const prep = tab === "prep";
     setIsPrep(prep);
     setName("");
-    setCategory(prep ? PREP_CATEGORIES[0] : "Plat");
+    setCategory((prep ? prepCategories : menuCategories)[0] ?? "");
     setYieldPortions("1");
     setLines([{ ...EMPTY_LINE }]);
     setError(null);
@@ -293,7 +293,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                   <label className="block text-xs font-medium text-gray-600 mb-1">Catégorie</label>
                   <select value={category} onChange={(e) => setCategory(e.target.value)}
                     className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 bg-white transition">
-                    {(isPrep ? PREP_CATEGORIES : CATEGORIES).map((c) => <option key={c}>{c}</option>)}
+                    {Array.from(new Set([...(isPrep ? prepCategories : menuCategories), category].filter(Boolean))).map((c) => <option key={c}>{c}</option>)}
                   </select>
                 </div>
                 <div>
@@ -312,7 +312,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                   onChange={(e) => {
                     const v = e.target.checked;
                     setIsPrep(v);
-                    setCategory(v ? PREP_CATEGORIES[0] : "Plat");
+                    setCategory((v ? prepCategories : menuCategories)[0] ?? "");
                   }}
                   className="mt-0.5 w-4 h-4 accent-emerald-600"
                 />

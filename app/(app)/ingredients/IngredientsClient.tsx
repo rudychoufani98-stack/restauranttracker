@@ -6,7 +6,6 @@ import { Plus, Search, Pencil, Trash2, Check, ChevronDown } from "lucide-react";
 import { PageHeader, Card, Button, Input, Select, Modal, Alert, Table, Th, Td, EmptyState } from "@/components/ui";
 import clsx from "clsx";
 
-const CATEGORIES = ["Légumes/Fruits", "Viande", "Poisson", "Produits laitiers", "Épicerie", "Boissons", "Autre"];
 const UNITS = ["g", "kg", "ml", "l", "unit"];
 
 // Common EU VAT rates — user can type any value too
@@ -55,9 +54,10 @@ interface Props {
   initialIngredients: Ingredient[];
   suppliers: Supplier[];
   allTags: TagInfo[];
+  categories: string[];
 }
 
-export default function IngredientsClient({ restaurantId, initialIngredients, suppliers, allTags }: Props) {
+export default function IngredientsClient({ restaurantId, initialIngredients, suppliers, allTags, categories: CATEGORIES }: Props) {
   const supabase = createClient();
   const [ingredients, setIngredients] = useState<Ingredient[]>(initialIngredients);
   const [search, setSearch] = useState("");
@@ -89,7 +89,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
 
   function openAdd() {
     setEditingId(null);
-    setForm({ ...EMPTY_FORM });
+    setForm({ ...EMPTY_FORM, category: CATEGORIES[0] ?? EMPTY_FORM.category });
     setSelectedTagIds([]);
     setError(null);
     setShowForm(true);
@@ -249,7 +249,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                 placeholder="ex. Huile d'olive" className="col-span-2" />
 
               <Select label="Catégorie" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-                {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+                {Array.from(new Set([...CATEGORIES, form.category].filter(Boolean))).map((c) => <option key={c}>{c}</option>)}
               </Select>
 
               <Select label="Fournisseur (optionnel)" value={form.supplier_id} onChange={(e) => setForm({ ...form, supplier_id: e.target.value })}>
