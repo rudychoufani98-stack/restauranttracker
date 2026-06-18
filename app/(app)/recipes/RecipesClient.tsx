@@ -223,6 +223,13 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
 
     setSaving(false);
     setShowForm(false);
+
+    // Recompute authoritative costs server-side (uses CMUP, flattens sub-recipes)
+    fetch("/api/recalculate-recipes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ restaurantId }),
+    }).catch(() => {});
   }
 
   async function handleDelete(id: string) {

@@ -3,7 +3,11 @@ import { createClient } from "@/lib/supabase/server";
 
 type RecipeLine = { ingredient_id: string | null; sub_recipe_id: string | null; quantity: number; unit: string };
 type RecipeRow = { id: string; yield_portions: number; recipe_lines: RecipeLine[] };
-type IngRow = { id: string; cost_per_base_unit: number; unit: string };
+type IngRow = { id: string; cost_per_base_unit: number; cmup: number | null; unit: string };
+
+// Use weighted average cost (CMUP) when available so recipe costs stay
+// consistent with how stock movements are valued; fall back to last price.
+const unitCost = (ing: IngRow) => Number(ing.cmup ?? ing.cost_per_base_unit ?? 0);
 
 const calcRecipeCost = (
   recipeId: string,
@@ -25,7 +29,7 @@ const calcRecipeCost = (
       let qty = line.quantity;
       if (line.unit === "kg" && (ing.unit === "g" || ing.unit === "kg")) qty = line.quantity * 1000;
       if (line.unit === "l" && (ing.unit === "ml" || ing.unit === "l")) qty = line.quantity * 1000;
-      total += ing.cost_per_base_unit * qty;
+      total += unitCost(ing) * qty;
     } else if (line.sub_recipe_id) {
       const subCost = calcRecipeCost(line.sub_recipe_id, recipes, ingMap, recipeCosts, new Set(visited));
       const subRecipe = recipes.find((r) => r.id === line.sub_recipe_id);
@@ -65,7 +69,7 @@ export async function POST(req: NextRequest) {
 
     const { data: ingredients } = await supabase
       .from("ingredients")
-      .select("id, cost_per_base_unit, unit")
+      .select("id, cost_per_base_unit, cmup, unit")
       .eq("restaurant_id", restaurantId);
 
     const ingMap = new Map((ingredients ?? []).map((i) => [i.id, i]));

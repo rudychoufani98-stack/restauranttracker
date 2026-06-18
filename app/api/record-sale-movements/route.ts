@@ -1,6 +1,54 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
+type RecipeLine = { ingredient_id: string | null; sub_recipe_id: string | null; quantity: number; unit: string };
+type RecipeRow = { id: string; yield_portions: number; recipe_lines: RecipeLine[] };
+
+// Convert a recipe line quantity to base units (g / ml / unit) — same logic as recalculate-recipes
+function toBaseQty(quantity: number, unit: string): number {
+  if (unit === "kg" || unit === "l") return quantity * 1000;
+  return quantity;
+}
+
+/**
+ * Ingredient consumption (in base units) for ONE portion of a recipe.
+ * Recursively flattens sub-recipes (mises en place) so their ingredients
+ * are deducted from stock too. Memoized + cycle-guarded.
+ */
+function ingredientsPerPortion(
+  recipeId: string,
+  recipeMap: Map<string, RecipeRow>,
+  memo: Map<string, Map<string, number>>,
+  visited: Set<string>
+): Map<string, number> {
+  if (memo.has(recipeId)) return memo.get(recipeId)!;
+  if (visited.has(recipeId)) return new Map();
+  visited.add(recipeId);
+
+  const recipe = recipeMap.get(recipeId);
+  const result = new Map<string, number>();
+  if (!recipe) return result;
+
+  const yieldPortions = recipe.yield_portions || 1;
+
+  for (const line of recipe.recipe_lines) {
+    if (line.ingredient_id) {
+      const perPortion = toBaseQty(line.quantity, line.unit) / yieldPortions;
+      result.set(line.ingredient_id, (result.get(line.ingredient_id) ?? 0) + perPortion);
+    } else if (line.sub_recipe_id) {
+      // line.quantity = portions of the sub-recipe consumed by the WHOLE parent recipe
+      const subPerPortion = ingredientsPerPortion(line.sub_recipe_id, recipeMap, memo, new Set(visited));
+      const subPortionsPerParentPortion = line.quantity / yieldPortions;
+      for (const [ingId, qty] of Array.from(subPerPortion.entries())) {
+        result.set(ingId, (result.get(ingId) ?? 0) + qty * subPortionsPerParentPortion);
+      }
+    }
+  }
+
+  memo.set(recipeId, result);
+  return result;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = createClient();
@@ -12,6 +60,10 @@ export async function POST(req: NextRequest) {
     const { restaurantId, periodId, salesLines } = await req.json();
     // salesLines: Array<{ recipe_id?: string; ingredient_id?: string; qty_sold: number }>
 
+    if (!Array.isArray(salesLines)) {
+      return NextResponse.json({ error: "Requête invalide" }, { status: 400 });
+    }
+
     // Ownership check
     const { data: restaurant } = await supabase
       .from("restaurants")
@@ -21,59 +73,46 @@ export async function POST(req: NextRequest) {
       .single();
     if (!restaurant) return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
 
-    // Load recipe lines for all recipes involved
-    const recipeIds = salesLines.filter((l: any) => l.recipe_id).map((l: any) => l.recipe_id);
-    const simpleProductIds = salesLines.filter((l: any) => l.ingredient_id).map((l: any) => l.ingredient_id);
+    // Load ALL recipes of the restaurant (needed to flatten sub-recipes recursively)
+    const { data: allRecipes } = await supabase
+      .from("recipes")
+      .select("id, yield_portions, recipe_lines(ingredient_id, sub_recipe_id, quantity, unit)")
+      .eq("restaurant_id", restaurantId);
 
-    const { data: recipeLines } = recipeIds.length > 0
-      ? await supabase
-          .from("recipe_lines")
-          .select("recipe_id, ingredient_id, quantity, unit")
-          .in("recipe_id", recipeIds)
-      : { data: [] };
-
-    // Load ingredient stock data
-    const allIngredientIdsRaw = [
-      ...(recipeLines ?? []).filter((l: any) => l.ingredient_id).map((l: any) => l.ingredient_id),
-      ...simpleProductIds,
-    ];
-    const allIngredientIds = Array.from(new Set(allIngredientIdsRaw));
-
-    const { data: ingredients } = allIngredientIds.length > 0
-      ? await supabase
-          .from("ingredients")
-          .select("id, unit, stock_qty, cmup, cost_per_base_unit")
-          .in("id", allIngredientIds)
-      : { data: [] };
-
-    const ingMap = new Map((ingredients ?? []).map((i: any) => [i.id, i]));
+    const recipeMap = new Map<string, RecipeRow>(
+      (allRecipes ?? []).map((r: any) => [r.id, r as RecipeRow])
+    );
+    const memo = new Map<string, Map<string, number>>();
 
     // Accumulate deductions: ingredientId → qty in base units
     const deductions = new Map<string, number>();
 
     for (const saleLine of salesLines) {
-      const qtySold = saleLine.qty_sold;
+      const qtySold = Number(saleLine.qty_sold);
       if (!qtySold || qtySold <= 0) continue;
 
       if (saleLine.recipe_id) {
-        // Deduct each ingredient used in the recipe × qty_sold portions
-        const lines = (recipeLines ?? []).filter((l: any) => l.recipe_id === saleLine.recipe_id && l.ingredient_id);
-        for (const rl of lines) {
-          let qty = rl.quantity;
-          // Convert to base units (same logic as recalculate-recipes)
-          if (rl.unit === "kg") qty = rl.quantity * 1000;
-          else if (rl.unit === "l") qty = rl.quantity * 1000;
-          const totalDeduct = qty * qtySold;
-          deductions.set(rl.ingredient_id, (deductions.get(rl.ingredient_id) ?? 0) + totalDeduct);
+        const perPortion = ingredientsPerPortion(saleLine.recipe_id, recipeMap, memo, new Set());
+        for (const [ingId, qty] of Array.from(perPortion.entries())) {
+          deductions.set(ingId, (deductions.get(ingId) ?? 0) + qty * qtySold);
         }
       } else if (saleLine.ingredient_id) {
-        // Simple product: deduct qty_sold units
-        const ing = ingMap.get(saleLine.ingredient_id);
-        if (!ing) continue;
-        // 1 sold = 1 base unit (unit, can, bottle, etc.)
+        // Simple product (revente): 1 sold = 1 base unit
         deductions.set(saleLine.ingredient_id, (deductions.get(saleLine.ingredient_id) ?? 0) + qtySold);
       }
     }
+
+    const allIngredientIds = Array.from(deductions.keys());
+    if (allIngredientIds.length === 0) {
+      return NextResponse.json({ ok: true, movements: 0 });
+    }
+
+    const { data: ingredients } = await supabase
+      .from("ingredients")
+      .select("id, stock_qty, cmup, cost_per_base_unit")
+      .in("id", allIngredientIds);
+
+    const ingMap = new Map((ingredients ?? []).map((i: any) => [i.id, i]));
 
     // Apply deductions
     const movements: any[] = [];
