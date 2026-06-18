@@ -92,14 +92,16 @@ export default function ReceiveClient({ po, restaurantId }: Props) {
   async function handleValidate() {
     setValidating(true); setError(null);
 
-    // 1. Upload BL file if present
+    // 1. Upload BL file if present.
+    // Store the storage PATH (not a public URL) — the "invoices" bucket must be
+    // private. Generate a short-lived signed URL on demand when viewing the file.
     let blPdfUrl: string | null = null;
     if (blFile) {
-      const path = `delivery-notes/${restaurantId}/${po.id}-${Date.now()}-${blFile.name}`;
+      const safeName = blFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const path = `delivery-notes/${restaurantId}/${po.id}-${Date.now()}-${safeName}`;
       const { error: uploadErr } = await supabase.storage.from("invoices").upload(path, blFile);
       if (!uploadErr) {
-        const { data } = supabase.storage.from("invoices").getPublicUrl(path);
-        blPdfUrl = data.publicUrl;
+        blPdfUrl = path;
       }
     }
 
