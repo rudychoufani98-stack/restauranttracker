@@ -123,7 +123,10 @@ ${restaurant.name}`;
         Authorization: `Bearer ${resendKey}`,
       },
       body: JSON.stringify({
-        from: "commandes@resend.dev",
+        // Set ORDER_FROM_EMAIL to an address on a domain verified in Resend
+        // (e.g. "commandes@ton-domaine.fr"). Until a domain is verified, Resend
+        // only delivers to your own account email.
+        from: process.env.ORDER_FROM_EMAIL || "onboarding@resend.dev",
         to: supplier.email,
         subject: `Bon de commande N° ${orderNumber} — ${restaurant.name}`,
         text: emailBody,
@@ -137,8 +140,12 @@ ${restaurant.name}`;
     });
 
     if (!res.ok) {
-      const err = await res.json();
-      return NextResponse.json({ error: err.message ?? "Email failed" }, { status: 500 });
+      const err = await res.json().catch(() => ({}));
+      console.error("[send-order] Resend error:", err?.message ?? res.status);
+      return NextResponse.json(
+        { error: err?.message ?? "Échec de l'envoi de l'email" },
+        { status: 502 }
+      );
     }
 
     // Mark as Sent + save order number
@@ -150,7 +157,7 @@ ${restaurant.name}`;
 
     return NextResponse.json({ ok: true, orderNumber });
   } catch (e: any) {
-    console.error("send-order error:", e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    console.error("[send-order] error:", (e as Error).message);
+    return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }
 }
