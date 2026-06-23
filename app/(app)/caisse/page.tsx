@@ -34,8 +34,6 @@ export default async function CaissePage() {
 
   return (
     <CaisseClient
-      restaurantId={restaurant!.id}
-      targetFoodCostPct={restaurant!.target_food_cost_pct}
       recipes={(recipes ?? []) as any}
       products={(products ?? []) as any}
       categoryOrder={(cats ?? []).map((c) => c.name)}
