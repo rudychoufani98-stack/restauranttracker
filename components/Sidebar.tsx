@@ -12,6 +12,7 @@ import {
   Truck,
   TrendingUp,
   Warehouse,
+  Trash2,
   Tags,
   Settings,
   LogOut,
@@ -40,6 +41,7 @@ const NAV_GROUPS = [
       { href: "/orders",      label: "Commandes",    icon: ShoppingCart },
       { href: "/suppliers",   label: "Fournisseurs", icon: Truck },
       { href: "/inventaire",  label: "Inventaire",   icon: Warehouse },
+      { href: "/pertes",      label: "Pertes",       icon: Trash2 },
     ],
   },
   {

@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Warehouse, TrendingDown, TrendingUp, AlertTriangle, Check, Loader2, History, ClipboardList } from "lucide-react";
+import { Warehouse, TrendingDown, TrendingUp, AlertTriangle, Check, Loader2, History, ClipboardList, Trash2 } from "lucide-react";
 import clsx from "clsx";
 
 type Ingredient = {
@@ -19,7 +19,7 @@ type Ingredient = {
 
 type Movement = {
   ingredient_id: string;
-  movement_type: "in" | "out" | "adjustment";
+  movement_type: "in" | "out" | "adjustment" | "loss";
   qty: number;
   unit_cost: number | null;
   reference_type: string;
@@ -326,18 +326,21 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
                     <div className={clsx(
                       "w-7 h-7 rounded-full flex items-center justify-center shrink-0",
                       m.movement_type === "in" ? "bg-emerald-100" :
-                      m.movement_type === "out" ? "bg-red-100" : "bg-amber-100"
+                      m.movement_type === "out" ? "bg-red-100" :
+                      m.movement_type === "loss" ? "bg-orange-100" : "bg-amber-100"
                     )}>
                       {m.movement_type === "in"
                         ? <TrendingUp size={13} className="text-emerald-600" />
                         : m.movement_type === "out"
                         ? <TrendingDown size={13} className="text-red-500" />
+                        : m.movement_type === "loss"
+                        ? <Trash2 size={13} className="text-orange-500" />
                         : <AlertTriangle size={13} className="text-amber-500" />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-900">{m.ingredientName}</p>
                       <p className="text-xs text-gray-400">
-                        {m.movement_type === "in" ? "Réception" : m.movement_type === "out" ? "Vente" : "Ajustement"} ·{" "}
+                        {m.movement_type === "in" ? "Réception" : m.movement_type === "out" ? "Vente" : m.movement_type === "loss" ? "Perte" : "Ajustement"} ·{" "}
                         {m.reference_type}
                       </p>
                     </div>
@@ -345,9 +348,10 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
                       <p className={clsx(
                         "text-sm font-semibold",
                         m.movement_type === "in" ? "text-emerald-600" :
-                        m.movement_type === "out" ? "text-red-500" : "text-amber-600"
+                        m.movement_type === "out" ? "text-red-500" :
+                        m.movement_type === "loss" ? "text-orange-500" : "text-amber-600"
                       )}>
-                        {m.movement_type === "in" ? "+" : m.movement_type === "out" ? "-" : "~"}{m.qty.toFixed(1)}
+                        {m.movement_type === "in" ? "+" : "-"}{m.qty.toFixed(1)}
                       </p>
                       {m.unit_cost && m.unit_cost > 0 && (
                         <p className="text-xs text-gray-400">CMUP €{m.unit_cost.toFixed(4)}</p>
