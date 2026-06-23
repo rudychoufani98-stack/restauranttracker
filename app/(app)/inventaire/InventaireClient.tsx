@@ -44,9 +44,18 @@ function formatQty(qty: number | null, unit: string): string {
   return `${qty % 1 === 0 ? qty : qty.toFixed(1)} ${base}`;
 }
 
+// Convert a quantity in the ingredient's purchase unit to base units (g/ml/unit)
+function toBase(qty: number, unit: string): number {
+  if (unit === "kg" || unit === "l") return qty * 1000;
+  return qty;
+}
+
 export default function InventaireClient({ restaurantId, ingredients, recentMovements }: Props) {
   const supabase = createClient();
-  const [tab, setTab] = useState<"stock" | "history">("stock");
+  const [tab, setTab] = useState<"stock" | "count" | "history">("stock");
+  const [counts, setCounts] = useState<Record<string, string>>({});
+  const [validatingCount, setValidatingCount] = useState(false);
+  const [countDone, setCountDone] = useState<string | null>(null);
   const [adjustId, setAdjustId] = useState<string | null>(null);
   const [adjustQty, setAdjustQty] = useState("");
   const [adjustNotes, setAdjustNotes] = useState("");
@@ -108,6 +117,82 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
     setSaving(false);
   }
 
+  // ---- Prise d'inventaire (écart théorique vs réel) ----
+  function countedBase(ing: Ingredient): number | null {
+    const raw = counts[ing.id];
+    if (raw === undefined || raw === "") return null;
+    const v = parseFloat(raw);
+    if (isNaN(v) || v < 0) return null;
+    return toBase(v, ing.unit);
+  }
+
+  const countSummary = useMemo(() => {
+    let manque = 0; // valeur des écarts négatifs (stock réel < théorique)
+    let surplus = 0;
+    let counted = 0;
+    for (const ing of localIngredients) {
+      const real = countedBase(ing);
+      if (real === null) continue;
+      counted++;
+      const theo = Number(ing.stock_qty ?? 0);
+      const cmup = Number(ing.cmup ?? ing.cost_per_base_unit ?? 0);
+      const diff = real - theo;
+      if (diff < 0) manque += Math.abs(diff) * cmup;
+      else if (diff > 0) surplus += diff * cmup;
+    }
+    return { manque, surplus, counted, net: surplus - manque };
+  }, [counts, localIngredients]);
+
+  async function validateCount() {
+    setValidatingCount(true);
+    const movements: any[] = [];
+    const updates: { id: string; qty: number }[] = [];
+
+    for (const ing of localIngredients) {
+      const real = countedBase(ing);
+      if (real === null) continue;
+      const theo = Number(ing.stock_qty ?? 0);
+      const diff = real - theo;
+      if (diff === 0) continue;
+      const cmup = Number(ing.cmup ?? ing.cost_per_base_unit ?? 0);
+      updates.push({ id: ing.id, qty: real });
+      if (diff < 0) {
+        // Manquant inexpliqué -> perte "Écart inventaire"
+        movements.push({
+          restaurant_id: restaurantId, ingredient_id: ing.id,
+          movement_type: "loss", qty: Math.abs(diff), unit_cost: cmup,
+          reference_type: "inventory", loss_reason: "Écart inventaire",
+          notes: `Prise d'inventaire : ${theo} → ${real}`,
+        });
+      } else {
+        // Surplus -> ajustement positif
+        movements.push({
+          restaurant_id: restaurantId, ingredient_id: ing.id,
+          movement_type: "adjustment", qty: diff, unit_cost: cmup,
+          reference_type: "inventory",
+          notes: `Prise d'inventaire : ${theo} → ${real}`,
+        });
+      }
+    }
+
+    for (const u of updates) {
+      await supabase.from("ingredients").update({ stock_qty: u.qty }).eq("id", u.id);
+    }
+    if (movements.length > 0) {
+      await supabase.from("stock_movements").insert(movements);
+    }
+
+    setLocalIngredients((prev) =>
+      prev.map((i) => {
+        const u = updates.find((x) => x.id === i.id);
+        return u ? { ...i, stock_qty: u.qty } : i;
+      })
+    );
+    setCounts({});
+    setValidatingCount(false);
+    setCountDone(`Inventaire validé : ${updates.length} ajustement(s), écart net €${countSummary.net.toFixed(2)}.`);
+  }
+
   // Group movements by date for display
   const movementsByDay = useMemo(() => {
     const groups: Record<string, (Movement & { ingredientName: string })[]> = {};
@@ -152,6 +237,7 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
       <div className="flex gap-1 mb-5 border-b border-gray-200">
         {[
           { key: "stock", label: "Stock actuel", icon: ClipboardList },
+          { key: "count", label: "Prise d'inventaire", icon: Check },
           { key: "history", label: "Historique des mouvements", icon: History },
         ].map(({ key, label, icon: Icon }) => (
           <button
@@ -300,6 +386,105 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
           <p className="text-xs text-gray-400 mt-3">
             Le stock théorique est calculé automatiquement : +entrées lors des réceptions facturées, -sorties lors de la saisie des ventes mensuelles.
             Utilisez &quot;Corriger&quot; pour ajuster après un inventaire physique.
+          </p>
+        </>
+      )}
+
+      {/* COUNT TAB — prise d'inventaire */}
+      {tab === "count" && (
+        <>
+          {countDone && (
+            <div className="mb-4 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 flex items-center gap-2">
+              <Check size={15} /> {countDone}
+            </div>
+          )}
+
+          {/* Summary */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Manquant (écart inexpliqué)</p>
+              <p className="text-2xl font-bold text-red-600">-€{countSummary.manque.toFixed(2)}</p>
+            </div>
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Surplus trouvé</p>
+              <p className="text-2xl font-bold text-emerald-600">+€{countSummary.surplus.toFixed(2)}</p>
+            </div>
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Écart net · {countSummary.counted} comptés</p>
+              <p className={clsx("text-2xl font-bold", countSummary.net < 0 ? "text-red-600" : "text-emerald-600")}>
+                {countSummary.net < 0 ? "-" : "+"}€{Math.abs(countSummary.net).toFixed(2)}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm text-gray-500">Saisis le stock physique compté. L'écart avec le théorique se calcule en direct.</p>
+            <button
+              onClick={validateCount}
+              disabled={validatingCount || countSummary.counted === 0}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 disabled:opacity-40 transition"
+            >
+              {validatingCount ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Valider l'inventaire
+            </button>
+          </div>
+
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 text-xs font-medium text-gray-500 uppercase tracking-wide">
+                  <th className="text-left px-4 py-3">Ingrédient</th>
+                  <th className="text-right px-4 py-3">Théorique</th>
+                  <th className="text-right px-4 py-3">Compté ({"réel"})</th>
+                  <th className="text-right px-4 py-3">Écart</th>
+                  <th className="text-right px-4 py-3">Valeur écart</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filtered.map((ing) => {
+                  const theo = Number(ing.stock_qty ?? 0);
+                  const cmup = Number(ing.cmup ?? ing.cost_per_base_unit ?? 0);
+                  const real = countedBase(ing);
+                  const diff = real === null ? null : real - theo;
+                  const valueGap = diff === null ? null : diff * cmup;
+                  return (
+                    <tr key={ing.id} className="hover:bg-gray-50 transition">
+                      <td className="px-4 py-3 font-medium text-gray-900">{ing.name}<span className="block text-xs text-gray-400 font-normal">{ing.category || "—"}</span></td>
+                      <td className="px-4 py-3 text-right text-gray-600">{formatQty(theo, ing.unit)}</td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <input
+                            type="number" min="0" step="any"
+                            value={counts[ing.id] ?? ""}
+                            onChange={(e) => setCounts((p) => ({ ...p, [ing.id]: e.target.value }))}
+                            placeholder="—"
+                            className="w-24 px-2 py-1 text-sm text-right border border-gray-200 rounded-lg outline-none focus:border-emerald-400"
+                          />
+                          <span className="text-xs text-gray-400 w-5">{ing.unit}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {diff === null ? <span className="text-gray-300">—</span> : (
+                          <span className={clsx("font-medium", diff < 0 ? "text-red-500" : diff > 0 ? "text-emerald-600" : "text-gray-400")}>
+                            {diff > 0 ? "+" : ""}{formatQty(Math.abs(diff), ing.unit).replace(/^/, diff < 0 ? "-" : "")}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {valueGap === null ? <span className="text-gray-300">—</span> : (
+                          <span className={clsx("font-medium", valueGap < 0 ? "text-red-600" : valueGap > 0 ? "text-emerald-600" : "text-gray-400")}>
+                            {valueGap < 0 ? "-" : "+"}€{Math.abs(valueGap).toFixed(2)}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-gray-400 mt-3">
+            À la validation : le stock théorique est aligné sur le réel. Un manquant devient une perte « Écart inventaire »
+            (vol, sur-portionnage, oublis), un surplus devient un ajustement. Les pertes déjà saisies (DLC, casse) ne sont pas recomptées ici.
           </p>
         </>
       )}

@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Trash2, Plus, Loader2, Check, X, Clock, AlertTriangle } from "lucide-react";
+import { Trash2, Plus, Loader2, Check, X, Clock } from "lucide-react";
 import clsx from "clsx";
 
 type Ingredient = {
