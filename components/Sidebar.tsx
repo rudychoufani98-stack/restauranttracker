@@ -14,6 +14,7 @@ import {
   Warehouse,
   Trash2,
   Tags,
+  CreditCard,
   Settings,
   LogOut,
 } from "lucide-react";
@@ -38,6 +39,7 @@ const NAV_GROUPS = [
   {
     label: "Opérations",
     items: [
+      { href: "/caisse",      label: "Caisse",       icon: CreditCard },
       { href: "/orders",      label: "Commandes",    icon: ShoppingCart },
       { href: "/suppliers",   label: "Fournisseurs", icon: Truck },
       { href: "/inventaire",  label: "Inventaire",   icon: Warehouse },
