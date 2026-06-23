@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { StatCard, Card, EmptyState, Button } from "@/components/ui";
 import Link from "next/link";
-import { Package, ChefHat, TrendingUp, ShoppingCart, ArrowRight, ChevronRight } from "lucide-react";
+import { Percent, AlertTriangle, Warehouse, Trash2, ArrowRight, ArrowUpRight } from "lucide-react";
 
 const CUISINE_FR: Record<string, string> = {
   "French": "Française", "Italian": "Italienne", "Japanese": "Japonaise",
@@ -19,180 +19,195 @@ export default async function DashboardPage() {
     .eq("owner_id", user!.id)
     .single();
 
+  const target = restaurant.target_food_cost_pct;
+
+  // Current month start (ISO)
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+
   const [
-    { count: ingredientCount },
-    { count: recipeCount },
-    { count: orderCount },
     { data: recipes },
+    { data: ingredients },
+    { data: losses },
+    { count: ingredientCount },
   ] = await Promise.all([
+    supabase.from("recipes").select("id, name, category, total_cost, menu_price, yield_portions").eq("restaurant_id", restaurant.id).eq("is_prep", false),
+    supabase.from("ingredients").select("stock_qty, cmup, cost_per_base_unit").eq("restaurant_id", restaurant.id),
+    supabase.from("stock_movements").select("qty, unit_cost").eq("restaurant_id", restaurant.id).eq("movement_type", "loss").gte("created_at", monthStart.toISOString()),
     supabase.from("ingredients").select("*", { count: "exact", head: true }).eq("restaurant_id", restaurant.id),
-    supabase.from("recipes").select("*", { count: "exact", head: true }).eq("restaurant_id", restaurant.id).eq("is_prep", false),
-    supabase.from("purchase_orders").select("*", { count: "exact", head: true }).eq("restaurant_id", restaurant.id),
-    supabase.from("recipes").select("name, total_cost, menu_price, yield_portions").eq("restaurant_id", restaurant.id).eq("is_prep", false),
   ]);
 
-  const priced = (recipes ?? []).filter((r) => r.menu_price && r.menu_price > 0);
+  const allRecipes = recipes ?? [];
+  const isEmpty = (ingredientCount ?? 0) === 0 && allRecipes.length === 0;
+
+  // ── Food cost / margin analytics ──
+  const foodCostOf = (r: any) => {
+    if (!r.menu_price || r.menu_price <= 0) return null;
+    const cpp = r.total_cost / (r.yield_portions || 1);
+    return (cpp / r.menu_price) * 100;
+  };
+  const priced = allRecipes.filter((r) => r.menu_price && r.menu_price > 0);
   const avgFoodCost = priced.length > 0
-    ? priced.reduce((sum, r) => {
-        const cpp = r.total_cost / (r.yield_portions || 1);
-        return sum + (cpp / r.menu_price) * 100;
-      }, 0) / priced.length
+    ? priced.reduce((s, r) => s + (foodCostOf(r) ?? 0), 0) / priced.length
     : null;
+  const avgMargin = avgFoodCost === null ? null : 100 - avgFoodCost;
+  const offTarget = priced.filter((r) => (foodCostOf(r) ?? 0) > target).length;
+  const worst = [...priced]
+    .map((r) => ({ ...r, fc: foodCostOf(r)!, cpp: r.total_cost / (r.yield_portions || 1) }))
+    .sort((a, b) => b.fc - a.fc)
+    .slice(0, 5);
 
-  const isEmpty = (ingredientCount ?? 0) === 0;
+  // ── Stock value ──
+  const stockValue = (ingredients ?? []).reduce((s, i: any) => {
+    const qty = Number(i.stock_qty ?? 0);
+    const cost = Number(i.cmup ?? i.cost_per_base_unit ?? 0);
+    return s + qty * cost;
+  }, 0);
+
+  // ── Losses this month ──
+  const lossesValue = (losses ?? []).reduce((s, m: any) => s + Number(m.qty) * Number(m.unit_cost ?? 0), 0);
+
   const cuisineFr = CUISINE_FR[restaurant.cuisine_type] ?? restaurant.cuisine_type;
-
-  const fcColor = avgFoodCost === null ? "default"
-    : avgFoodCost <= restaurant.target_food_cost_pct ? "green"
-    : avgFoodCost <= restaurant.target_food_cost_pct * 1.2 ? "amber" : "red";
+  const fcColorClass = avgFoodCost === null ? "text-white"
+    : avgFoodCost <= target ? "text-emerald-400"
+    : avgFoodCost <= target * 1.2 ? "text-amber-400" : "text-red-400";
+  const statusFc = (fc: number) => fc <= target ? "text-emerald-600" : fc <= target * 1.2 ? "text-amber-600" : "text-red-600";
 
   return (
     <div className="min-h-screen">
-      {/* Hero banner */}
-      <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-emerald-900 px-8 pt-8 pb-10">
-        <div className="max-w-5xl mx-auto">
-          <div className="flex items-end justify-between">
-            <div>
-              <p className="text-emerald-400 text-xs font-semibold uppercase tracking-widest mb-1">Tableau de bord</p>
-              <h1 className="text-3xl font-bold text-white tracking-tight">{restaurant.name}</h1>
-              <div className="flex items-center gap-3 mt-2">
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 text-white/70 text-xs font-medium">
-                  {cuisineFr}
-                </span>
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 text-white/70 text-xs font-medium">
-                  Objectif food cost {restaurant.target_food_cost_pct}%
-                </span>
-              </div>
+      {/* Hero */}
+      <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-emerald-900 px-8 pt-8 pb-12">
+        <div className="max-w-5xl mx-auto flex items-end justify-between">
+          <div>
+            <p className="text-emerald-400 text-xs font-semibold uppercase tracking-widest mb-1">Tableau de bord</p>
+            <h1 className="text-3xl font-bold text-white tracking-tight">{restaurant.name}</h1>
+            <div className="flex items-center gap-2 mt-2.5">
+              <span className="inline-flex px-2.5 py-1 rounded-full bg-white/10 text-white/70 text-xs font-medium">{cuisineFr}</span>
+              <span className="inline-flex px-2.5 py-1 rounded-full bg-white/10 text-white/70 text-xs font-medium">Objectif {target}%</span>
             </div>
+          </div>
+          <div className="text-right hidden md:block">
+            <p className="text-white/50 text-xs font-medium uppercase tracking-wide mb-1">Food cost moyen</p>
+            <p className={`text-5xl font-bold tracking-tight ${fcColorClass}`}>
+              {avgFoodCost !== null ? `${avgFoodCost.toFixed(1)}%` : "—"}
+            </p>
             {avgFoodCost !== null && (
-              <div className="text-right hidden md:block">
-                <p className="text-white/50 text-xs font-medium uppercase tracking-wide mb-1">Food cost moyen</p>
-                <p className={`text-4xl font-bold ${avgFoodCost <= restaurant.target_food_cost_pct ? "text-emerald-400" : avgFoodCost <= restaurant.target_food_cost_pct * 1.2 ? "text-amber-400" : "text-red-400"}`}>
-                  {avgFoodCost.toFixed(1)}%
-                </p>
-                <p className="text-white/40 text-xs mt-0.5">objectif {restaurant.target_food_cost_pct}%</p>
-              </div>
+              <p className="text-white/40 text-xs mt-1">
+                {avgFoodCost <= target ? "dans l'objectif" : `+${(avgFoodCost - target).toFixed(1)} pts vs objectif`}
+              </p>
             )}
           </div>
         </div>
       </div>
 
-      <div className="px-8 -mt-5 max-w-5xl mx-auto pb-10">
-        {/* KPI cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <StatCard
-            label="Ingrédients"
-            value={ingredientCount ?? 0}
-            sub="dans votre bibliothèque"
-            color="blue"
-            icon={<Package size={15} />}
-          />
-          <StatCard
-            label="Recettes"
-            value={recipeCount ?? 0}
-            sub="créées"
-            color="default"
-            icon={<ChefHat size={15} />}
-          />
-          <StatCard
-            label="Food cost moyen"
-            value={avgFoodCost !== null ? `${avgFoodCost.toFixed(1)}%` : "—"}
-            sub={`objectif ${restaurant.target_food_cost_pct}%`}
-            color={fcColor}
-            icon={<TrendingUp size={15} />}
-          />
-          <StatCard
-            label="Commandes"
-            value={orderCount ?? 0}
-            sub="bons de commande"
-            color="default"
-            icon={<ShoppingCart size={15} />}
-          />
-        </div>
-
+      <div className="px-8 -mt-6 max-w-5xl mx-auto pb-12">
         {isEmpty ? (
           <Card>
             <EmptyState
               icon="👋"
               title="Bienvenue sur votre tableau de bord"
-              description="Commencez par ajouter vos ingrédients, puis créez des recettes pour connaître le vrai coût de chaque plat."
+              description="Commencez par ajouter vos ingrédients, puis créez vos recettes pour connaître le vrai coût de chaque plat."
               action={
                 <div className="flex gap-3 justify-center">
-                  <Link href="/suppliers">
-                    <Button variant="secondary">Ajouter un fournisseur</Button>
-                  </Link>
-                  <Link href="/ingredients">
-                    <Button variant="primary">Ajouter des ingrédients →</Button>
-                  </Link>
+                  <Link href="/suppliers"><Button variant="secondary">Ajouter un fournisseur</Button></Link>
+                  <Link href="/ingredients"><Button variant="primary">Ajouter des ingrédients →</Button></Link>
                 </div>
               }
             />
           </Card>
         ) : (
           <>
-            {/* Quick access grid */}
-            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Accès rapide</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-              {[
-                {
-                  href: "/ingredients",
-                  icon: "📦",
-                  iconBg: "bg-blue-50",
-                  label: "Ingrédients",
-                  sub: `${ingredientCount} produit${(ingredientCount ?? 0) !== 1 ? "s" : ""}`,
-                  accent: "group-hover:text-blue-600",
-                  border: "group-hover:border-blue-200",
-                },
-                {
-                  href: "/recipes",
-                  icon: "👨‍🍳",
-                  iconBg: "bg-emerald-50",
-                  label: "Recettes",
-                  sub: `${recipeCount} créée${(recipeCount ?? 0) !== 1 ? "s" : ""}`,
-                  accent: "group-hover:text-emerald-600",
-                  border: "group-hover:border-emerald-200",
-                },
-                {
-                  href: "/menu",
-                  icon: "📋",
-                  iconBg: "bg-purple-50",
-                  label: "Marges du menu",
-                  sub: `${priced.length} plat${priced.length !== 1 ? "s" : ""} tarifé${priced.length !== 1 ? "s" : ""}`,
-                  accent: "group-hover:text-purple-600",
-                  border: "group-hover:border-purple-200",
-                },
-              ].map((item) => (
-                <Link key={item.href} href={item.href} className="group">
-                  <div className={`bg-white border border-gray-200 rounded-card shadow-card p-5 hover:shadow-card-hover transition-all cursor-pointer ${item.border}`}>
-                    <div className="flex items-start justify-between">
-                      <div className={`w-10 h-10 rounded-xl ${item.iconBg} flex items-center justify-center text-xl mb-3`}>
-                        {item.icon}
-                      </div>
-                      <ChevronRight size={16} className="text-gray-300 group-hover:text-gray-500 transition mt-1" />
-                    </div>
-                    <p className={`text-sm font-semibold text-gray-900 transition ${item.accent}`}>{item.label}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{item.sub}</p>
-                  </div>
-                </Link>
-              ))}
+            {/* KPI row */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              <StatCard
+                label="Marge brute moyenne"
+                value={avgMargin !== null ? `${avgMargin.toFixed(1)}%` : "—"}
+                sub={avgFoodCost !== null ? `food cost ${avgFoodCost.toFixed(1)}%` : "définissez vos prix"}
+                color="green"
+                icon={<Percent size={15} />}
+              />
+              <StatCard
+                label="Plats hors objectif"
+                value={offTarget}
+                sub={`sur ${priced.length} plat${priced.length !== 1 ? "s" : ""} tarifé${priced.length !== 1 ? "s" : ""}`}
+                color={offTarget > 0 ? "red" : "green"}
+                icon={<AlertTriangle size={15} />}
+              />
+              <StatCard
+                label="Valeur du stock"
+                value={`€${stockValue.toLocaleString("fr-FR", { maximumFractionDigits: 0 })}`}
+                sub="au CMUP"
+                color="blue"
+                icon={<Warehouse size={15} />}
+              />
+              <StatCard
+                label="Pertes ce mois"
+                value={`€${lossesValue.toLocaleString("fr-FR", { maximumFractionDigits: 0 })}`}
+                sub="DLC, casse, écart…"
+                color={lossesValue > 0 ? "amber" : "default"}
+                icon={<Trash2 size={15} />}
+              />
             </div>
 
-            {/* Workflow steps */}
-            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Workflow mensuel</h2>
-            <div className="bg-white border border-gray-200 rounded-card shadow-card overflow-hidden">
+            {/* Plats à surveiller */}
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Plats à surveiller</h2>
+              <Link href="/menu" className="text-xs font-medium text-emerald-600 hover:text-emerald-700 inline-flex items-center gap-1">
+                Voir le menu <ArrowRight size={12} />
+              </Link>
+            </div>
+
+            {priced.length === 0 ? (
+              <Card className="text-center py-10">
+                <p className="text-sm text-gray-500 mb-3">Aucun prix de vente défini. Renseignez vos prix pour voir vos marges.</p>
+                <Link href="/menu"><Button variant="primary" size="sm">Définir les prix du menu →</Button></Link>
+              </Card>
+            ) : (
+              <div className="bg-white border border-gray-100 rounded-card shadow-card overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 text-2xs font-semibold text-gray-400 uppercase tracking-wider">
+                      <th className="text-left px-5 py-3">Plat</th>
+                      <th className="text-right px-5 py-3">Coût / portion</th>
+                      <th className="text-right px-5 py-3">Prix carte</th>
+                      <th className="text-right px-5 py-3">Marge €</th>
+                      <th className="text-right px-5 py-3">Food cost</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {worst.map((r) => (
+                      <tr key={r.id} className="hover:bg-gray-50 transition">
+                        <td className="px-5 py-3 font-medium text-gray-900">{r.name}
+                          <span className="block text-2xs text-gray-400 font-normal">{r.category}</span>
+                        </td>
+                        <td className="px-5 py-3 text-right text-gray-600">€{r.cpp.toFixed(2)}</td>
+                        <td className="px-5 py-3 text-right text-gray-600">€{Number(r.menu_price).toFixed(2)}</td>
+                        <td className="px-5 py-3 text-right font-medium text-gray-900">€{(Number(r.menu_price) - r.cpp).toFixed(2)}</td>
+                        <td className="px-5 py-3 text-right">
+                          <span className={`font-semibold ${statusFc(r.fc)}`}>{r.fc.toFixed(1)}%</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Raccourcis analyse */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
               {[
-                { step: "1", label: "Passer une commande fournisseur", href: "/orders", color: "bg-blue-500" },
-                { step: "2", label: "Réceptionner & valider la facture", href: "/orders", color: "bg-purple-500" },
-                { step: "3", label: "Vérifier le stock en inventaire", href: "/inventaire", color: "bg-amber-500" },
-                { step: "4", label: "Saisir les ventes du mois", href: "/rentabilite", color: "bg-emerald-500" },
-              ].map((item, i, arr) => (
-                <Link key={item.step} href={item.href} className="group">
-                  <div className={`flex items-center gap-4 px-5 py-3.5 hover:bg-gray-50 transition ${i < arr.length - 1 ? "border-b border-gray-100" : ""}`}>
-                    <div className={`w-6 h-6 rounded-full ${item.color} text-white text-xs font-bold flex items-center justify-center shrink-0`}>
-                      {item.step}
+                { href: "/rentabilite", label: "Rentabilité", sub: "Saisir les ventes du mois", icon: <ArrowUpRight size={16} /> },
+                { href: "/inventaire", label: "Inventaire", sub: "Stock & prise d'inventaire", icon: <Warehouse size={16} /> },
+                { href: "/pertes", label: "Pertes", sub: "Gaspillage & casse", icon: <Trash2 size={16} /> },
+              ].map((it) => (
+                <Link key={it.href} href={it.href} className="group">
+                  <div className="bg-white border border-gray-100 rounded-card shadow-card p-4 flex items-center justify-between hover:shadow-card-hover transition-all">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">{it.label}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{it.sub}</p>
                     </div>
-                    <p className="text-sm text-gray-700 font-medium flex-1">{item.label}</p>
-                    <ArrowRight size={14} className="text-gray-300 group-hover:text-gray-500 transition" />
+                    <span className="text-gray-300 group-hover:text-emerald-600 transition">{it.icon}</span>
                   </div>
                 </Link>
               ))}
