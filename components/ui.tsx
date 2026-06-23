@@ -40,7 +40,7 @@ export function Card({
   return (
     <div
       className={clsx(
-        "bg-white border border-gray-200 rounded-card shadow-card",
+        "bg-white border border-gray-100 rounded-card shadow-card",
         padding && "p-5",
         className
       )}
@@ -73,20 +73,19 @@ export function StatCard({
   }[color];
 
   return (
-    <div className="bg-white border border-gray-200 rounded-card shadow-card overflow-hidden">
-      <div className={clsx("h-1 w-full", cfg.bar)} />
-      <div className="p-5">
-        <div className="flex items-start justify-between mb-3">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{label}</p>
-          {icon && (
-            <div className={clsx("w-8 h-8 rounded-lg flex items-center justify-center", cfg.bg)}>
-              <span className={cfg.icon}>{icon}</span>
-            </div>
-          )}
-        </div>
-        <p className={clsx("text-2xl font-bold tracking-tight", cfg.value)}>{value}</p>
-        {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
+    <div className="bg-white border border-gray-100 rounded-card shadow-card hover:shadow-card-hover transition-shadow duration-200 p-5">
+      <div className="flex items-start justify-between mb-3">
+        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">{label}</p>
+        {icon ? (
+          <div className={clsx("w-8 h-8 rounded-lg flex items-center justify-center", cfg.bg)}>
+            <span className={cfg.icon}>{icon}</span>
+          </div>
+        ) : (
+          <span className={clsx("w-1.5 h-1.5 rounded-full mt-1.5", cfg.bar)} />
+        )}
       </div>
+      <p className={clsx("text-2xl font-bold tracking-tight", cfg.value)}>{value}</p>
+      {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
     </div>
   );
 }
@@ -133,11 +132,11 @@ export function Button({
   type?: "button" | "submit";
   className?: string;
 }) {
-  const base = "inline-flex items-center gap-1.5 font-medium rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed";
+  const base = "inline-flex items-center gap-1.5 font-medium rounded-lg transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100";
   const sizes = { sm: "px-2.5 py-1.5 text-xs", md: "px-3.5 py-2 text-sm" };
   const variants: Record<ButtonVariant, string> = {
-    primary: "bg-green text-white hover:bg-green-600 shadow-sm",
-    secondary: "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 shadow-sm",
+    primary: "bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm",
+    secondary: "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 hover:border-gray-300 shadow-sm",
     ghost: "text-gray-500 hover:bg-gray-100 hover:text-gray-700",
     danger: "text-red-600 border border-red-200 hover:bg-red-50",
   };

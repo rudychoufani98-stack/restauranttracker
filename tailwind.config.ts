@@ -9,7 +9,7 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["Inter", "system-ui", "sans-serif"],
+        sans: ["var(--font-inter)", "system-ui", "-apple-system", "sans-serif"],
       },
       colors: {
         surface: "#F9FAFB",
@@ -26,17 +26,18 @@ const config: Config = {
       },
       borderRadius: {
         DEFAULT: "8px",
-        card: "12px",
+        card: "14px",
+        xl: "16px",
         lg: "10px",
         md: "8px",
         sm: "6px",
       },
       boxShadow: {
-        card: "0 1px 4px 0 rgb(0 0 0 / 0.07), 0 1px 2px -1px rgb(0 0 0 / 0.05)",
-        "card-hover": "0 4px 16px 0 rgb(0 0 0 / 0.10), 0 1px 3px -1px rgb(0 0 0 / 0.06)",
-        modal: "0 20px 60px -10px rgb(0 0 0 / 0.18), 0 0 0 1px rgb(0 0 0 / 0.05)",
-        sm: "0 1px 2px 0 rgb(0 0 0 / 0.05)",
-        inner: "inset 0 1px 3px 0 rgb(0 0 0 / 0.06)",
+        card: "0 1px 2px 0 rgb(16 24 40 / 0.04), 0 1px 3px 0 rgb(16 24 40 / 0.03)",
+        "card-hover": "0 4px 12px -2px rgb(16 24 40 / 0.08), 0 2px 6px -2px rgb(16 24 40 / 0.04)",
+        modal: "0 24px 64px -12px rgb(16 24 40 / 0.20), 0 0 0 1px rgb(16 24 40 / 0.04)",
+        sm: "0 1px 2px 0 rgb(16 24 40 / 0.04)",
+        inner: "inset 0 1px 3px 0 rgb(16 24 40 / 0.05)",
       },
       fontSize: {
         "2xs": ["11px", "16px"],
