@@ -8,6 +8,12 @@ import clsx from "clsx";
 
 const UNITS = ["g", "kg", "ml", "l", "unit"];
 
+// 14 allergènes à déclaration obligatoire (règlement UE 1169/2011)
+const ALLERGENS = [
+  "Gluten", "Crustacés", "Œufs", "Poisson", "Arachides", "Soja", "Lait",
+  "Fruits à coque", "Céleri", "Moutarde", "Sésame", "Sulfites", "Lupin", "Mollusques",
+];
+
 // Common EU VAT rates — user can type any value too
 const VAT_PRESETS = [
   { label: "0% — Exonéré", value: "0" },
@@ -23,6 +29,7 @@ type Ingredient = {
   pack_description: string | null; pack_price: number; pack_quantity: number;
   unit: string; cost_per_base_unit: number; vat_rate: number;
   selling_price: number | null;
+  allergens?: string[] | null;
   suppliers?: { name: string } | null;
   ingredient_tags?: { tag_id: string; tags: TagInfo }[];
 };
@@ -67,6 +74,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [selectedAllergens, setSelectedAllergens] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -91,6 +99,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
     setEditingId(null);
     setForm({ ...EMPTY_FORM, category: CATEGORIES[0] ?? EMPTY_FORM.category });
     setSelectedTagIds([]);
+    setSelectedAllergens([]);
     setError(null);
     setShowForm(true);
   }
@@ -105,6 +114,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
       selling_price: ing.selling_price != null ? String(ing.selling_price) : "",
     });
     setSelectedTagIds((ing.ingredient_tags ?? []).map((it) => it.tag_id));
+    setSelectedAllergens(ing.allergens ?? []);
     setError(null);
     setShowForm(true);
   }
@@ -112,6 +122,12 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
   function toggleTag(tagId: string) {
     setSelectedTagIds((prev) =>
       prev.includes(tagId) ? prev.filter((id) => id !== tagId) : [...prev, tagId]
+    );
+  }
+
+  function toggleAllergen(a: string) {
+    setSelectedAllergens((prev) =>
+      prev.includes(a) ? prev.filter((x) => x !== a) : [...prev, a]
     );
   }
 
@@ -134,6 +150,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
       pack_price: price, pack_quantity: qty, unit: form.unit,
       cost_per_base_unit, vat_rate: vat,
       selling_price: selling,
+      allergens: selectedAllergens,
       restaurant_id: restaurantId,
       updated_at: new Date().toISOString(),
     };
@@ -351,6 +368,32 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                     </p>
                   </div>
                 )}
+              </div>
+            </div>
+
+            {/* Allergènes */}
+            <div className="bg-amber-50 rounded-lg p-4 border border-amber-100">
+              <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1">Allergènes</p>
+              <p className="text-xs text-amber-600 mb-3">14 allergènes réglementaires UE. Les recettes hériteront automatiquement de ceux-ci.</p>
+              <div className="flex flex-wrap gap-1.5">
+                {ALLERGENS.map((a) => {
+                  const on = selectedAllergens.includes(a);
+                  return (
+                    <button
+                      key={a}
+                      type="button"
+                      onClick={() => toggleAllergen(a)}
+                      className={clsx(
+                        "px-2.5 py-1 rounded-full text-xs font-medium border transition",
+                        on
+                          ? "bg-amber-500 text-white border-amber-500"
+                          : "bg-white text-gray-600 border-gray-200 hover:border-amber-300"
+                      )}
+                    >
+                      {a}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 

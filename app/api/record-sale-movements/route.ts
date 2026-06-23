@@ -2,20 +2,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
 type RecipeLine = { ingredient_id: string | null; sub_recipe_id: string | null; quantity: number; unit: string };
-type RecipeRow = { id: string; yield_portions: number; recipe_lines: RecipeLine[] };
+type RecipeRow = { id: string; yield_portions: number; yield_unit: string; recipe_lines: RecipeLine[] };
 
-// Convert a recipe line quantity to base units (g / ml / unit) — same logic as recalculate-recipes
+// Convert a quantity to base units (g / ml / portion / piece). kg→g, l→ml; rest unchanged.
 function toBaseQty(quantity: number, unit: string): number {
   if (unit === "kg" || unit === "l") return quantity * 1000;
   return quantity;
 }
 
 /**
- * Ingredient consumption (in base units) for ONE portion of a recipe.
- * Recursively flattens sub-recipes (mises en place) so their ingredients
- * are deducted from stock too. Memoized + cycle-guarded.
+ * Ingredient consumption (in base units) per ONE base unit of a recipe's yield.
+ * For a portion-yield dish that's "per portion"; for a 2 kg sauce that's "per gram".
+ * Recursively flattens sub-recipes (mises en place) so their ingredients are
+ * deducted from stock too, at the real consumed fraction. Memoized + cycle-guarded.
  */
-function ingredientsPerPortion(
+function ingredientsPerYieldBase(
   recipeId: string,
   recipeMap: Map<string, RecipeRow>,
   memo: Map<string, Map<string, number>>,
@@ -29,18 +30,19 @@ function ingredientsPerPortion(
   const result = new Map<string, number>();
   if (!recipe) return result;
 
-  const yieldPortions = recipe.yield_portions || 1;
+  const yieldBase = toBaseQty(recipe.yield_portions || 1, recipe.yield_unit || "portion");
 
   for (const line of recipe.recipe_lines) {
     if (line.ingredient_id) {
-      const perPortion = toBaseQty(line.quantity, line.unit) / yieldPortions;
-      result.set(line.ingredient_id, (result.get(line.ingredient_id) ?? 0) + perPortion);
+      const perYieldBase = toBaseQty(line.quantity, line.unit) / yieldBase;
+      result.set(line.ingredient_id, (result.get(line.ingredient_id) ?? 0) + perYieldBase);
     } else if (line.sub_recipe_id) {
-      // line.quantity = portions of the sub-recipe consumed by the WHOLE parent recipe
-      const subPerPortion = ingredientsPerPortion(line.sub_recipe_id, recipeMap, memo, new Set(visited));
-      const subPortionsPerParentPortion = line.quantity / yieldPortions;
-      for (const [ingId, qty] of Array.from(subPerPortion.entries())) {
-        result.set(ingId, (result.get(ingId) ?? 0) + qty * subPortionsPerParentPortion);
+      // line.quantity (in its unit) = amount of the sub-recipe consumed by the WHOLE parent batch
+      const subPerYieldBase = ingredientsPerYieldBase(line.sub_recipe_id, recipeMap, memo, new Set(visited));
+      const subBaseConsumedByBatch = toBaseQty(line.quantity, line.unit);
+      const fractionPerParentYieldBase = subBaseConsumedByBatch / yieldBase;
+      for (const [ingId, qty] of Array.from(subPerYieldBase.entries())) {
+        result.set(ingId, (result.get(ingId) ?? 0) + qty * fractionPerParentYieldBase);
       }
     }
   }
@@ -76,7 +78,7 @@ export async function POST(req: NextRequest) {
     // Load ALL recipes of the restaurant (needed to flatten sub-recipes recursively)
     const { data: allRecipes } = await supabase
       .from("recipes")
-      .select("id, yield_portions, recipe_lines(ingredient_id, sub_recipe_id, quantity, unit)")
+      .select("id, yield_portions, yield_unit, recipe_lines(ingredient_id, sub_recipe_id, quantity, unit)")
       .eq("restaurant_id", restaurantId);
 
     const recipeMap = new Map<string, RecipeRow>(
@@ -92,8 +94,9 @@ export async function POST(req: NextRequest) {
       if (!qtySold || qtySold <= 0) continue;
 
       if (saleLine.recipe_id) {
-        const perPortion = ingredientsPerPortion(saleLine.recipe_id, recipeMap, memo, new Set());
-        for (const [ingId, qty] of Array.from(perPortion.entries())) {
+        // A sale = qtySold portions of a menu dish (yield_unit 'portion').
+        const perYieldBase = ingredientsPerYieldBase(saleLine.recipe_id, recipeMap, memo, new Set());
+        for (const [ingId, qty] of Array.from(perYieldBase.entries())) {
           deductions.set(ingId, (deductions.get(ingId) ?? 0) + qty * qtySold);
         }
       } else if (saleLine.ingredient_id) {

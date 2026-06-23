@@ -5,8 +5,8 @@ import { ChefHat, Package, AlertTriangle, ArrowRight } from "lucide-react";
 import clsx from "clsx";
 import Link from "next/link";
 
-type Recipe  = { id: string; name: string; category: string; total_cost: number; menu_price: number | null; yield_portions: number };
-type Product = { id: string; name: string; category: string; pack_price: number; selling_price: number | null };
+type Recipe  = { id: string; name: string; category: string; total_cost: number; menu_price: number | null; yield_portions: number; allergens: string[] | null };
+type Product = { id: string; name: string; category: string; pack_price: number; selling_price: number | null; allergens: string[] | null };
 
 type Touch = {
   id: string;
@@ -15,6 +15,7 @@ type Touch = {
   price: number | null;
   type: "recipe" | "product";
   cost: number;
+  allergens: string[];
   linked: true; // all items from DB are linked by definition
 };
 
@@ -37,6 +38,7 @@ export default function CaisseClient({ recipes, products, categoryOrder }: Props
       price: r.menu_price,
       type: "recipe",
       cost: r.total_cost / (r.yield_portions || 1),
+      allergens: r.allergens ?? [],
       linked: true,
     }));
     const fromP: Touch[] = products.map((p) => ({
@@ -46,6 +48,7 @@ export default function CaisseClient({ recipes, products, categoryOrder }: Props
       price: p.selling_price,
       type: "product",
       cost: Number(p.pack_price ?? 0),
+      allergens: p.allergens ?? [],
       linked: true,
     }));
     return [...fromR, ...fromP];
@@ -176,6 +179,13 @@ export default function CaisseClient({ recipes, products, categoryOrder }: Props
                         food cost {((item.cost / Number(item.price)) * 100).toFixed(0)}%
                       </p>
                     )}
+                    {item.allergens.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {item.allergens.map((a) => (
+                          <span key={a} className="px-1.5 py-0.5 text-2xs rounded bg-amber-100 text-amber-700 font-medium">{a}</span>
+                        ))}
+                      </div>
+                    )}
                   </button>
                 );
               })}
@@ -216,6 +226,19 @@ export default function CaisseClient({ recipes, products, categoryOrder }: Props
                       <span className="font-semibold text-gray-900">{((selected.cost / Number(selected.price)) * 100).toFixed(1)}%</span>
                     </div>
                   </>
+                )}
+              </div>
+
+              <div className="mt-5 pt-4 border-t border-gray-100">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Allergènes</p>
+                {selected.allergens.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {selected.allergens.map((a) => (
+                      <span key={a} className="px-2 py-0.5 text-xs rounded-full bg-amber-100 text-amber-700 font-medium">{a}</span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-400">Aucun déclaré sur les ingrédients liés.</p>
                 )}
               </div>
 

@@ -14,13 +14,13 @@ export default async function CaissePage() {
   const [{ data: recipes }, { data: products }, { data: cats }] = await Promise.all([
     supabase
       .from("recipes")
-      .select("id, name, category, total_cost, menu_price, yield_portions")
+      .select("id, name, category, total_cost, menu_price, yield_portions, allergens")
       .eq("restaurant_id", restaurant!.id)
       .eq("is_prep", false)
       .order("name"),
     supabase
       .from("ingredients")
-      .select("id, name, category, pack_price, selling_price")
+      .select("id, name, category, pack_price, selling_price, allergens")
       .eq("restaurant_id", restaurant!.id)
       .not("selling_price", "is", null)
       .order("name"),

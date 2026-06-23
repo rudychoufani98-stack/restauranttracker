@@ -21,9 +21,11 @@ type Recipe = {
   name: string;
   category: string;
   yield_portions: number;
+  yield_unit: string;
   total_cost: number;
   menu_price: number | null;
   is_prep: boolean;
+  allergens?: string[];
   recipe_lines: RecipeLine[];
 };
 
@@ -34,6 +36,33 @@ type DraftLine = {
   quantity: string;
   unit: string;
 };
+
+// Yield units a recipe / MEP can be conditioned in.
+const YIELD_UNITS: { value: string; label: string }[] = [
+  { value: "portion", label: "portion(s)" },
+  { value: "kg", label: "kg" },
+  { value: "g", label: "g" },
+  { value: "l", label: "L" },
+  { value: "ml", label: "ml" },
+  { value: "piece", label: "pièce(s)" },
+];
+
+// Convert a quantity in kg/l to base units (g/ml); rest unchanged.
+const toBase = (qty: number, unit: string): number =>
+  unit === "kg" || unit === "l" ? qty * 1000 : qty;
+
+// Total a recipe yields, in base units.
+const yieldInBase = (r: Recipe): number => toBase(r.yield_portions || 1, r.yield_unit || "portion");
+
+// Which line units make sense when consuming a sub-recipe, given its yield unit.
+function unitsForSubRecipe(yieldUnit: string): string[] {
+  switch (yieldUnit) {
+    case "kg": case "g": return ["g", "kg"];
+    case "l": case "ml": return ["ml", "l"];
+    case "piece": return ["piece"];
+    default: return ["portion"];
+  }
+}
 
 const EMPTY_LINE: DraftLine = { type: "ingredient", ingredient_id: "", sub_recipe_id: "", quantity: "", unit: "g" };
 
@@ -51,8 +80,9 @@ function calcLineCost(line: DraftLine, ingredients: Ingredient[], allRecipes: Re
   } else {
     const rec = allRecipes.find((r) => r.id === line.sub_recipe_id);
     if (!rec) return 0;
-    const costPerPortion = rec.total_cost / (rec.yield_portions || 1);
-    return costPerPortion * qty;
+    // Fraction of the sub-recipe batch consumed: e.g. 100 g out of a 2 kg batch.
+    const fraction = toBase(qty, line.unit) / yieldInBase(rec);
+    return rec.total_cost * fraction;
   }
 }
 
@@ -81,6 +111,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
   const [category, setCategory] = useState("Plat");
   const [isPrep, setIsPrep] = useState(false);
   const [yieldPortions, setYieldPortions] = useState("1");
+  const [yieldUnit, setYieldUnit] = useState("portion");
   const [lines, setLines] = useState<DraftLine[]>([{ ...EMPTY_LINE }]);
 
   // Split recipes by type
@@ -101,6 +132,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
     setName("");
     setCategory((prep ? prepCategories : menuCategories)[0] ?? "");
     setYieldPortions("1");
+    setYieldUnit(prep ? "kg" : "portion");
     setLines([{ ...EMPTY_LINE }]);
     setError(null);
     setShowForm(true);
@@ -112,6 +144,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
     setIsPrep(recipe.is_prep);
     setCategory(recipe.category);
     setYieldPortions(String(recipe.yield_portions));
+    setYieldUnit(recipe.yield_unit || "portion");
     setLines(
       recipe.recipe_lines.length > 0
         ? recipe.recipe_lines.map((l) => ({
@@ -140,6 +173,10 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
         const ing = ingredients.find((i) => i.id === value);
         if (ing) next[idx].unit = ing.unit === "kg" ? "g" : ing.unit === "l" ? "ml" : ing.unit;
       }
+      if (field === "sub_recipe_id") {
+        const sub = allRecipes.find((r) => r.id === value);
+        next[idx].unit = unitsForSubRecipe(sub?.yield_unit || "portion")[0];
+      }
       return next;
     });
   }
@@ -162,6 +199,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
       category,
       is_prep: isPrep,
       yield_portions: yp,
+      yield_unit: yieldUnit,
       total_cost: totalCost,
     };
 
@@ -208,8 +246,10 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
       category,
       is_prep: isPrep,
       yield_portions: yp,
+      yield_unit: yieldUnit,
       total_cost: totalCost,
       menu_price: editingId ? (recipes.find((r) => r.id === editingId)?.menu_price ?? null) : null,
+      allergens: editingId ? (recipes.find((r) => r.id === editingId)?.allergens ?? []) : [],
       recipe_lines: builtLines,
     };
 
@@ -303,11 +343,21 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                     {Array.from(new Set([...(isPrep ? prepCategories : menuCategories), category].filter(Boolean))).map((c) => <option key={c}>{c}</option>)}
                   </select>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Nombre de portions</label>
-                  <input type="number" min="1" step="1" value={yieldPortions} onChange={(e) => setYieldPortions(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition" />
-                  <p className="text-xs text-gray-400 mt-1">Combien de portions donne cette recette ?</p>
+                <div className="col-span-3">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Rendement / conditionnement</label>
+                  <div className="flex gap-2">
+                    <input type="number" min="0" step="any" value={yieldPortions} onChange={(e) => setYieldPortions(e.target.value)}
+                      className="w-28 px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition" />
+                    <select value={yieldUnit} onChange={(e) => setYieldUnit(e.target.value)}
+                      className="flex-1 px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 bg-white transition">
+                      {YIELD_UNITS.map((u) => <option key={u.value} value={u.value}>{u.label}</option>)}
+                    </select>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {isPrep
+                      ? "Quantité totale produite par cette mise en place (ex. 2 kg de sauce). Les fiches techniques en consommeront une fraction."
+                      : "Combien cette recette produit (généralement en portions pour un plat vendu)."}
+                  </p>
                 </div>
               </div>
 
@@ -373,11 +423,17 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                           className="w-16 px-2 py-2 text-xs border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 bg-white transition">
                           {["g","kg","ml","l","unit"].map((u) => <option key={u}>{u}</option>)}
                         </select>
-                      ) : (
-                        <div className="w-16 px-2 py-2 text-xs text-gray-400 border border-[#E5E7EB] rounded-lg bg-gray-50 text-center">
-                          portions
-                        </div>
-                      )}
+                      ) : (() => {
+                        const sub = allRecipes.find((r) => r.id === line.sub_recipe_id);
+                        const opts = unitsForSubRecipe(sub?.yield_unit || "portion");
+                        return (
+                          <select value={line.unit} onChange={(e) => updateLine(idx, "unit", e.target.value)}
+                            disabled={!sub}
+                            className="w-16 px-2 py-2 text-xs border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 bg-white transition disabled:bg-gray-50 disabled:text-gray-400">
+                            {opts.map((u) => <option key={u} value={u}>{u === "portion" ? "port." : u}</option>)}
+                          </select>
+                        );
+                      })()}
 
                       <div className="w-16 text-right text-xs text-gray-500 pt-2.5">
                         €{calcLineCost(line, ingredients, allRecipes).toFixed(3)}
@@ -398,7 +454,10 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                   <p className="text-lg font-medium text-gray-900">€{totalCost.toFixed(2)}</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-xs text-gray-500">Coût par portion ({yieldPortions || 1} portion{parseFloat(yieldPortions) !== 1 ? "s" : ""})</p>
+                  <p className="text-xs text-gray-500">
+                    Coût par {YIELD_UNITS.find((u) => u.value === yieldUnit)?.label ?? yieldUnit}
+                    {" "}(rendement {yieldPortions || 1})
+                  </p>
                   <p className="text-lg font-medium text-emerald-700">€{costPerPortion.toFixed(2)}</p>
                 </div>
               </div>
@@ -439,6 +498,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
           {visibleRecipes.map((recipe) => {
             const isExpanded = expandedId === recipe.id;
             const costPerPortion = recipe.total_cost / (recipe.yield_portions || 1);
+            const yUnit = YIELD_UNITS.find((u) => u.value === (recipe.yield_unit || "portion"))?.label ?? recipe.yield_unit;
             return (
               <div key={recipe.id} className="bg-white border border-[#E5E7EB] rounded-card overflow-hidden">
                 <div
@@ -450,11 +510,18 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                       <span className="font-medium text-gray-900">{recipe.name}</span>
                       <span className="px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-500">{recipe.category}</span>
                     </div>
-                    <p className="text-xs text-gray-500 mt-0.5">{recipe.yield_portions} portion{recipe.yield_portions !== 1 ? "s" : ""} · {recipe.category}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">Rendement {recipe.yield_portions} {yUnit} · {recipe.category}</p>
+                    {(recipe.allergens?.length ?? 0) > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {recipe.allergens!.map((a) => (
+                          <span key={a} className="px-1.5 py-0.5 text-2xs rounded bg-amber-100 text-amber-700 font-medium">{a}</span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-medium text-gray-900">€{recipe.total_cost.toFixed(2)} total</p>
-                    <p className="text-xs text-emerald-600">€{costPerPortion.toFixed(2)} / portion</p>
+                    <p className="text-xs text-emerald-600">€{costPerPortion.toFixed(2)} / {yUnit}</p>
 
                   </div>
                   <div className="flex items-center gap-1">
