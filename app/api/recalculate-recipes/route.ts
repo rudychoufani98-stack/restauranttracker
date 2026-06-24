@@ -3,7 +3,14 @@ import { createClient } from "@/lib/supabase/server";
 
 type RecipeLine = { ingredient_id: string | null; sub_recipe_id: string | null; quantity: number; unit: string };
 type RecipeRow = { id: string; yield_portions: number; yield_unit: string; recipe_lines: RecipeLine[] };
-type IngRow = { id: string; cost_per_base_unit: number; cmup: number | null; unit: string; allergens: string[] | null };
+type IngRow = { id: string; cost_per_base_unit: number; cmup: number | null; unit: string; yield_pct: number | null; allergens: string[] | null };
+
+// Material yield: a recipe specifies the NET (usable) quantity. The real GROSS
+// quantity drawn from stock is netQty / (yield_pct/100). Cost follows the gross.
+const yieldFactor = (ing: IngRow) => {
+  const y = Number(ing.yield_pct ?? 100);
+  return y > 0 ? y / 100 : 1;
+};
 
 // Use weighted average cost (CMUP) when available so recipe costs stay
 // consistent with how stock movements are valued; fall back to last price.
@@ -36,7 +43,8 @@ const calcRecipeCost = (
       let qty = line.quantity;
       if (line.unit === "kg" && (ing.unit === "g" || ing.unit === "kg")) qty = line.quantity * 1000;
       if (line.unit === "l" && (ing.unit === "ml" || ing.unit === "l")) qty = line.quantity * 1000;
-      total += unitCost(ing) * qty;
+      // line qty is NET; gross drawn = net / yield → cost follows gross
+      total += unitCost(ing) * (qty / yieldFactor(ing));
     } else if (line.sub_recipe_id) {
       const subCost = calcRecipeCost(line.sub_recipe_id, recipes, ingMap, recipeCosts, new Set(visited));
       const sub = recipes.find((r) => r.id === line.sub_recipe_id);
@@ -106,7 +114,7 @@ export async function POST(req: NextRequest) {
 
     const { data: ingredients } = await supabase
       .from("ingredients")
-      .select("id, cost_per_base_unit, cmup, unit, allergens")
+      .select("id, cost_per_base_unit, cmup, unit, yield_pct, allergens")
       .eq("restaurant_id", restaurantId);
 
     const ingMap = new Map((ingredients ?? []).map((i) => [i.id, i as IngRow]));

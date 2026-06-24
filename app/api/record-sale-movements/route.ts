@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
 
     const { data: ingredients } = await supabase
       .from("ingredients")
-      .select("id, stock_qty, cmup, cost_per_base_unit")
+      .select("id, stock_qty, cmup, cost_per_base_unit, yield_pct")
       .in("id", allIngredientIds);
 
     const ingMap = new Map((ingredients ?? []).map((i: any) => [i.id, i]));
@@ -120,9 +120,13 @@ export async function POST(req: NextRequest) {
     // Apply deductions
     const movements: any[] = [];
 
-    for (const [ingredientId, qtyDeduct] of Array.from(deductions.entries())) {
+    for (const [ingredientId, qtyDeductNet] of Array.from(deductions.entries())) {
       const ing = ingMap.get(ingredientId);
       if (!ing) continue;
+
+      // Recipe quantities are NET (usable); real stock drawn is gross = net / yield.
+      const yieldF = Number(ing.yield_pct ?? 100) > 0 ? Number(ing.yield_pct ?? 100) / 100 : 1;
+      const qtyDeduct = qtyDeductNet / yieldF;
 
       const currentStock = Number(ing.stock_qty ?? 0);
       const unitCost = Number(ing.cmup ?? ing.cost_per_base_unit ?? 0);

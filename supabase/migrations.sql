@@ -54,7 +54,23 @@ alter table ingredients add column if not exists allergens text[] not null defau
 alter table recipes     add column if not exists allergens text[] not null default '{}';
 
 -- ---------------------------------------------------------------------
--- 5) Nettoyage : supprime les recettes de test "Grilled Chicken"
+-- 5) Conditionnement d'achat détaillé des ingrédients (façon Yokitup)
+--    pack_units  = nb de sous-unités par colis (6 bouteilles, 30 œufs, 1 sac)
+--    unit_size   = contenance d'une sous-unité, exprimée dans `unit`
+--    yield_pct   = rendement matière % (perte épluchage/parage)
+--    pack_quantity reste = pack_units * unit_size (total du colis dans `unit`),
+--    pour préserver la logique des commandes/réceptions.
+-- ---------------------------------------------------------------------
+alter table ingredients add column if not exists pack_units numeric not null default 1;
+alter table ingredients add column if not exists unit_size  numeric not null default 1;
+alter table ingredients add column if not exists yield_pct  numeric not null default 100;
+
+-- Backfill : reprendre l'ancien "quantité par colis" comme contenance unitaire.
+update ingredients set unit_size = pack_quantity
+  where pack_quantity is not null and pack_units = 1 and unit_size = 1;
+
+-- ---------------------------------------------------------------------
+-- 6) Nettoyage : supprime les recettes de test "Grilled Chicken"
 --    (et leurs lignes via la FK on delete cascade).
 -- ---------------------------------------------------------------------
 delete from recipes where name = 'Grilled Chicken';

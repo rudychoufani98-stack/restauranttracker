@@ -6,7 +6,7 @@ import { Plus, Trash2, X, ChevronDown, ChevronUp } from "lucide-react";
 import clsx from "clsx";
 
 
-type Ingredient = { id: string; name: string; cost_per_base_unit: number; unit: string };
+type Ingredient = { id: string; name: string; cost_per_base_unit: number; unit: string; yield_pct?: number | null };
 type RecipeLine = {
   id?: string;
   ingredient_id: string | null;
@@ -76,7 +76,10 @@ function calcLineCost(line: DraftLine, ingredients: Ingredient[], allRecipes: Re
     let baseQty = qty;
     if (line.unit === "kg" && (ing.unit === "g" || ing.unit === "kg")) baseQty = qty * 1000;
     if (line.unit === "l" && (ing.unit === "ml" || ing.unit === "l")) baseQty = qty * 1000;
-    return ing.cost_per_base_unit * baseQty;
+    // qty is NET; real gross drawn = net / yield → cost follows gross
+    const y = Number(ing.yield_pct ?? 100);
+    const yf = y > 0 ? y / 100 : 1;
+    return ing.cost_per_base_unit * (baseQty / yf);
   } else {
     const rec = allRecipes.find((r) => r.id === line.sub_recipe_id);
     if (!rec) return 0;

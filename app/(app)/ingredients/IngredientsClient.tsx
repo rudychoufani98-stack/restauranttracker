@@ -29,6 +29,7 @@ type Ingredient = {
   pack_description: string | null; pack_price: number; pack_quantity: number;
   unit: string; cost_per_base_unit: number; vat_rate: number;
   selling_price: number | null;
+  pack_units?: number | null; unit_size?: number | null; yield_pct?: number | null;
   allergens?: string[] | null;
   suppliers?: { name: string } | null;
   ingredient_tags?: { tag_id: string; tags: TagInfo }[];
@@ -36,16 +37,26 @@ type Ingredient = {
 
 const EMPTY_FORM = {
   name: "", category: "Légumes/Fruits", supplier_id: "",
-  pack_description: "", pack_price: "", pack_quantity: "",
-  unit: "g", vat_rate: "0", selling_price: "",
+  pack_description: "", pack_price: "",
+  pack_units: "1", unit_size: "", unit: "g",
+  yield_pct: "100", vat_rate: "0", selling_price: "",
 };
 
-function calcCostPerBase(packPrice: number, packQty: number, unit: string): number {
-  if (!packQty) return 0;
-  let qty = packQty;
-  if (unit === "kg") qty = packQty * 1000;
-  if (unit === "l") qty = packQty * 1000;
-  return packPrice / qty;
+function toBaseUnits(qty: number, unit: string): number {
+  return unit === "kg" || unit === "l" ? qty * 1000 : qty;
+}
+
+// Total quantity of one purchase pack, in the usage unit (e.g. 6 × 0.75 L = 4.5 L).
+function packTotal(packUnits: number, unitSize: number): number {
+  return (packUnits || 0) * (unitSize || 0);
+}
+
+// GROSS cost per base unit (g/ml/piece) — used for stock valuation. Yield is
+// applied later at consumption, not here.
+function calcCostPerBase(packPrice: number, packUnits: number, unitSize: number, unit: string): number {
+  const totalBase = toBaseUnits(packTotal(packUnits, unitSize), unit);
+  if (!totalBase) return 0;
+  return packPrice / totalBase;
 }
 
 function baseUnitLabel(unit: string) {
@@ -83,9 +94,14 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
   // Live calculations
   const priceHT = parseFloat(form.pack_price) || 0;
   const vatRate = parseFloat(form.vat_rate) || 0;
-  const packQty = parseFloat(form.pack_quantity) || 0;
+  const packUnits = parseFloat(form.pack_units) || 0;
+  const unitSize = parseFloat(form.unit_size) || 0;
+  const yieldPct = parseFloat(form.yield_pct) || 100;
+  const packQty = packTotal(packUnits, unitSize);
   const priceTTCVal = priceTTC(priceHT, vatRate);
-  const previewCostPerBase = priceHT && packQty ? calcCostPerBase(priceHT, packQty, form.unit) : null;
+  const previewCostPerBase = priceHT && packQty ? calcCostPerBase(priceHT, packUnits, unitSize, form.unit) : null;
+  // Net cost = gross / yield (real cost of an usable base unit, loss included)
+  const previewNetCost = previewCostPerBase !== null && yieldPct > 0 ? previewCostPerBase / (yieldPct / 100) : previewCostPerBase;
 
   const filtered = useMemo(() =>
     ingredients.filter((i) => {
@@ -109,7 +125,10 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
     setForm({
       name: ing.name, category: ing.category, supplier_id: ing.supplier_id ?? "",
       pack_description: ing.pack_description ?? "", pack_price: String(ing.pack_price),
-      pack_quantity: String(ing.pack_quantity), unit: ing.unit,
+      pack_units: String(ing.pack_units ?? 1),
+      unit_size: String(ing.unit_size ?? ing.pack_quantity ?? ""),
+      unit: ing.unit,
+      yield_pct: String(ing.yield_pct ?? 100),
       vat_rate: String(ing.vat_rate ?? 0),
       selling_price: ing.selling_price != null ? String(ing.selling_price) : "",
     });
@@ -134,20 +153,26 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
   async function handleSave() {
     setError(null);
     const price = parseFloat(form.pack_price);
-    const qty = parseFloat(form.pack_quantity);
+    const pUnits = parseFloat(form.pack_units);
+    const uSize = parseFloat(form.unit_size);
+    const yld = parseFloat(form.yield_pct);
     const vat = parseFloat(form.vat_rate) || 0;
     if (!form.name.trim()) return setError("Le nom est requis.");
     if (isNaN(price) || price < 0) return setError("Saisissez un prix d'achat HT valide.");
-    if (isNaN(qty) || qty <= 0) return setError("La quantité du colis doit être supérieure à 0.");
+    if (isNaN(pUnits) || pUnits <= 0) return setError("Le nombre d'unités par colis doit être supérieur à 0.");
+    if (isNaN(uSize) || uSize <= 0) return setError("La contenance par unité doit être supérieure à 0.");
+    if (isNaN(yld) || yld <= 0 || yld > 100) return setError("Le rendement doit être entre 1 et 100 %.");
     setSaving(true);
 
-    const cost_per_base_unit = calcCostPerBase(price, qty, form.unit);
+    const qty = packTotal(pUnits, uSize); // total du colis, dans l'unité d'usage
+    const cost_per_base_unit = calcCostPerBase(price, pUnits, uSize, form.unit);
     const selling = form.selling_price !== "" ? parseFloat(form.selling_price) : null;
     const payload = {
       name: form.name.trim(), category: form.category,
       supplier_id: form.supplier_id || null,
       pack_description: form.pack_description || null,
       pack_price: price, pack_quantity: qty, unit: form.unit,
+      pack_units: pUnits, unit_size: uSize, yield_pct: yld,
       cost_per_base_unit, vat_rate: vat,
       selling_price: selling,
       allergens: selectedAllergens,
@@ -311,32 +336,61 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+            </div>
+
+            {/* Conditionnement d'achat (façon Yokitup) */}
+            <div className="bg-gray-50 rounded-lg p-4 space-y-3 border border-gray-200">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Conditionnement d&apos;achat</p>
+              <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Quantité par colis</label>
-                  <div className="flex gap-2">
-                    <input type="number" min="0" step="any" value={form.pack_quantity}
-                      onChange={(e) => setForm({ ...form, pack_quantity: e.target.value })}
-                      placeholder="1"
-                      className="flex-1 px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition" />
-                    <select value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}
-                      className="w-16 px-2 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green transition">
-                      {UNITS.map((u) => <option key={u}>{u}</option>)}
-                    </select>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Unités / colis</label>
+                  <input type="number" min="1" step="any" value={form.pack_units}
+                    onChange={(e) => setForm({ ...form, pack_units: e.target.value })}
+                    placeholder="ex. 6"
+                    className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition" />
+                  <p className="text-xs text-gray-400 mt-1">bouteilles, œufs… (1 si vrac)</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Contenance / unité</label>
+                  <input type="number" min="0" step="any" value={form.unit_size}
+                    onChange={(e) => setForm({ ...form, unit_size: e.target.value })}
+                    placeholder="ex. 0.75"
+                    className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Unité d&apos;usage</label>
+                  <select value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}
+                    className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green transition">
+                    {UNITS.map((u) => <option key={u}>{u}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 items-end">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Rendement matière (%)</label>
+                  <div className="relative">
+                    <input type="number" min="1" max="100" step="any" value={form.yield_pct}
+                      onChange={(e) => setForm({ ...form, yield_pct: e.target.value })}
+                      placeholder="100"
+                      className="w-full pr-7 pl-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition" />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
                   </div>
+                  <p className="text-xs text-gray-400 mt-1">part utilisable après épluchage/parage</p>
                 </div>
 
                 {previewCostPerBase !== null && (
-                  <div className="flex items-end">
-                    <div className="flex items-center gap-2 px-3 py-2.5 bg-green/5 border border-green/20 rounded-lg w-full">
+                  <div className="px-3 py-2.5 bg-green/5 border border-green/20 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-gray-400">Colis = {packQty || 0} {form.unit}</p>
                       <Check size={13} className="text-green shrink-0" />
-                      <div>
-                        <p className="text-xs text-gray-400">Coût / {baseUnitLabel(form.unit)} (HT)</p>
-                        <p className="text-sm font-semibold text-green">
-                          €{previewCostPerBase.toFixed(4)}
-                        </p>
-                      </div>
                     </div>
+                    <p className="text-sm font-semibold text-green mt-0.5">
+                      €{(previewNetCost ?? 0).toFixed(4)} / {baseUnitLabel(form.unit)} réel
+                    </p>
+                    {yieldPct < 100 && (
+                      <p className="text-2xs text-gray-400">brut €{previewCostPerBase.toFixed(4)} · rendement {yieldPct}%</p>
+                    )}
                   </div>
                 )}
               </div>
@@ -516,16 +570,28 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                     </div>
                   </Td>
                   <Td muted>
-                    {ing.pack_quantity} {ing.unit}
+                    {(ing.pack_units ?? 1) > 1
+                      ? <>{ing.pack_units} × {ing.unit_size ?? ing.pack_quantity} {ing.unit}</>
+                      : <>{ing.unit_size ?? ing.pack_quantity} {ing.unit}</>}
+                    {(ing.yield_pct ?? 100) < 100 && (
+                      <span className="ml-1.5 px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-2xs font-medium">rdt {ing.yield_pct}%</span>
+                    )}
                     {ing.pack_description && <span className="text-gray-300 ml-1">· {ing.pack_description}</span>}
                   </Td>
                   <Td right><span className="text-gray-700">€{Number(ing.pack_price).toFixed(2)}</span></Td>
                   <Td right><span className="text-gray-500">{ing.vat_rate ?? 0}%</span></Td>
                   <Td right><span className="text-gray-700">€{ttc.toFixed(2)}</span></Td>
                   <Td right>
-                    <span className="font-medium text-green">
-                      €{Number(ing.cost_per_base_unit).toFixed(4)}/{baseUnitLabel(ing.unit)}
-                    </span>
+                    {(() => {
+                      const y = Number(ing.yield_pct ?? 100);
+                      const net = y > 0 ? Number(ing.cost_per_base_unit) / (y / 100) : Number(ing.cost_per_base_unit);
+                      return (
+                        <span className="font-medium text-green">
+                          €{net.toFixed(4)}/{baseUnitLabel(ing.unit)}
+                          {y < 100 && <span className="block text-2xs text-gray-400 font-normal">brut €{Number(ing.cost_per_base_unit).toFixed(4)}</span>}
+                        </span>
+                      );
+                    })()}
                   </Td>
                   <Td right>
                     {ing.selling_price != null
