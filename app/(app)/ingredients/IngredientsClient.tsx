@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Search, Pencil, Trash2, Check, ChevronDown } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Check, ChevronDown, Download } from "lucide-react";
 import { PageHeader, Card, Button, Input, Select, Modal, Alert, Table, Th, Td, EmptyState } from "@/components/ui";
 import clsx from "clsx";
 
@@ -244,7 +244,15 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
         eyebrow="Catalogue"
         title="Ingrédients"
         subtitle={`${ingredients.length} ingrédient${ingredients.length !== 1 ? "s" : ""} dans votre bibliothèque`}
-        action={<Button variant="primary" onClick={openAdd}><Plus size={14} /> Ajouter un ingrédient</Button>}
+        action={
+          <div className="flex items-center gap-2">
+            <a href="/api/export/achats"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition shadow-sm">
+              <Download size={14} className="text-gray-400" /> Export achats
+            </a>
+            <Button variant="primary" onClick={openAdd}><Plus size={14} /> Ajouter un ingrédient</Button>
+          </div>
+        }
       />
 
       {/* Filters */}

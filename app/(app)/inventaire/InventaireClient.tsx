@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Warehouse, TrendingDown, TrendingUp, AlertTriangle, Check, Loader2, History, ClipboardList, Trash2 } from "lucide-react";
+import { Warehouse, TrendingDown, TrendingUp, AlertTriangle, Check, Loader2, History, ClipboardList, Trash2, Download } from "lucide-react";
 import clsx from "clsx";
 
 type Ingredient = {
@@ -217,6 +217,10 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
         </div>
         {/* KPI pills */}
         <div className="flex items-center gap-3">
+          <a href="/api/export/inventaire"
+            className="flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition shadow-sm">
+            <Download size={15} className="text-gray-400" /> Exporter Excel
+          </a>
           <div className="text-right bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2">
             <p className="text-xs text-emerald-600 font-medium">Valeur du stock</p>
             <p className="text-lg font-bold text-emerald-700">€{totalValue.toFixed(2)}</p>
