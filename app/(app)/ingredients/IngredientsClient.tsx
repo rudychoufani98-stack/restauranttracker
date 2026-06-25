@@ -30,6 +30,7 @@ type Ingredient = {
   unit: string; cost_per_base_unit: number; vat_rate: number;
   selling_price: number | null;
   pack_units?: number | null; unit_size?: number | null; yield_pct?: number | null;
+  reorder_threshold?: number | null;
   allergens?: string[] | null;
   suppliers?: { name: string } | null;
   ingredient_tags?: { tag_id: string; tags: TagInfo }[];
@@ -39,7 +40,7 @@ const EMPTY_FORM = {
   name: "", category: "Légumes/Fruits", supplier_id: "",
   pack_description: "", pack_price: "",
   pack_units: "1", unit_size: "", unit: "g",
-  yield_pct: "100", vat_rate: "0", selling_price: "",
+  yield_pct: "100", reorder_threshold: "0", vat_rate: "0", selling_price: "",
 };
 
 function toBaseUnits(qty: number, unit: string): number {
@@ -129,6 +130,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
       unit_size: String(ing.unit_size ?? ing.pack_quantity ?? ""),
       unit: ing.unit,
       yield_pct: String(ing.yield_pct ?? 100),
+      reorder_threshold: String(ing.reorder_threshold ?? 0),
       vat_rate: String(ing.vat_rate ?? 0),
       selling_price: ing.selling_price != null ? String(ing.selling_price) : "",
     });
@@ -173,6 +175,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
       pack_description: form.pack_description || null,
       pack_price: price, pack_quantity: qty, unit: form.unit,
       pack_units: pUnits, unit_size: uSize, yield_pct: yld,
+      reorder_threshold: parseFloat(form.reorder_threshold) || 0,
       cost_per_base_unit, vat_rate: vat,
       selling_price: selling,
       allergens: selectedAllergens,
@@ -374,7 +377,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 items-end">
+              <div className="grid grid-cols-3 gap-3 items-end">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1.5">Rendement matière (%)</label>
                   <div className="relative">
@@ -384,7 +387,19 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                       className="w-full pr-7 pl-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition" />
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
                   </div>
-                  <p className="text-xs text-gray-400 mt-1">part utilisable après épluchage/parage</p>
+                  <p className="text-xs text-gray-400 mt-1">part utilisable</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Seuil de réappro</label>
+                  <div className="relative">
+                    <input type="number" min="0" step="any" value={form.reorder_threshold}
+                      onChange={(e) => setForm({ ...form, reorder_threshold: e.target.value })}
+                      placeholder="0"
+                      className="w-full pr-9 pl-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition" />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">{baseUnitLabel(form.unit)}</span>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">alerte si stock ≤ ce niveau</p>
                 </div>
 
                 {previewCostPerBase !== null && (

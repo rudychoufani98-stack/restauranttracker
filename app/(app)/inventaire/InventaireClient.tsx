@@ -14,8 +14,19 @@ type Ingredient = {
   cmup: number | null;
   cost_per_base_unit: number | null;
   pack_price: number | null;
+  reorder_threshold?: number | null;
   suppliers?: { name: string } | null;
 };
+
+function baseUnitLabel(unit: string) {
+  return unit === "kg" ? "g" : unit === "l" ? "ml" : unit;
+}
+
+function needsReorder(i: { stock_qty: number | null; reorder_threshold?: number | null }) {
+  const stock = Number(i.stock_qty ?? 0);
+  const threshold = Number(i.reorder_threshold ?? 0);
+  return threshold > 0 ? stock <= threshold : stock <= 0;
+}
 
 type Movement = {
   ingredient_id: string;
@@ -85,7 +96,7 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
     }, 0);
   }, [localIngredients]);
 
-  const lowStockCount = localIngredients.filter((i) => Number(i.stock_qty ?? 0) <= 0).length;
+  const lowStockCount = localIngredients.filter(needsReorder).length;
 
   async function handleAdjust(ing: Ingredient) {
     const newQty = parseFloat(adjustQty);
@@ -229,7 +240,7 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
             <div className="text-right bg-red-50 border border-red-200 rounded-lg px-4 py-2 flex items-center gap-2">
               <AlertTriangle size={16} className="text-red-500" />
               <div>
-                <p className="text-xs text-red-600 font-medium">Stock épuisé</p>
+                <p className="text-xs text-red-600 font-medium">À commander</p>
                 <p className="text-lg font-bold text-red-600">{lowStockCount}</p>
               </div>
             </div>
@@ -302,14 +313,17 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
                   const cmup = Number(ing.cmup ?? ing.cost_per_base_unit ?? 0);
                   const value = qty * cmup;
                   const isEmpty = qty <= 0;
+                  const lowStock = !isEmpty && needsReorder(ing);
                   const isAdjusting = adjustId === ing.id;
 
                   return (
-                    <tr key={ing.id} className={clsx("hover:bg-gray-50 transition", isEmpty && "bg-red-50/30")}>
+                    <tr key={ing.id} className={clsx("hover:bg-gray-50 transition", isEmpty && "bg-red-50/30", lowStock && "bg-amber-50/40")}>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           {isEmpty && <AlertTriangle size={13} className="text-red-400 shrink-0" />}
-                          <span className={clsx("font-medium", isEmpty ? "text-red-700" : "text-gray-900")}>{ing.name}</span>
+                          {lowStock && <AlertTriangle size={13} className="text-amber-400 shrink-0" />}
+                          <span className={clsx("font-medium", isEmpty ? "text-red-700" : lowStock ? "text-amber-700" : "text-gray-900")}>{ing.name}</span>
+                          {lowStock && <span className="text-2xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium">à commander</span>}
                         </div>
                       </td>
                       <td className="px-4 py-3 text-gray-500">{ing.category || "—"}</td>

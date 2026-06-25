@@ -70,7 +70,13 @@ update ingredients set unit_size = pack_quantity
   where pack_quantity is not null and pack_units = 1 and unit_size = 1;
 
 -- ---------------------------------------------------------------------
--- 6) Nettoyage : supprime les recettes de test "Grilled Chicken"
+-- 6) Seuil de réapprovisionnement par ingrédient (en unité de base g/ml/pièce)
+--    Alerte "à commander" quand stock_qty <= reorder_threshold.
+-- ---------------------------------------------------------------------
+alter table ingredients add column if not exists reorder_threshold numeric not null default 0;
+
+-- ---------------------------------------------------------------------
+-- 7) Nettoyage : supprime les recettes de test "Grilled Chicken"
 --    (et leurs lignes via la FK on delete cascade).
 -- ---------------------------------------------------------------------
 delete from recipes where name = 'Grilled Chicken';

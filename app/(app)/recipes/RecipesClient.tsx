@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Trash2, X, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Trash2, X, ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
 import clsx from "clsx";
 
 
@@ -108,6 +108,8 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [recalcing, setRecalcing] = useState(false);
+  const [recalcMsg, setRecalcMsg] = useState<string | null>(null);
 
   const [tab, setTab] = useState<"recipe" | "prep">("recipe");
   const [name, setName] = useState("");
@@ -275,6 +277,23 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
     }).catch(() => {});
   }
 
+  async function handleRecalcAll() {
+    setRecalcing(true);
+    setRecalcMsg(null);
+    try {
+      const res = await fetch("/api/recalculate-recipes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ restaurantId }),
+      });
+      if (!res.ok) throw new Error();
+      setRecalcMsg("Coûts et allergènes recalculés. Recharge la page pour voir les valeurs à jour.");
+    } catch {
+      setRecalcMsg("Échec du recalcul. Réessaie.");
+    }
+    setRecalcing(false);
+  }
+
   async function handleDelete(id: string) {
     setDeletingId(id);
     await supabase.from("recipes").delete().eq("id", id);
@@ -293,14 +312,31 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
             {menuRecipes.length} fiche{menuRecipes.length !== 1 ? "s" : ""} technique{menuRecipes.length !== 1 ? "s" : ""} · {prepRecipes.length} mise{prepRecipes.length !== 1 ? "s" : ""} en place
           </p>
         </div>
-        <button
-          onClick={openAdd}
-          className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 transition shadow-sm"
-        >
-          <Plus size={15} />
-          {tab === "prep" ? "Nouvelle mise en place" : "Nouvelle recette"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleRecalcAll}
+            disabled={recalcing}
+            title="Recalcule les coûts et allergènes de toutes les recettes"
+            className="flex items-center gap-2 px-3.5 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition shadow-sm disabled:opacity-50"
+          >
+            <RefreshCw size={14} className={clsx("text-gray-400", recalcing && "animate-spin")} />
+            {recalcing ? "Recalcul…" : "Tout recalculer"}
+          </button>
+          <button
+            onClick={openAdd}
+            className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 transition shadow-sm"
+          >
+            <Plus size={15} />
+            {tab === "prep" ? "Nouvelle mise en place" : "Nouvelle recette"}
+          </button>
+        </div>
       </div>
+
+      {recalcMsg && (
+        <div className="mb-5 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5">
+          {recalcMsg}
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 p-1 bg-gray-100 rounded-lg w-fit">
