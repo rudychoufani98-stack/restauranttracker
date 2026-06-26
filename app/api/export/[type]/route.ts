@@ -104,7 +104,7 @@ async function exportAchats(supabase: any, restaurant: any, stamp: string, dateL
 
   const wb = newWorkbook();
   const ws = wb.addWorksheet("Achats");
-  const headers = ["Fournisseur", "Catégorie", "Ingrédient", "Conditionnement", "Prix HT", "TVA", "Prix TTC", "Coût / unité", "Rendement"];
+  const headers = ["Fournisseur", "Catégorie", "Ingrédient", "Conditionnement", "Prix HT", "TVA", "Prix TTC", "Coût / kg·L·pce", "Rendement"];
   autoWidth(ws, [22, 18, 28, 20, 12, 8, 12, 16, 11]);
 
   let r = addTitle(ws, `Liste d'achats — ${restaurant.name}`, `Mercuriale au ${dateLabel} · prix HT / TTC par conditionnement`, headers.length);
@@ -132,7 +132,10 @@ async function exportAchats(supabase: any, restaurant: any, stamp: string, dateL
       const cond = units > 1 ? `${units} × ${size} ${ing.unit}` : `${size} ${ing.unit}`;
       const gross = Number(ing.cost_per_base_unit ?? 0);
       const yld = Number(ing.yield_pct ?? 100);
-      const net = yld > 0 ? gross / (yld / 100) : gross;
+      const netBase = yld > 0 ? gross / (yld / 100) : gross;
+      // Display per kg / L / piece rather than per g / ml.
+      const isWeightVol = ["g", "kg", "ml", "l"].includes(ing.unit);
+      const net = isWeightVol ? netBase * 1000 : netBase;
 
       const row = ws.addRow([
         supplier, ing.category || "Autre", ing.name, cond,
@@ -141,7 +144,7 @@ async function exportAchats(supabase: any, restaurant: any, stamp: string, dateL
       row.getCell(5).numFmt = FMT.eur;
       row.getCell(6).numFmt = FMT.pct;
       row.getCell(7).numFmt = FMT.eur;
-      row.getCell(8).numFmt = FMT.eur4;
+      row.getCell(8).numFmt = FMT.eur;
       row.getCell(9).numFmt = FMT.pct;
       r++;
     }

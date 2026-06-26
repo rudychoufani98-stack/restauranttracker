@@ -64,6 +64,17 @@ function baseUnitLabel(unit: string) {
   return unit === "kg" ? "g" : unit === "l" ? "ml" : unit;
 }
 
+// Friendly display unit: weights → kg, volumes → L, else the unit itself.
+function displayUnitLabel(unit: string) {
+  return unit === "g" || unit === "kg" ? "kg" : unit === "ml" || unit === "l" ? "L" : unit;
+}
+
+// Convert a per-base-unit cost (€/g or €/ml) to a per-display-unit cost (€/kg or €/L).
+function perDisplayUnit(costPerBase: number, unit: string) {
+  const isWeightVol = unit === "g" || unit === "kg" || unit === "ml" || unit === "l";
+  return isWeightVol ? costPerBase * 1000 : costPerBase;
+}
+
 function priceTTC(priceHT: number, vatRate: number) {
   return priceHT * (1 + vatRate / 100);
 }
@@ -409,10 +420,10 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                       <Check size={13} className="text-green shrink-0" />
                     </div>
                     <p className="text-sm font-semibold text-green mt-0.5">
-                      €{(previewNetCost ?? 0).toFixed(4)} / {baseUnitLabel(form.unit)} réel
+                      €{perDisplayUnit(previewNetCost ?? 0, form.unit).toFixed(2)} / {displayUnitLabel(form.unit)} réel
                     </p>
                     {yieldPct < 100 && (
-                      <p className="text-2xs text-gray-400">brut €{previewCostPerBase.toFixed(4)} · rendement {yieldPct}%</p>
+                      <p className="text-2xs text-gray-400">brut €{perDisplayUnit(previewCostPerBase, form.unit).toFixed(2)}/{displayUnitLabel(form.unit)} · rendement {yieldPct}%</p>
                     )}
                   </div>
                 )}
@@ -561,7 +572,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
               <Th right>Prix HT</Th>
               <Th right>TVA</Th>
               <Th right>Prix TTC</Th>
-              <Th right>Coût / unité de base</Th>
+              <Th right>Coût / kg · L · pce</Th>
               <Th right>Prix vente</Th>
               <Th right>Marge</Th>
               <Th>Fournisseur</Th>
@@ -607,11 +618,13 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                   <Td right>
                     {(() => {
                       const y = Number(ing.yield_pct ?? 100);
-                      const net = y > 0 ? Number(ing.cost_per_base_unit) / (y / 100) : Number(ing.cost_per_base_unit);
+                      const netBase = y > 0 ? Number(ing.cost_per_base_unit) / (y / 100) : Number(ing.cost_per_base_unit);
+                      const net = perDisplayUnit(netBase, ing.unit);
+                      const gross = perDisplayUnit(Number(ing.cost_per_base_unit), ing.unit);
                       return (
                         <span className="font-medium text-green">
-                          €{net.toFixed(4)}/{baseUnitLabel(ing.unit)}
-                          {y < 100 && <span className="block text-2xs text-gray-400 font-normal">brut €{Number(ing.cost_per_base_unit).toFixed(4)}</span>}
+                          €{net.toFixed(2)}/{displayUnitLabel(ing.unit)}
+                          {y < 100 && <span className="block text-2xs text-gray-400 font-normal">brut €{gross.toFixed(2)}</span>}
                         </span>
                       );
                     })()}
