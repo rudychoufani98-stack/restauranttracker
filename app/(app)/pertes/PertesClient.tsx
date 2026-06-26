@@ -128,11 +128,12 @@ export default function PertesClient({ restaurantId, ingredients, recentLosses }
   }
 
   function fmtQty(baseQty: number, unit: string) {
-    if ((unit === "kg" || unit === "g") && baseQty >= 1000) return `${(baseQty / 1000).toFixed(2)} kg`;
-    if ((unit === "l" || unit === "ml") && baseQty >= 1000) return `${(baseQty / 1000).toFixed(2)} L`;
-    const base = unit === "kg" ? "g" : unit === "l" ? "ml" : unit;
-    return `${baseQty % 1 === 0 ? baseQty : baseQty.toFixed(1)} ${base}`;
+    const n = (x: number) => Number(x.toFixed(3)).toLocaleString("fr-FR", { maximumFractionDigits: 3 });
+    if (unit === "kg" || unit === "g") return `${n(baseQty / 1000)} kg`;
+    if (unit === "l" || unit === "ml") return `${n(baseQty / 1000)} L`;
+    return `${n(baseQty)} ${unit === "unit" ? "u" : unit}`;
   }
+  const displayUnitLabel = (u: string) => (u === "g" || u === "kg" ? "kg" : u === "ml" || u === "l" ? "L" : u === "unit" ? "u" : u);
 
   return (
     <div className="p-8 max-w-4xl mx-auto">
@@ -202,7 +203,7 @@ export default function PertesClient({ restaurantId, ingredients, recentLosses }
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">
-                  Quantité perdue {selected ? `(en ${selected.unit})` : ""}
+                  Quantité perdue {selected ? `(en ${displayUnitLabel(selected.unit)})` : ""}
                 </label>
                 <input type="number" min="0" step="any" value={qty} onChange={(e) => setQty(e.target.value)}
                   placeholder="ex. 2"

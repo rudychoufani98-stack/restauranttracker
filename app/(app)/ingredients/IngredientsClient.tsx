@@ -103,6 +103,16 @@ function perDisplayUnit(costPerBase: number, unit: string) {
   return isWeightVol ? costPerBase * 1000 : costPerBase;
 }
 
+// Quantity base (g/ml) → display (kg/L) and back.
+function qtyToDisplay(baseQty: number, unit: string) {
+  const wv = unit === "g" || unit === "kg" || unit === "ml" || unit === "l";
+  return wv ? baseQty / 1000 : baseQty;
+}
+function qtyFromDisplay(dispQty: number, unit: string) {
+  const wv = unit === "g" || unit === "kg" || unit === "ml" || unit === "l";
+  return wv ? dispQty * 1000 : dispQty;
+}
+
 function priceTTC(priceHT: number, vatRate: number) {
   return priceHT * (1 + vatRate / 100);
 }
@@ -173,7 +183,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
       unit_size: String(ing.unit_size ?? ing.pack_quantity ?? ""),
       unit: ing.unit,
       yield_pct: String(ing.yield_pct ?? 100),
-      reorder_threshold: String(ing.reorder_threshold ?? 0),
+      reorder_threshold: String(qtyToDisplay(Number(ing.reorder_threshold ?? 0), ing.unit)),
       supplier_reference: ing.supplier_reference ?? "",
       vat_rate: String(ing.vat_rate ?? 0),
       selling_price: ing.selling_price != null ? String(ing.selling_price) : "",
@@ -249,7 +259,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
       pack_description: form.pack_description || null,
       pack_price: price, pack_quantity: qty, unit: form.unit,
       pack_units: pUnits, unit_size: uSize, yield_pct: yld,
-      reorder_threshold: parseFloat(form.reorder_threshold) || 0,
+      reorder_threshold: qtyFromDisplay(parseFloat(form.reorder_threshold) || 0, form.unit),
       supplier_reference: form.supplier_reference || null,
       cost_per_base_unit, vat_rate: vat,
       selling_price: selling,
@@ -519,7 +529,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                         onChange={(e) => setForm({ ...form, reorder_threshold: e.target.value })}
                         placeholder="0"
                         className="w-full pr-9 pl-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition" />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">{baseUnitLabel(form.unit)}</span>
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">{displayUnitLabel(form.unit)}</span>
                     </div>
                     <p className="text-2xs text-gray-400 mt-1">affiche « à commander » dans l&apos;inventaire</p>
                   </div>

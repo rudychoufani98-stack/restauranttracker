@@ -47,18 +47,34 @@ const UNIT_LABELS: Record<string, string> = {
   g: "g", kg: "g", ml: "ml", l: "ml", unit: "u", piece: "u",
 };
 
+// Pretty number: up to 3 decimals, no trailing zeros.
+function fmtNum(n: number): string {
+  return Number(n.toFixed(3)).toLocaleString("fr-FR", { maximumFractionDigits: 3 });
+}
+
+// Always display stock in the imposed conditionnement (kg / L / pièce), never g/ml.
 function formatQty(qty: number | null, unit: string): string {
   if (qty === null || qty === undefined) return "—";
-  const base = UNIT_LABELS[unit] ?? unit;
-  if ((unit === "kg" || unit === "g") && qty >= 1000) return `${(qty / 1000).toFixed(2)} kg`;
-  if ((unit === "l" || unit === "ml") && qty >= 1000) return `${(qty / 1000).toFixed(2)} L`;
-  return `${qty % 1 === 0 ? qty : qty.toFixed(1)} ${base}`;
+  if (unit === "kg" || unit === "g") return `${fmtNum(qty / 1000)} kg`;
+  if (unit === "l" || unit === "ml") return `${fmtNum(qty / 1000)} L`;
+  return `${fmtNum(qty)} ${unit === "unit" ? "u" : unit}`;
+}
+
+// Friendly display unit label (kg / L / pièce).
+function displayUnitLabel(unit: string): string {
+  return unit === "g" || unit === "kg" ? "kg" : unit === "ml" || unit === "l" ? "L" : unit === "unit" ? "u" : unit;
 }
 
 // Convert a quantity in the ingredient's purchase unit to base units (g/ml/unit)
 function toBase(qty: number, unit: string): number {
   if (unit === "kg" || unit === "l") return qty * 1000;
   return qty;
+}
+
+// User always types in the display unit (kg / L / pièce) → convert to base (g/ml/pièce).
+function displayToBase(qty: number, unit: string): number {
+  const isWeightVol = unit === "g" || unit === "kg" || unit === "ml" || unit === "l";
+  return isWeightVol ? qty * 1000 : qty;
 }
 
 export default function InventaireClient({ restaurantId, ingredients, recentMovements }: Props) {
@@ -99,8 +115,9 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
   const lowStockCount = localIngredients.filter(needsReorder).length;
 
   async function handleAdjust(ing: Ingredient) {
-    const newQty = parseFloat(adjustQty);
-    if (isNaN(newQty) || newQty < 0) return;
+    const typed = parseFloat(adjustQty);
+    if (isNaN(typed) || typed < 0) return;
+    const newQty = displayToBase(typed, ing.unit); // user typed in kg/L → store base
     setSaving(true);
 
     const currentQty = Number(ing.stock_qty ?? 0);
@@ -134,7 +151,7 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
     if (raw === undefined || raw === "") return null;
     const v = parseFloat(raw);
     if (isNaN(v) || v < 0) return null;
-    return toBase(v, ing.unit);
+    return displayToBase(v, ing.unit);
   }
 
   const countSummary = useMemo(() => {
@@ -477,7 +494,7 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
                             placeholder="—"
                             className="w-24 px-2 py-1 text-sm text-right border border-gray-200 rounded-lg outline-none focus:border-emerald-400"
                           />
-                          <span className="text-xs text-gray-400 w-5">{ing.unit}</span>
+                          <span className="text-xs text-gray-400 w-6">{displayUnitLabel(ing.unit)}</span>
                         </div>
                       </td>
                       <td className="px-4 py-3 text-right">

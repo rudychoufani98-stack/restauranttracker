@@ -50,3 +50,18 @@ export function perDisplayUnit(costPerBase: number, unit: string): number {
 export function priceTTC(priceHT: number, vatRate: number): number {
   return priceHT * (1 + vatRate / 100);
 }
+
+// Quantity in base units (g/ml/piece) → display unit (kg/L/piece).
+export function qtyToDisplay(baseQty: number, unit: string): number {
+  const wv = unit === "g" || unit === "kg" || unit === "ml" || unit === "l";
+  return wv ? baseQty / 1000 : baseQty;
+}
+// Quantity typed in display unit (kg/L/piece) → base units (g/ml/piece).
+export function qtyFromDisplay(dispQty: number, unit: string): number {
+  const wv = unit === "g" || unit === "kg" || unit === "ml" || unit === "l";
+  return wv ? dispQty * 1000 : dispQty;
+}
+// Pretty number, FR locale, up to 3 decimals.
+export function fmtNum(n: number): string {
+  return Number(n.toFixed(3)).toLocaleString("fr-FR", { maximumFractionDigits: 3 });
+}

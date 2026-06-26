@@ -8,7 +8,8 @@ import { ArrowLeft, Check, Plus, Trash2, Loader2, Package, ShoppingCart, Users }
 import clsx from "clsx";
 import {
   UNITS, VAT_PRESETS, ALLERGENS, packTotal, calcCostPerBase,
-  baseUnitLabel, displayUnitLabel, perDisplayUnit, priceTTC,
+  displayUnitLabel, perDisplayUnit, priceTTC,
+  qtyToDisplay, qtyFromDisplay, fmtNum,
 } from "@/lib/ingredient-helpers";
 
 type Supplier = { id: string; name: string };
@@ -49,7 +50,7 @@ export default function ProductClient({ ingredient, suppliers, categories }: Pro
   const [packPrice, setPackPrice] = useState(String(ingredient.pack_price ?? ""));
   const [vatRate, setVatRate] = useState(String(ingredient.vat_rate ?? 0));
   const [yieldPct, setYieldPct] = useState(String(ingredient.yield_pct ?? 100));
-  const [reorder, setReorder] = useState(String(ingredient.reorder_threshold ?? 0));
+  const [reorder, setReorder] = useState(String(qtyToDisplay(Number(ingredient.reorder_threshold ?? 0), ingredient.unit || "kg")));
   const [sellingPrice, setSellingPrice] = useState(ingredient.selling_price != null ? String(ingredient.selling_price) : "");
   const [allergens, setAllergens] = useState<string[]>(ingredient.allergens ?? []);
   const [lines, setLines] = useState<SupplierLine[]>(
@@ -99,7 +100,7 @@ export default function ProductClient({ ingredient, suppliers, categories }: Pro
       supplier_reference: supplierRef || null,
       pack_price: priceHT, pack_units: pUnits, unit_size: uSize,
       pack_quantity: packQty, vat_rate: parseFloat(vatRate) || 0,
-      yield_pct: yPct, reorder_threshold: parseFloat(reorder) || 0,
+      yield_pct: yPct, reorder_threshold: qtyFromDisplay(parseFloat(reorder) || 0, unit),
       selling_price: sellingPrice !== "" ? parseFloat(sellingPrice) : null,
       cost_per_base_unit: grossPerBase,
       allergens,
@@ -176,7 +177,7 @@ export default function ProductClient({ ingredient, suppliers, categories }: Pro
         </div>
         <div className="bg-white border border-gray-100 rounded-card shadow-card p-4">
           <p className="text-2xs text-gray-400 uppercase tracking-wide">En stock</p>
-          <p className="text-lg font-bold text-gray-900">{Number(ingredient.stock_qty ?? 0).toLocaleString("fr-FR")} <span className="text-xs text-gray-400 font-normal">{baseUnitLabel(unit)}</span></p>
+          <p className="text-lg font-bold text-gray-900">{fmtNum(qtyToDisplay(Number(ingredient.stock_qty ?? 0), unit))} <span className="text-xs text-gray-400 font-normal">{displayUnitLabel(unit)}</span></p>
         </div>
         <div className="bg-white border border-gray-100 rounded-card shadow-card p-4">
           <p className="text-2xs text-gray-400 uppercase tracking-wide">Valeur stock</p>
@@ -203,7 +204,7 @@ export default function ProductClient({ ingredient, suppliers, categories }: Pro
             <label className="block text-xs font-medium text-gray-600 mb-1">Alerte stock sous</label>
             <div className="relative">
               <input type="number" min="0" step="any" value={reorder} onChange={(e) => setReorder(e.target.value)} className={clsx(inputCls, "pr-9")} />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">{baseUnitLabel(unit)}</span>
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">{displayUnitLabel(unit)}</span>
             </div>
             <p className="text-2xs text-gray-400 mt-1">« à commander » si stock ≤</p>
           </div>

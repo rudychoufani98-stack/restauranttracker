@@ -2,8 +2,12 @@ import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import {
   newWorkbook, addTitle, styleHeader, styleSubtotal, autoWidth,
-  workbookToResponse, baseUnitLabel, FMT, todayStamp,
+  workbookToResponse, FMT, todayStamp,
 } from "@/lib/excel";
+
+const displayUnit = (u: string) => (u === "g" || u === "kg" ? "kg" : u === "ml" || u === "l" ? "L" : u === "unit" ? "u" : u);
+const qtyDisplay = (base: number, u: string) => (["g", "kg", "ml", "l"].includes(u) ? base / 1000 : base);
+const perDisplayCmup = (cmupBase: number, u: string) => (["g", "kg", "ml", "l"].includes(u) ? cmupBase * 1000 : cmupBase);
 
 export const runtime = "nodejs";
 
@@ -47,7 +51,7 @@ async function exportInventaire(supabase: any, restaurant: any, stamp: string, d
 
   const wb = newWorkbook();
   const ws = wb.addWorksheet("Inventaire");
-  const headers = ["Catégorie", "Ingrédient", "Fournisseur", "Stock", "Unité", "CMUP", "Valeur"];
+  const headers = ["Catégorie", "Ingrédient", "Fournisseur", "Stock", "Unité", "CMUP / unité", "Valeur"];
   autoWidth(ws, [20, 30, 22, 12, 8, 14, 16]);
 
   let r = addTitle(ws, `Inventaire valorisé — ${restaurant.name}`, `Au ${dateLabel} · valorisé au CMUP`, headers.length);
@@ -73,10 +77,10 @@ async function exportInventaire(supabase: any, restaurant: any, stamp: string, d
       catTotal += value;
       const row = ws.addRow([
         category, ing.name, ing.suppliers?.name ?? "—",
-        stock, baseUnitLabel(ing.unit), cmup, value,
+        qtyDisplay(stock, ing.unit), displayUnit(ing.unit), perDisplayCmup(cmup, ing.unit), value,
       ]);
       row.getCell(4).numFmt = FMT.qty;
-      row.getCell(6).numFmt = FMT.eur4;
+      row.getCell(6).numFmt = FMT.eur;
       row.getCell(7).numFmt = FMT.eur;
       r++;
     }
