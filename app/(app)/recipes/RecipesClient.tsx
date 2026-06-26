@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Trash2, X, ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
+import { Plus, Trash2, X, ChevronDown, ChevronUp, RefreshCw, Copy } from "lucide-react";
 import clsx from "clsx";
 
 
@@ -108,6 +108,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [recalcing, setRecalcing] = useState(false);
   const [recalcMsg, setRecalcMsg] = useState<string | null>(null);
 
@@ -292,6 +293,55 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
       setRecalcMsg("Échec du recalcul. Réessaie.");
     }
     setRecalcing(false);
+  }
+
+  async function handleDuplicate(recipe: Recipe) {
+    setDuplicatingId(recipe.id);
+    // 1) Insert the copied recipe
+    const { data: created, error: err } = await supabase
+      .from("recipes")
+      .insert({
+        restaurant_id: restaurantId,
+        name: `${recipe.name} (copie)`,
+        category: recipe.category,
+        is_prep: recipe.is_prep,
+        yield_portions: recipe.yield_portions,
+        yield_unit: recipe.yield_unit,
+        total_cost: recipe.total_cost,
+        menu_price: null,
+      })
+      .select()
+      .single();
+    if (err || !created) { setDuplicatingId(null); return; }
+
+    // 2) Copy the lines
+    const linePayload = recipe.recipe_lines
+      .filter((l) => l.ingredient_id || l.sub_recipe_id)
+      .map((l) => ({
+        recipe_id: created.id,
+        ingredient_id: l.ingredient_id ?? null,
+        sub_recipe_id: l.sub_recipe_id ?? null,
+        quantity: l.quantity,
+        unit: l.unit,
+      }));
+    if (linePayload.length > 0) {
+      await supabase.from("recipe_lines").insert(linePayload);
+    }
+
+    // 3) Update local state
+    const builtRecipe: Recipe = {
+      ...recipe,
+      id: created.id,
+      name: `${recipe.name} (copie)`,
+      menu_price: null,
+      allergens: recipe.allergens ?? [],
+    };
+    setRecipes((p) => [...p, builtRecipe].sort((a, b) => a.name.localeCompare(b.name)));
+    setAllRecipes((p) => [...p, builtRecipe].sort((a, b) => a.name.localeCompare(b.name)));
+    setDuplicatingId(null);
+
+    // 4) Open it for editing right away
+    openEdit(builtRecipe);
   }
 
   async function handleDelete(id: string) {
@@ -567,6 +617,12 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                     <button onClick={(e) => { e.stopPropagation(); openEdit(recipe); }}
                       className="px-3 py-1.5 text-xs text-gray-600 border border-[#E5E7EB] rounded-lg hover:bg-gray-100 transition">
                       Modifier
+                    </button>
+                    <button onClick={(e) => { e.stopPropagation(); handleDuplicate(recipe); }}
+                      disabled={duplicatingId === recipe.id}
+                      title="Dupliquer"
+                      className="p-1.5 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition disabled:opacity-50">
+                      <Copy size={14} />
                     </button>
                     <button onClick={(e) => { e.stopPropagation(); handleDelete(recipe.id); }}
                       disabled={deletingId === recipe.id}
