@@ -102,6 +102,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [showTagDropdown, setShowTagDropdown] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Live calculations
   const priceHT = parseFloat(form.pack_price) || 0;
@@ -128,6 +129,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
     setForm({ ...EMPTY_FORM, category: CATEGORIES[0] ?? EMPTY_FORM.category });
     setSelectedTagIds([]);
     setSelectedAllergens([]);
+    setShowAdvanced(false);
     setError(null);
     setShowForm(true);
   }
@@ -147,6 +149,13 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
     });
     setSelectedTagIds((ing.ingredient_tags ?? []).map((it) => it.tag_id));
     setSelectedAllergens(ing.allergens ?? []);
+    // Open advanced section if any advanced field is set
+    setShowAdvanced(
+      Number(ing.yield_pct ?? 100) < 100 ||
+      Number(ing.reorder_threshold ?? 0) > 0 ||
+      ing.selling_price != null ||
+      (ing.ingredient_tags ?? []).length > 0
+    );
     setError(null);
     setShowForm(true);
   }
@@ -326,12 +335,47 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                 placeholder="ex. sac 5kg, carton de 12" className="col-span-2" />
             </div>
 
-            {/* Price + VAT section */}
-            <div className="bg-gray-50 rounded-lg p-4 space-y-3 border border-gray-200">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Prix</p>
-              <div className="grid grid-cols-3 gap-3">
+            {/* Comment tu l'achètes — bloc unique et simple */}
+            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200 space-y-3">
+              <div>
+                <p className="text-sm font-semibold text-gray-800">Comment tu l&apos;achètes</p>
+                <p className="text-xs text-gray-500 mt-0.5">Décris un colis tel qu&apos;il arrive de ton fournisseur, et son prix.</p>
+              </div>
+
+              {/* Le colis, écrit comme une phrase */}
+              <div className="flex flex-wrap items-end gap-2">
+                <span className="text-sm text-gray-500 pb-2">1 colis =</span>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Prix d&apos;achat HT (€)</label>
+                  <label className="block text-2xs text-gray-400 mb-1">Nombre d&apos;unités</label>
+                  <input type="number" min="1" step="any" value={form.pack_units}
+                    onChange={(e) => setForm({ ...form, pack_units: e.target.value })}
+                    placeholder="6"
+                    className="w-24 px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition" />
+                </div>
+                <span className="text-gray-400 pb-2.5 text-base">×</span>
+                <div>
+                  <label className="block text-2xs text-gray-400 mb-1">Contenance</label>
+                  <input type="number" min="0" step="any" value={form.unit_size}
+                    onChange={(e) => setForm({ ...form, unit_size: e.target.value })}
+                    placeholder="0,75"
+                    className="w-24 px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition" />
+                </div>
+                <div>
+                  <label className="block text-2xs text-gray-400 mb-1">en</label>
+                  <select value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}
+                    className="px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green transition">
+                    {UNITS.map((u) => <option key={u}>{u}</option>)}
+                  </select>
+                </div>
+              </div>
+              <p className="text-xs text-gray-400">
+                Ex. : 6 bouteilles de 0,75 L → <b>6</b> × <b>0,75</b> <b>l</b>. &nbsp;·&nbsp; Un sac de 5 kg → <b>1</b> × <b>5</b> <b>kg</b>.
+              </p>
+
+              {/* Prix */}
+              <div className="grid grid-cols-3 gap-3 pt-1">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Prix payé (HT)</label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">€</span>
                     <input type="number" min="0" step="0.01" value={form.pack_price}
@@ -339,8 +383,8 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                       placeholder="0.00"
                       className="w-full pl-6 pr-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition" />
                   </div>
+                  <p className="text-2xs text-gray-400 mt-1">pour 1 colis entier</p>
                 </div>
-
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1.5">TVA</label>
                   <select value={form.vat_rate} onChange={(e) => setForm({ ...form, vat_rate: e.target.value })}
@@ -348,86 +392,59 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                     {VAT_PRESETS.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
                   </select>
                 </div>
-
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Prix TTC (€)</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Prix TTC</label>
                   <div className="px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg text-gray-700 font-medium">
                     €{priceTTCVal.toFixed(2)}
                   </div>
-                  <p className="text-xs text-gray-400 mt-1">Calculé automatiquement</p>
+                  <p className="text-2xs text-gray-400 mt-1">calculé tout seul</p>
                 </div>
               </div>
 
-            </div>
+              {/* Récap en français clair */}
+              {previewCostPerBase !== null && (
+                <div className="flex items-start gap-2 px-3 py-2.5 bg-emerald-50 border border-emerald-200 rounded-lg">
+                  <Check size={15} className="text-emerald-600 shrink-0 mt-0.5" />
+                  <p className="text-sm text-emerald-800 leading-snug">
+                    1 colis = <b>{packQty || 0} {form.unit}</b> · ça te revient à{" "}
+                    <b>€{perDisplayUnit(previewNetCost ?? 0, form.unit).toFixed(2)}/{displayUnitLabel(form.unit)}</b>
+                    {yieldPct < 100 && <span className="text-emerald-600"> (perte incluse)</span>}
+                  </p>
+                </div>
+              )}
 
-            {/* Conditionnement d'achat (façon Yokitup) */}
-            <div className="bg-gray-50 rounded-lg p-4 space-y-3 border border-gray-200">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Conditionnement d&apos;achat</p>
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Unités / colis</label>
-                  <input type="number" min="1" step="any" value={form.pack_units}
-                    onChange={(e) => setForm({ ...form, pack_units: e.target.value })}
-                    placeholder="ex. 6"
-                    className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition" />
-                  <p className="text-xs text-gray-400 mt-1">bouteilles, œufs… (1 si vrac)</p>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Contenance / unité</label>
-                  <input type="number" min="0" step="any" value={form.unit_size}
-                    onChange={(e) => setForm({ ...form, unit_size: e.target.value })}
-                    placeholder="ex. 0.75"
-                    className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Unité d&apos;usage</label>
-                  <select value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}
-                    className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green transition">
-                    {UNITS.map((u) => <option key={u}>{u}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3 items-end">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Rendement matière (%)</label>
-                  <div className="relative">
-                    <input type="number" min="1" max="100" step="any" value={form.yield_pct}
-                      onChange={(e) => setForm({ ...form, yield_pct: e.target.value })}
-                      placeholder="100"
-                      className="w-full pr-7 pl-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition" />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
-                  </div>
-                  <p className="text-xs text-gray-400 mt-1">part utilisable</p>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Seuil de réappro</label>
-                  <div className="relative">
-                    <input type="number" min="0" step="any" value={form.reorder_threshold}
-                      onChange={(e) => setForm({ ...form, reorder_threshold: e.target.value })}
-                      placeholder="0"
-                      className="w-full pr-9 pl-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition" />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">{baseUnitLabel(form.unit)}</span>
-                  </div>
-                  <p className="text-xs text-gray-400 mt-1">alerte si stock ≤ ce niveau</p>
-                </div>
-
-                {previewCostPerBase !== null && (
-                  <div className="px-3 py-2.5 bg-green/5 border border-green/20 rounded-lg">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs text-gray-400">Colis = {packQty || 0} {form.unit}</p>
-                      <Check size={13} className="text-green shrink-0" />
+              {/* Options avancées */}
+              <button type="button" onClick={() => setShowAdvanced((v) => !v)}
+                className="text-xs font-medium text-gray-500 hover:text-gray-700 flex items-center gap-1 pt-1">
+                <ChevronDown size={13} className={clsx("transition", showAdvanced && "rotate-180")} />
+                Options avancées — perte matière & alerte stock
+              </button>
+              {showAdvanced && (
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Part réellement utilisable</label>
+                    <div className="relative">
+                      <input type="number" min="1" max="100" step="any" value={form.yield_pct}
+                        onChange={(e) => setForm({ ...form, yield_pct: e.target.value })}
+                        placeholder="100"
+                        className="w-full pr-7 pl-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition" />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
                     </div>
-                    <p className="text-sm font-semibold text-green mt-0.5">
-                      €{perDisplayUnit(previewNetCost ?? 0, form.unit).toFixed(2)} / {displayUnitLabel(form.unit)} réel
-                    </p>
-                    {yieldPct < 100 && (
-                      <p className="text-2xs text-gray-400">brut €{perDisplayUnit(previewCostPerBase, form.unit).toFixed(2)}/{displayUnitLabel(form.unit)} · rendement {yieldPct}%</p>
-                    )}
+                    <p className="text-2xs text-gray-400 mt-1">après épluchage/parage. 100 = tout est utilisé</p>
                   </div>
-                )}
-              </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1.5">M&apos;alerter si le stock descend sous</label>
+                    <div className="relative">
+                      <input type="number" min="0" step="any" value={form.reorder_threshold}
+                        onChange={(e) => setForm({ ...form, reorder_threshold: e.target.value })}
+                        placeholder="0"
+                        className="w-full pr-9 pl-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition" />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">{baseUnitLabel(form.unit)}</span>
+                    </div>
+                    <p className="text-2xs text-gray-400 mt-1">affiche « à commander » dans l&apos;inventaire</p>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Prix de vente (produit revendu directement) */}
