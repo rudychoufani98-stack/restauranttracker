@@ -2,8 +2,24 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Trash2, X, Send, Download, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Trash2, X, Send, Download, ChevronDown, ChevronUp, Zap } from "lucide-react";
 import clsx from "clsx";
+
+const toBase = (qty: number, unit: string) => (unit === "kg" || unit === "l" ? qty * 1000 : qty);
+function needsReorder(i: { stock_qty?: number | null; reorder_threshold?: number | null }) {
+  const stock = Number(i.stock_qty ?? 0);
+  const thr = Number(i.reorder_threshold ?? 0);
+  return thr > 0 ? stock <= thr : stock <= 0;
+}
+// Suggest number of packs (colis) to bring stock back to ~2× the threshold.
+function suggestColis(i: { stock_qty?: number | null; reorder_threshold?: number | null; pack_quantity?: number | null; unit: string }) {
+  const stock = Number(i.stock_qty ?? 0);
+  const thr = Number(i.reorder_threshold ?? 0);
+  const packBase = toBase(Number(i.pack_quantity ?? 1) || 1, i.unit);
+  if (packBase <= 0) return 1;
+  const need = Math.max(thr * 2 - stock, thr - stock, packBase);
+  return Math.max(1, Math.ceil(need / packBase));
+}
 
 const STATUS_COLORS: Record<string, string> = {
   Draft: "bg-gray-100 text-gray-600",
@@ -14,7 +30,11 @@ const STATUS_COLORS: Record<string, string> = {
   Cancelled: "bg-red-50 text-red-500",
 };
 
-type Ingredient = { id: string; name: string; unit: string; pack_price: number; pack_quantity: number; cost_per_base_unit: number };
+type Ingredient = {
+  id: string; name: string; unit: string; pack_price: number; pack_quantity: number; cost_per_base_unit: number;
+  stock_qty?: number | null; reorder_threshold?: number | null; supplier_id?: string | null;
+  supplier_reference?: string | null; suppliers?: { name: string } | null;
+};
 type Supplier = { id: string; name: string; email: string | null };
 type POLine = { id?: string; ingredient_id: string | null; quantity: number; expected_price: number | null; ingredients?: { name: string; unit: string } | null };
 type PO = { id: string; supplier_id: string | null; status: string; expected_total: number | null; created_at: string; sent_at: string | null; suppliers?: { name: string } | null; purchase_order_lines: POLine[] };
@@ -40,6 +60,45 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
 
   const [supplierId, setSupplierId] = useState("");
   const [lines, setLines] = useState<DraftLine[]>([{ ingredient_id: "", quantity: "", expected_price: "" }]);
+  const [showRestock, setShowRestock] = useState(false);
+  const [restocking, setRestocking] = useState(false);
+
+  // Group low-stock ingredients by supplier for the auto-restock preview
+  const restockGroups = (() => {
+    const low = ingredients.filter((i) => needsReorder(i) && i.supplier_id);
+    const map = new Map<string, { supplierName: string; items: Ingredient[] }>();
+    for (const ing of low) {
+      const sid = ing.supplier_id!;
+      if (!map.has(sid)) map.set(sid, { supplierName: ing.suppliers?.name ?? "Fournisseur", items: [] });
+      map.get(sid)!.items.push(ing);
+    }
+    return Array.from(map.entries()).map(([supplier_id, g]) => ({ supplier_id, ...g }));
+  })();
+  const lowNoSupplier = ingredients.filter((i) => needsReorder(i) && !i.supplier_id);
+
+  async function handleRestock() {
+    setRestocking(true);
+    for (const group of restockGroups) {
+      const poLines = group.items.map((ing) => {
+        const qty = suggestColis(ing);
+        return { ingredient_id: ing.id, quantity: qty, expected_price: Number(ing.pack_price) || 0 };
+      });
+      const expected = poLines.reduce((s, l) => s + l.quantity * l.expected_price, 0);
+      const { data: po, error: poErr } = await supabase.from("purchase_orders").insert({
+        restaurant_id: restaurantId, supplier_id: group.supplier_id, status: "Draft", expected_total: expected,
+      }).select().single();
+      if (poErr || !po) continue;
+      await supabase.from("purchase_order_lines").insert(poLines.map((l) => ({ po_id: po.id, ...l })));
+    }
+    const { data: updated } = await supabase
+      .from("purchase_orders")
+      .select("*, suppliers(name), purchase_order_lines(*, ingredients(name, unit))")
+      .eq("restaurant_id", restaurantId)
+      .order("created_at", { ascending: false });
+    setOrders(updated ?? []);
+    setRestocking(false);
+    setShowRestock(false);
+  }
 
   function addLine() { setLines((p) => [...p, { ingredient_id: "", quantity: "", expected_price: "" }]); }
   function removeLine(i: number) { setLines((p) => p.filter((_, idx) => idx !== i)); }
@@ -149,11 +208,82 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
           <h1 className="text-2xl font-bold text-gray-900">Bons de commande</h1>
           <p className="text-sm text-gray-500 mt-1">{orders.length} commande{orders.length !== 1 ? "s" : ""}</p>
         </div>
-        <button onClick={() => { setShowForm(true); setError(null); }}
-          className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 transition shadow-sm">
-          <Plus size={15} /> Nouvelle commande
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowRestock(true)}
+            className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition">
+            <Zap size={15} /> Réapprovisionner
+            {restockGroups.length > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-white text-2xs">{restockGroups.reduce((s, g) => s + g.items.length, 0)}</span>
+            )}
+          </button>
+          <button onClick={() => { setShowForm(true); setError(null); }}
+            className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 transition shadow-sm">
+            <Plus size={15} /> Nouvelle commande
+          </button>
+        </div>
       </div>
+
+      {/* Restock preview modal */}
+      {showRestock && (
+        <div className="fixed inset-0 bg-black/30 flex items-start justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-card border border-gray-200 w-full max-w-2xl shadow-xl my-8">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <h2 className="text-base font-semibold text-gray-900">Réapprovisionnement automatique</h2>
+              <button onClick={() => setShowRestock(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
+              {restockGroups.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-3xl mb-2">✅</p>
+                  <p className="text-sm text-gray-600">Aucun produit sous son seuil de réappro avec un fournisseur défini.</p>
+                </div>
+              ) : (
+                <>
+                  <p className="text-sm text-gray-500">
+                    {restockGroups.reduce((s, g) => s + g.items.length, 0)} produit(s) à commander chez {restockGroups.length} fournisseur(s). Quantités suggérées (en colis) — ajustables après création.
+                  </p>
+                  {restockGroups.map((g) => (
+                    <div key={g.supplier_id} className="border border-gray-200 rounded-lg overflow-hidden">
+                      <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+                        <span className="text-sm font-semibold text-gray-800">{g.supplierName}</span>
+                        <span className="text-xs text-gray-400">{g.items.length} ligne(s)</span>
+                      </div>
+                      <table className="w-full text-sm">
+                        <tbody className="divide-y divide-gray-50">
+                          {g.items.map((ing) => {
+                            const colis = suggestColis(ing);
+                            return (
+                              <tr key={ing.id}>
+                                <td className="px-4 py-2 text-gray-700">{ing.name}
+                                  {ing.supplier_reference && <span className="text-2xs text-gray-400 ml-1.5">réf. {ing.supplier_reference}</span>}
+                                </td>
+                                <td className="px-4 py-2 text-right text-gray-500">{colis} colis</td>
+                                <td className="px-4 py-2 text-right font-medium text-gray-900">€{(colis * Number(ing.pack_price || 0)).toFixed(2)}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
+                  {lowNoSupplier.length > 0 && (
+                    <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                      ⚠️ {lowNoSupplier.length} produit(s) sous le seuil sans fournisseur défini ({lowNoSupplier.map((i) => i.name).join(", ")}) — assigne-leur un fournisseur pour les inclure.
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+            <div className="flex gap-2 px-5 py-4 border-t border-gray-100">
+              <button onClick={() => setShowRestock(false)} className="flex-1 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition">Annuler</button>
+              <button onClick={handleRestock} disabled={restocking || restockGroups.length === 0}
+                className="flex-1 py-2 text-sm text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition">
+                {restocking ? "Création…" : `Créer ${restockGroups.length} bon(s) de commande`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* New PO form */}
       {showForm && (

@@ -18,7 +18,7 @@ export default async function OrdersPage() {
       .eq("restaurant_id", restaurant!.id)
       .order("created_at", { ascending: false }),
     supabase.from("suppliers").select("id, name, email").eq("restaurant_id", restaurant!.id).order("name"),
-    supabase.from("ingredients").select("id, name, unit, pack_price, pack_quantity, cost_per_base_unit").eq("restaurant_id", restaurant!.id).order("name"),
+    supabase.from("ingredients").select("id, name, unit, pack_price, pack_quantity, cost_per_base_unit, stock_qty, reorder_threshold, supplier_id, supplier_reference, suppliers(name)").eq("restaurant_id", restaurant!.id).order("name"),
   ]);
 
   return (
@@ -27,7 +27,7 @@ export default async function OrdersPage() {
       restaurantName={restaurant!.name}
       initialOrders={orders ?? []}
       suppliers={suppliers ?? []}
-      ingredients={ingredients ?? []}
+      ingredients={(ingredients ?? []) as any}
     />
   );
 }
