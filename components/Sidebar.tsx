@@ -24,32 +24,32 @@ const NAV_GROUPS = [
   {
     label: null,
     items: [
-      { href: "/dashboard", label: "Tableau de bord", icon: LayoutDashboard },
+      { href: "/dashboard", label: "Accueil", icon: LayoutDashboard },
     ],
   },
   {
-    label: "Catalogue",
+    label: "Ma cuisine",
     items: [
       { href: "/ingredients", label: "Ingrédients", icon: Package },
       { href: "/recipes",     label: "Recettes",    icon: ChefHat },
-      { href: "/menu",        label: "Menu",        icon: UtensilsCrossed },
+      { href: "/menu",        label: "Ma carte",    icon: UtensilsCrossed },
       { href: "/categories",  label: "Catégories",  icon: Tags },
     ],
   },
   {
-    label: "Opérations",
+    label: "Achats & stock",
     items: [
-      { href: "/caisse",      label: "Caisse",       icon: CreditCard },
       { href: "/orders",      label: "Commandes",    icon: ShoppingCart },
       { href: "/suppliers",   label: "Fournisseurs", icon: Truck },
-      { href: "/inventaire",  label: "Inventaire",   icon: Warehouse },
-      { href: "/pertes",      label: "Pertes",       icon: Trash2 },
+      { href: "/inventaire",  label: "Stock",        icon: Warehouse },
     ],
   },
   {
-    label: "Analyse",
+    label: "Mon activité",
     items: [
-      { href: "/rentabilite", label: "Rentabilité", icon: TrendingUp },
+      { href: "/caisse",      label: "Caisse",   icon: CreditCard },
+      { href: "/rentabilite", label: "Ventes & marges", icon: TrendingUp },
+      { href: "/pertes",      label: "Pertes",   icon: Trash2 },
     ],
   },
 ];

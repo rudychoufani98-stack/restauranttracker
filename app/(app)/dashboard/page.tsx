@@ -69,54 +69,83 @@ export default async function DashboardPage() {
   const lossesValue = (losses ?? []).reduce((s, m: any) => s + Number(m.qty) * Number(m.unit_cost ?? 0), 0);
 
   const cuisineFr = CUISINE_FR[restaurant.cuisine_type] ?? restaurant.cuisine_type;
-  const fcColorClass = avgFoodCost === null ? "text-white"
-    : avgFoodCost <= target ? "text-emerald-400"
-    : avgFoodCost <= target * 1.2 ? "text-amber-400" : "text-red-400";
+  const fcColorLight = avgFoodCost === null ? "text-gray-300"
+    : avgFoodCost <= target ? "text-emerald-600"
+    : avgFoodCost <= target * 1.2 ? "text-amber-600" : "text-red-600";
   const statusFc = (fc: number) => fc <= target ? "text-emerald-600" : fc <= target * 1.2 ? "text-amber-600" : "text-red-600";
 
+  // ── Guide "Par où commencer" ──
+  const steps = [
+    { done: (ingredientCount ?? 0) > 0, label: "Ajoute tes ingrédients", desc: "Tes produits et leurs prix d'achat", href: "/ingredients", cta: "Ajouter" },
+    { done: allRecipes.length > 0,      label: "Crée tes recettes",      desc: "Compose tes plats avec les ingrédients", href: "/recipes", cta: "Créer" },
+    { done: priced.length > 0,          label: "Mets tes prix de vente", desc: "Sur ta carte, pour voir tes marges", href: "/menu", cta: "Définir" },
+  ];
+  const setupDone = steps.filter((s) => s.done).length;
+  const setupComplete = setupDone === steps.length;
+  const nextStep = steps.find((s) => !s.done);
+
   return (
-    <div className="min-h-screen">
-      {/* Hero */}
-      <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-emerald-900 px-8 pt-8 pb-12">
-        <div className="max-w-5xl mx-auto flex items-end justify-between">
+    <div className="min-h-screen bg-[#F7F8FA]">
+      {/* Clean light header */}
+      <div className="px-8 pt-8 pb-5 max-w-5xl mx-auto">
+        <div className="flex items-end justify-between flex-wrap gap-4">
           <div>
-            <p className="text-emerald-400 text-xs font-semibold uppercase tracking-widest mb-1">Tableau de bord</p>
-            <h1 className="text-3xl font-bold text-white tracking-tight">{restaurant.name}</h1>
+            <p className="text-emerald-600 text-xs font-semibold uppercase tracking-widest mb-1">Accueil</p>
+            <h1 className="text-3xl font-bold text-gray-900 tracking-tight">{restaurant.name}</h1>
             <div className="flex items-center gap-2 mt-2.5">
-              <span className="inline-flex px-2.5 py-1 rounded-full bg-white/10 text-white/70 text-xs font-medium">{cuisineFr}</span>
-              <span className="inline-flex px-2.5 py-1 rounded-full bg-white/10 text-white/70 text-xs font-medium">Objectif {target}%</span>
+              <span className="inline-flex px-2.5 py-1 rounded-full bg-gray-100 text-gray-600 text-xs font-medium">{cuisineFr}</span>
+              <span className="inline-flex px-2.5 py-1 rounded-full bg-gray-100 text-gray-600 text-xs font-medium">Objectif food cost {target}%</span>
             </div>
           </div>
-          <div className="text-right hidden md:block">
-            <p className="text-white/50 text-xs font-medium uppercase tracking-wide mb-1">Food cost moyen</p>
-            <p className={`text-5xl font-bold tracking-tight ${fcColorClass}`}>
-              {avgFoodCost !== null ? `${avgFoodCost.toFixed(1)}%` : "—"}
-            </p>
-            {avgFoodCost !== null && (
-              <p className="text-white/40 text-xs mt-1">
-                {avgFoodCost <= target ? "dans l'objectif" : `+${(avgFoodCost - target).toFixed(1)} pts vs objectif`}
+          {!isEmpty && (
+            <div className="text-right">
+              <p className="text-gray-400 text-xs font-medium uppercase tracking-wide mb-1">Food cost moyen</p>
+              <p className={`text-4xl font-bold tracking-tight ${fcColorLight}`}>
+                {avgFoodCost !== null ? `${avgFoodCost.toFixed(1)}%` : "—"}
               </p>
-            )}
-          </div>
+              {avgFoodCost !== null && (
+                <p className="text-gray-400 text-xs mt-1">
+                  {avgFoodCost <= target ? "dans l'objectif 👍" : `+${(avgFoodCost - target).toFixed(1)} pts vs objectif`}
+                </p>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="px-8 -mt-6 max-w-5xl mx-auto pb-12">
-        {isEmpty ? (
-          <Card>
-            <EmptyState
-              icon="👋"
-              title="Bienvenue sur votre tableau de bord"
-              description="Commencez par ajouter vos ingrédients, puis créez vos recettes pour connaître le vrai coût de chaque plat."
-              action={
-                <div className="flex gap-3 justify-center">
-                  <Link href="/suppliers"><Button variant="secondary">Ajouter un fournisseur</Button></Link>
-                  <Link href="/ingredients"><Button variant="primary">Ajouter des ingrédients →</Button></Link>
+      <div className="px-8 max-w-5xl mx-auto pb-12">
+        {/* Guide "Par où commencer" — tant que la config n'est pas finie */}
+        {!setupComplete && (
+          <div className="bg-white border border-gray-100 rounded-card shadow-card p-5 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-base font-bold text-gray-900">Par où commencer ?</h2>
+                <p className="text-sm text-gray-500 mt-0.5">3 étapes simples pour connaître tes marges.</p>
+              </div>
+              <span className="text-sm font-semibold text-emerald-600">{setupDone}/3</span>
+            </div>
+            <div className="space-y-2">
+              {steps.map((s, i) => (
+                <div key={s.href} className={`flex items-center gap-3 p-3 rounded-lg border ${s.done ? "border-emerald-100 bg-emerald-50/40" : "border-gray-100 bg-gray-50/50"}`}>
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-semibold shrink-0 ${s.done ? "bg-emerald-500 text-white" : "bg-white border border-gray-200 text-gray-400"}`}>
+                    {s.done ? "✓" : i + 1}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-medium ${s.done ? "text-gray-400 line-through" : "text-gray-900"}`}>{s.label}</p>
+                    {!s.done && <p className="text-xs text-gray-500">{s.desc}</p>}
+                  </div>
+                  {!s.done && (
+                    <Link href={s.href} className={`px-3 py-1.5 text-xs font-semibold rounded-lg shrink-0 ${nextStep?.href === s.href ? "bg-emerald-600 text-white hover:bg-emerald-700" : "text-emerald-600 hover:bg-emerald-50"}`}>
+                      {s.cta} →
+                    </Link>
+                  )}
                 </div>
-              }
-            />
-          </Card>
-        ) : (
+              ))}
+            </div>
+          </div>
+        )}
+
+        {isEmpty ? null : (
           <>
             {/* KPI row */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
