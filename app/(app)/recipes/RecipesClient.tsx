@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Plus, Trash2, X, ChevronDown, ChevronUp, RefreshCw, Copy } from "lucide-react";
 import clsx from "clsx";
@@ -614,10 +615,10 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
 
                   </div>
                   <div className="flex items-center gap-1">
-                    <button onClick={(e) => { e.stopPropagation(); openEdit(recipe); }}
+                    <Link href={`/recipes/${recipe.id}`} onClick={(e) => e.stopPropagation()}
                       className="px-3 py-1.5 text-xs text-gray-600 border border-[#E5E7EB] rounded-lg hover:bg-gray-100 transition">
-                      Modifier
-                    </button>
+                      Ouvrir
+                    </Link>
                     <button onClick={(e) => { e.stopPropagation(); handleDuplicate(recipe); }}
                       disabled={duplicatingId === recipe.id}
                       title="Dupliquer"
