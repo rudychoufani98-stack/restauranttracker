@@ -76,7 +76,40 @@ update ingredients set unit_size = pack_quantity
 alter table ingredients add column if not exists reorder_threshold numeric not null default 0;
 
 -- ---------------------------------------------------------------------
--- 7) Nettoyage : supprime les recettes de test "Grilled Chicken"
+-- 7) Multi-fournisseurs par ingrédient (façon Yokitup)
+--    Un même ingrédient peut être acheté chez plusieurs fournisseurs,
+--    chacun avec son prix, son conditionnement et sa référence article
+--    (le code à mettre sur le bon de commande). Le coût des recettes
+--    suit le CMUP réel ; ces références servent au sourcing + aux BDC.
+-- ---------------------------------------------------------------------
+-- Référence du fournisseur "principal" (déjà sur l'ingrédient via supplier_id)
+alter table ingredients add column if not exists supplier_reference text;
+
+create table if not exists ingredient_suppliers (
+  id uuid primary key default gen_random_uuid(),
+  ingredient_id uuid not null references ingredients(id) on delete cascade,
+  supplier_id uuid references suppliers(id) on delete set null,
+  supplier_reference text,
+  pack_units numeric not null default 1,
+  unit_size  numeric not null default 1,
+  unit text not null default 'kg',
+  pack_price numeric not null default 0,
+  vat_rate numeric not null default 0,
+  is_preferred boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_ingredient_suppliers_ingredient on ingredient_suppliers(ingredient_id);
+
+alter table ingredient_suppliers enable row level security;
+drop policy if exists rls_ingredient_suppliers on ingredient_suppliers;
+create policy rls_ingredient_suppliers on ingredient_suppliers
+  for all
+  using (exists (select 1 from ingredients i where i.id = ingredient_suppliers.ingredient_id and owns_restaurant(i.restaurant_id)))
+  with check (exists (select 1 from ingredients i where i.id = ingredient_suppliers.ingredient_id and owns_restaurant(i.restaurant_id)));
+
+-- ---------------------------------------------------------------------
+-- 8) Nettoyage : supprime les recettes de test "Grilled Chicken"
 --    (et leurs lignes via la FK on delete cascade).
 -- ---------------------------------------------------------------------
 delete from recipes where name = 'Grilled Chicken';

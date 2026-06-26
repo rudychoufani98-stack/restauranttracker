@@ -31,15 +31,42 @@ type Ingredient = {
   selling_price: number | null;
   pack_units?: number | null; unit_size?: number | null; yield_pct?: number | null;
   reorder_threshold?: number | null;
+  supplier_reference?: string | null;
   allergens?: string[] | null;
   suppliers?: { name: string } | null;
   ingredient_tags?: { tag_id: string; tags: TagInfo }[];
+  ingredient_suppliers?: SupplierRef[];
+};
+
+type SupplierRef = {
+  id?: string;
+  supplier_id: string | null;
+  supplier_reference: string | null;
+  pack_units: number | null;
+  unit_size: number | null;
+  unit: string;
+  pack_price: number | null;
+  vat_rate: number | null;
+  is_preferred?: boolean;
+  suppliers?: { name: string } | null;
+};
+
+// Editable form row for an alternate supplier
+type SupplierLine = {
+  id?: string;
+  supplier_id: string;
+  supplier_reference: string;
+  pack_units: string;
+  unit_size: string;
+  unit: string;
+  pack_price: string;
+  vat_rate: string;
 };
 
 const EMPTY_FORM = {
   name: "", category: "Légumes/Fruits", supplier_id: "",
   pack_description: "", pack_price: "",
-  pack_units: "1", unit_size: "", unit: "g",
+  pack_units: "1", unit_size: "", unit: "g", supplier_reference: "",
   yield_pct: "100", reorder_threshold: "0", vat_rate: "0", selling_price: "",
 };
 
@@ -98,6 +125,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [selectedAllergens, setSelectedAllergens] = useState<string[]>([]);
+  const [supplierLines, setSupplierLines] = useState<SupplierLine[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -129,6 +157,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
     setForm({ ...EMPTY_FORM, category: CATEGORIES[0] ?? EMPTY_FORM.category });
     setSelectedTagIds([]);
     setSelectedAllergens([]);
+    setSupplierLines([]);
     setShowAdvanced(false);
     setError(null);
     setShowForm(true);
@@ -144,9 +173,20 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
       unit: ing.unit,
       yield_pct: String(ing.yield_pct ?? 100),
       reorder_threshold: String(ing.reorder_threshold ?? 0),
+      supplier_reference: ing.supplier_reference ?? "",
       vat_rate: String(ing.vat_rate ?? 0),
       selling_price: ing.selling_price != null ? String(ing.selling_price) : "",
     });
+    setSupplierLines((ing.ingredient_suppliers ?? []).map((s) => ({
+      id: s.id,
+      supplier_id: s.supplier_id ?? "",
+      supplier_reference: s.supplier_reference ?? "",
+      pack_units: String(s.pack_units ?? 1),
+      unit_size: String(s.unit_size ?? ""),
+      unit: s.unit ?? ing.unit,
+      pack_price: String(s.pack_price ?? ""),
+      vat_rate: String(s.vat_rate ?? 0),
+    })));
     setSelectedTagIds((ing.ingredient_tags ?? []).map((it) => it.tag_id));
     setSelectedAllergens(ing.allergens ?? []);
     // Open advanced section if any advanced field is set
@@ -170,6 +210,19 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
     setSelectedAllergens((prev) =>
       prev.includes(a) ? prev.filter((x) => x !== a) : [...prev, a]
     );
+  }
+
+  function addSupplierLine() {
+    setSupplierLines((prev) => [...prev, {
+      supplier_id: "", supplier_reference: "", pack_units: "1",
+      unit_size: form.unit_size || "", unit: form.unit, pack_price: "", vat_rate: form.vat_rate,
+    }]);
+  }
+  function updateSupplierLine(idx: number, field: keyof SupplierLine, value: string) {
+    setSupplierLines((prev) => prev.map((l, i) => i === idx ? { ...l, [field]: value } : l));
+  }
+  function removeSupplierLine(idx: number) {
+    setSupplierLines((prev) => prev.filter((_, i) => i !== idx));
   }
 
   async function handleSave() {
@@ -196,6 +249,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
       pack_price: price, pack_quantity: qty, unit: form.unit,
       pack_units: pUnits, unit_size: uSize, yield_pct: yld,
       reorder_threshold: parseFloat(form.reorder_threshold) || 0,
+      supplier_reference: form.supplier_reference || null,
       cost_per_base_unit, vat_rate: vat,
       selling_price: selling,
       allergens: selectedAllergens,
@@ -248,6 +302,31 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
         .select("*, suppliers(name), ingredient_tags(tag_id, tags(id, name, color))")
         .eq("id", data.id).single();
       setIngredients((p) => [...p, withTags ?? data]);
+    }
+
+    // Sync alternate suppliers (delete all + re-insert)
+    if (ingredientId) {
+      await supabase.from("ingredient_suppliers").delete().eq("ingredient_id", ingredientId);
+      const rows = supplierLines
+        .filter((l) => l.supplier_id)
+        .map((l) => ({
+          ingredient_id: ingredientId,
+          supplier_id: l.supplier_id,
+          supplier_reference: l.supplier_reference || null,
+          pack_units: parseFloat(l.pack_units) || 1,
+          unit_size: parseFloat(l.unit_size) || 1,
+          unit: l.unit || form.unit,
+          pack_price: parseFloat(l.pack_price) || 0,
+          vat_rate: parseFloat(l.vat_rate) || 0,
+        }));
+      if (rows.length > 0) await supabase.from("ingredient_suppliers").insert(rows);
+
+      // Refetch full ingredient so the list reflects everything
+      const { data: full } = await supabase
+        .from("ingredients")
+        .select("*, suppliers(name), ingredient_tags(tag_id, tags(id, name, color)), ingredient_suppliers(*, suppliers(name))")
+        .eq("id", ingredientId).single();
+      if (full) setIngredients((p) => p.map((i) => i.id === ingredientId ? full : i));
     }
 
     setSaving(false);
@@ -325,14 +404,14 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                 {Array.from(new Set([...CATEGORIES, form.category].filter(Boolean))).map((c) => <option key={c}>{c}</option>)}
               </Select>
 
-              <Select label="Fournisseur (optionnel)" value={form.supplier_id} onChange={(e) => setForm({ ...form, supplier_id: e.target.value })}>
+              <Select label="Fournisseur principal" value={form.supplier_id} onChange={(e) => setForm({ ...form, supplier_id: e.target.value })}>
                 <option value="">Sans fournisseur</option>
                 {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </Select>
 
-              <Input label="Description du colis (optionnel)" value={form.pack_description}
-                onChange={(e) => setForm({ ...form, pack_description: e.target.value })}
-                placeholder="ex. sac 5kg, carton de 12" className="col-span-2" />
+              <Input label="Référence fournisseur (code article)" value={form.supplier_reference}
+                onChange={(e) => setForm({ ...form, supplier_reference: e.target.value })}
+                placeholder="ex. BAVFLA2 — apparaît sur le bon de commande" className="col-span-2" />
             </div>
 
             {/* Comment tu l'achètes — bloc unique et simple */}
@@ -443,6 +522,70 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                     </div>
                     <p className="text-2xs text-gray-400 mt-1">affiche « à commander » dans l&apos;inventaire</p>
                   </div>
+                </div>
+              )}
+            </div>
+
+            {/* Autres fournisseurs pour ce produit (références multiples) */}
+            <div className="rounded-lg p-4 border border-gray-200 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-gray-800">Autres fournisseurs</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Même produit, autre fournisseur : son prix et sa référence (pour les bons de commande).</p>
+                </div>
+                <button type="button" onClick={addSupplierLine}
+                  className="flex items-center gap-1 text-xs font-medium text-emerald-600 hover:text-emerald-700 shrink-0">
+                  <Plus size={13} /> Ajouter
+                </button>
+              </div>
+
+              {supplierLines.length === 0 ? (
+                <p className="text-xs text-gray-400">Aucun autre fournisseur. Le coût des recettes suit toujours le prix réellement payé (CMUP).</p>
+              ) : (
+                <div className="space-y-2.5">
+                  {supplierLines.map((line, idx) => (
+                    <div key={idx} className="border border-gray-200 rounded-lg p-2.5 space-y-2 bg-gray-50/50">
+                      <div className="flex gap-2">
+                        <select value={line.supplier_id} onChange={(e) => updateSupplierLine(idx, "supplier_id", e.target.value)}
+                          className="flex-1 px-2.5 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green transition">
+                          <option value="">Choisir un fournisseur…</option>
+                          {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        </select>
+                        <button type="button" onClick={() => removeSupplierLine(idx)}
+                          className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition shrink-0">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                      <div className="flex gap-2">
+                        <input value={line.supplier_reference} onChange={(e) => updateSupplierLine(idx, "supplier_reference", e.target.value)}
+                          placeholder="Référence / code article"
+                          className="flex-1 px-2.5 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green transition" />
+                        <div className="relative w-28">
+                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">€</span>
+                          <input type="number" min="0" step="0.01" value={line.pack_price} onChange={(e) => updateSupplierLine(idx, "pack_price", e.target.value)}
+                            placeholder="prix HT"
+                            className="w-full pl-5 pr-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green transition" />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                        <span>1 colis =</span>
+                        <input type="number" min="1" step="any" value={line.pack_units} onChange={(e) => updateSupplierLine(idx, "pack_units", e.target.value)}
+                          className="w-14 px-2 py-1 text-xs bg-white border border-gray-200 rounded outline-none focus:border-green transition" />
+                        <span>×</span>
+                        <input type="number" min="0" step="any" value={line.unit_size} onChange={(e) => updateSupplierLine(idx, "unit_size", e.target.value)}
+                          className="w-16 px-2 py-1 text-xs bg-white border border-gray-200 rounded outline-none focus:border-green transition" />
+                        <select value={line.unit} onChange={(e) => updateSupplierLine(idx, "unit", e.target.value)}
+                          className="px-1.5 py-1 text-xs bg-white border border-gray-200 rounded outline-none focus:border-green transition">
+                          {UNITS.map((u) => <option key={u}>{u}</option>)}
+                        </select>
+                        {parseFloat(line.pack_price) > 0 && parseFloat(line.unit_size) > 0 && (
+                          <span className="ml-auto text-green font-medium">
+                            €{perDisplayUnit(calcCostPerBase(parseFloat(line.pack_price), parseFloat(line.pack_units) || 1, parseFloat(line.unit_size), line.unit), line.unit).toFixed(2)}/{displayUnitLabel(line.unit)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -664,7 +807,20 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                         })()
                       : <span className="text-gray-300 text-xs">—</span>}
                   </Td>
-                  <Td muted>{ing.suppliers?.name ?? "—"}</Td>
+                  <Td muted>
+                    {(() => {
+                      const alts = ing.ingredient_suppliers ?? [];
+                      const main = ing.suppliers?.name ?? "—";
+                      if (alts.length === 0) return main;
+                      const names = alts.map((a) => a.suppliers?.name).filter(Boolean).join(", ");
+                      return (
+                        <span title={`Aussi : ${names}`}>
+                          {main}
+                          <span className="ml-1.5 px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-2xs font-medium">+{alts.length}</span>
+                        </span>
+                      );
+                    })()}
+                  </Td>
                   <Td right>
                     <div className="flex items-center gap-1 justify-end">
                       <button onClick={() => openEdit(ing)}

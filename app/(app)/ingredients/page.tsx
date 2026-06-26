@@ -14,7 +14,7 @@ export default async function IngredientsPage() {
   const [{ data: ingredients }, { data: suppliers }, { data: tags }, { data: cats }] = await Promise.all([
     supabase
       .from("ingredients")
-      .select("*, suppliers(name), ingredient_tags(tag_id, tags(id, name, color))")
+      .select("*, suppliers(name), ingredient_tags(tag_id, tags(id, name, color)), ingredient_suppliers(*, suppliers(name))")
       .eq("restaurant_id", restaurant!.id)
       .order("name"),
     supabase
