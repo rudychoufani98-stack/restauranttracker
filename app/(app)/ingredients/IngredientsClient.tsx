@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Plus, Search, Pencil, Trash2, Check, ChevronDown, Download } from "lucide-react";
 import { PageHeader, Card, Button, Input, Select, Modal, Alert, Table, Th, Td, EmptyState } from "@/components/ui";
@@ -745,7 +746,11 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
               const tags = (ing.ingredient_tags ?? []).map((it) => it.tags).filter(Boolean);
               return (
                 <tr key={ing.id} className="row-hover">
-                  <Td><span className="font-medium text-gray-900">{ing.name}</span></Td>
+                  <Td>
+                    <Link href={`/ingredients/${ing.id}`} className="font-medium text-gray-900 hover:text-emerald-600 transition">
+                      {ing.name}
+                    </Link>
+                  </Td>
                   <Td>
                     <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
                       {ing.category}
@@ -823,10 +828,10 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                   </Td>
                   <Td right>
                     <div className="flex items-center gap-1 justify-end">
-                      <button onClick={() => openEdit(ing)}
+                      <Link href={`/ingredients/${ing.id}`}
                         className="p-1.5 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition">
                         <Pencil size={13} />
-                      </button>
+                      </Link>
                       <button onClick={() => handleDelete(ing.id)} disabled={deletingId === ing.id}
                         className="p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 transition">
                         <Trash2 size={13} />
