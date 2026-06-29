@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { ArrowLeft, Check, Plus, Trash2, Loader2, Package, ShoppingCart, Users, GitMerge } from "lucide-react";
+import { ArrowLeft, Check, Plus, Trash2, Loader2, Package, Boxes, Star, GitMerge } from "lucide-react";
 import clsx from "clsx";
 import {
   UNITS, VAT_PRESETS, ALLERGENS, packTotal, calcCostPerBase,
@@ -13,11 +13,15 @@ import {
 } from "@/lib/ingredient-helpers";
 
 type Supplier = { id: string; name: string };
-type SupplierLine = {
+type Article = {
   id?: string;
-  supplier_id: string; supplier_reference: string;
-  pack_units: string; unit_size: string; unit: string;
-  pack_price: string; vat_rate: string;
+  supplier_id: string;
+  supplier_reference: string;
+  pack_units: string;
+  unit_size: string;
+  pack_price: string;
+  vat_rate: string;
+  is_preferred: boolean;
 };
 type Ingredient = {
   id: string; name: string; category: string; unit: string;
@@ -37,6 +41,36 @@ interface Props {
   allIngredients: { id: string; name: string; unit: string }[];
 }
 
+// Build the initial article list: from ingredient_suppliers if present,
+// otherwise synthesize one preferred article from the legacy ingredient fields.
+function initialArticles(ing: Ingredient): Article[] {
+  const rows = ing.ingredient_suppliers ?? [];
+  if (rows.length > 0) {
+    const arts = rows.map((s: any) => ({
+      id: s.id,
+      supplier_id: s.supplier_id ?? "",
+      supplier_reference: s.supplier_reference ?? "",
+      pack_units: String(s.pack_units ?? 1),
+      unit_size: String(s.unit_size ?? ""),
+      pack_price: String(s.pack_price ?? ""),
+      vat_rate: String(s.vat_rate ?? 0),
+      is_preferred: !!s.is_preferred,
+    }));
+    if (!arts.some((a) => a.is_preferred)) arts[0].is_preferred = true;
+    return arts;
+  }
+  // Legacy: one article from the ingredient's own purchase fields
+  return [{
+    supplier_id: ing.supplier_id ?? "",
+    supplier_reference: ing.supplier_reference ?? "",
+    pack_units: String(ing.pack_units ?? 1),
+    unit_size: String(ing.unit_size ?? ing.pack_quantity ?? ""),
+    pack_price: String(ing.pack_price ?? ""),
+    vat_rate: String(ing.vat_rate ?? 0),
+    is_preferred: true,
+  }];
+}
+
 export default function ProductClient({ ingredient, suppliers, categories, allIngredients }: Props) {
   const supabase = createClient();
   const router = useRouter();
@@ -44,23 +78,12 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
   const [name, setName] = useState(ingredient.name);
   const [category, setCategory] = useState(ingredient.category);
   const [unit, setUnit] = useState(ingredient.unit || "kg");
-  const [supplierId, setSupplierId] = useState(ingredient.supplier_id ?? "");
-  const [supplierRef, setSupplierRef] = useState(ingredient.supplier_reference ?? "");
-  const [packUnits, setPackUnits] = useState(String(ingredient.pack_units ?? 1));
-  const [unitSize, setUnitSize] = useState(String(ingredient.unit_size ?? ingredient.pack_quantity ?? ""));
-  const [packPrice, setPackPrice] = useState(String(ingredient.pack_price ?? ""));
-  const [vatRate, setVatRate] = useState(String(ingredient.vat_rate ?? 0));
   const [yieldPct, setYieldPct] = useState(String(ingredient.yield_pct ?? 100));
   const [reorder, setReorder] = useState(String(qtyToDisplay(Number(ingredient.reorder_threshold ?? 0), ingredient.unit || "kg")));
   const [sellingPrice, setSellingPrice] = useState(ingredient.selling_price != null ? String(ingredient.selling_price) : "");
   const [allergens, setAllergens] = useState<string[]>(ingredient.allergens ?? []);
-  const [lines, setLines] = useState<SupplierLine[]>(
-    (ingredient.ingredient_suppliers ?? []).map((s) => ({
-      id: s.id, supplier_id: s.supplier_id ?? "", supplier_reference: s.supplier_reference ?? "",
-      pack_units: String(s.pack_units ?? 1), unit_size: String(s.unit_size ?? ""),
-      unit: s.unit ?? ingredient.unit, pack_price: String(s.pack_price ?? ""), vat_rate: String(s.vat_rate ?? 0),
-    }))
-  );
+  const [articles, setArticles] = useState<Article[]>(initialArticles(ingredient));
+
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -68,110 +91,82 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
   const [mergeTargetId, setMergeTargetId] = useState("");
   const [merging, setMerging] = useState(false);
 
-  // Merge targets must share the same conditionnement (base usage unit)
-  const mergeTargets = allIngredients.filter((i) => i.unit === ingredient.unit);
-
-  async function handleMerge() {
-    if (!mergeTargetId) return;
-    setMerging(true);
-    const src = ingredient;
-    const targetId = mergeTargetId;
-
-    const { data: tgt } = await supabase
-      .from("ingredients").select("stock_qty, cmup, cost_per_base_unit, allergens").eq("id", targetId).single();
-
-    // 1. Recipes that used the source now use the target
-    await supabase.from("recipe_lines").update({ ingredient_id: targetId }).eq("ingredient_id", src.id);
-    // 2. Move the source's alternate supplier references under the target
-    await supabase.from("ingredient_suppliers").update({ ingredient_id: targetId }).eq("ingredient_id", src.id);
-    // 2b. Keep the source's main supplier as a reference under the target
-    if (src.supplier_id) {
-      await supabase.from("ingredient_suppliers").insert({
-        ingredient_id: targetId, supplier_id: src.supplier_id, supplier_reference: src.supplier_reference,
-        pack_units: src.pack_units ?? 1, unit_size: src.unit_size ?? 1, unit: src.unit,
-        pack_price: src.pack_price ?? 0, vat_rate: src.vat_rate ?? 0,
-      });
-    }
-    // 3. Combine stock + weighted CMUP + union allergens
-    const tStock = Number(tgt?.stock_qty ?? 0), sStock = Number(src.stock_qty ?? 0);
-    const tC = Number(tgt?.cmup ?? tgt?.cost_per_base_unit ?? 0), sC = Number(src.cmup ?? src.cost_per_base_unit ?? 0);
-    const newStock = tStock + sStock;
-    const newCmup = newStock > 0 ? (tStock * tC + sStock * sC) / newStock : (tC || sC);
-    const mergedAllergens = Array.from(new Set([...((tgt?.allergens as string[]) ?? []), ...(src.allergens ?? [])]));
-    await supabase.from("ingredients").update({ stock_qty: newStock, cmup: newCmup, allergens: mergedAllergens }).eq("id", targetId);
-    // 4. Move movement & price history
-    await supabase.from("stock_movements").update({ ingredient_id: targetId }).eq("ingredient_id", src.id);
-    await supabase.from("ingredient_price_history").update({ ingredient_id: targetId }).eq("ingredient_id", src.id);
-    // 5. Remove the now-empty source product
-    await supabase.from("ingredients").delete().eq("id", src.id);
-    // 6. Recompute recipe costs/allergens, then open the surviving product
-    await fetch("/api/recalculate-recipes", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ restaurantId: (ingredient as any).restaurant_id }),
-    }).catch(() => {});
-    router.push(`/ingredients/${targetId}`);
-  }
-
-  // Live values
-  const priceHT = parseFloat(packPrice) || 0;
-  const pUnits = parseFloat(packUnits) || 0;
-  const uSize = parseFloat(unitSize) || 0;
   const yPct = parseFloat(yieldPct) || 100;
-  const packQty = packTotal(pUnits, uSize);
-  const ttc = priceTTC(priceHT, parseFloat(vatRate) || 0);
-  const grossPerBase = priceHT && packQty ? calcCostPerBase(priceHT, pUnits, uSize, unit) : 0;
-  const netPerBase = yPct > 0 ? grossPerBase / (yPct / 100) : grossPerBase;
-  const stockValue = Number(ingredient.stock_qty ?? 0) * Number(ingredient.cmup ?? grossPerBase);
+
+  // Article cost helpers
+  const articleGross = (a: Article) => calcCostPerBase(parseFloat(a.pack_price) || 0, parseFloat(a.pack_units) || 1, parseFloat(a.unit_size) || 0, unit);
+  const preferred = articles.find((a) => a.is_preferred) ?? articles[0];
+  const prefGross = preferred ? articleGross(preferred) : 0;
+  const cmup = Number(ingredient.cmup ?? 0);
+  const grossBase = cmup > 0 ? cmup : prefGross;
+  const netBase = yPct > 0 ? grossBase / (yPct / 100) : grossBase;
+  const coutReel = perDisplayUnit(netBase, unit);
+  const stockValue = Number(ingredient.stock_qty ?? 0) * grossBase;
 
   function toggleAllergen(a: string) {
     setAllergens((p) => p.includes(a) ? p.filter((x) => x !== a) : [...p, a]);
   }
-  function addLine() {
-    setLines((p) => [...p, { supplier_id: "", supplier_reference: "", pack_units: "1", unit_size: unitSize, unit, pack_price: "", vat_rate: vatRate }]);
+  function addArticle() {
+    setArticles((p) => [...p, {
+      supplier_id: "", supplier_reference: "", pack_units: "1", unit_size: "",
+      pack_price: "", vat_rate: "5.5", is_preferred: p.length === 0,
+    }]);
   }
-  function updateLine(i: number, f: keyof SupplierLine, v: string) {
-    setLines((p) => p.map((l, idx) => idx === i ? { ...l, [f]: v } : l));
+  function updateArticle(i: number, f: keyof Article, v: string | boolean) {
+    setArticles((p) => p.map((a, idx) => idx === i ? { ...a, [f]: v } : a));
   }
-  function removeLine(i: number) { setLines((p) => p.filter((_, idx) => idx !== i)); }
+  function setPreferred(i: number) {
+    setArticles((p) => p.map((a, idx) => ({ ...a, is_preferred: idx === i })));
+  }
+  function removeArticle(i: number) {
+    setArticles((p) => {
+      const next = p.filter((_, idx) => idx !== i);
+      if (next.length > 0 && !next.some((a) => a.is_preferred)) next[0].is_preferred = true;
+      return next;
+    });
+  }
 
   async function handleSave() {
     setError(null);
     if (!name.trim()) return setError("Le nom est requis.");
-    if (isNaN(priceHT) || priceHT < 0) return setError("Prix d'achat invalide.");
-    if (pUnits <= 0 || uSize <= 0) return setError("Conditionnement de commande invalide.");
     if (yPct <= 0 || yPct > 100) return setError("Le rendement doit être entre 1 et 100 %.");
+    const validArticles = articles.filter((a) => parseFloat(a.pack_price) >= 0 && parseFloat(a.unit_size) > 0);
     setSaving(true);
+
+    // Preferred article drives the product's purchase fields + cost
+    const pref = validArticles.find((a) => a.is_preferred) ?? validArticles[0];
+    const pUnits = pref ? parseFloat(pref.pack_units) || 1 : 1;
+    const uSize = pref ? parseFloat(pref.unit_size) || 0 : 0;
+    const pPrice = pref ? parseFloat(pref.pack_price) || 0 : 0;
+    const vat = pref ? parseFloat(pref.vat_rate) || 0 : 0;
+    const cost_per_base_unit = pref ? calcCostPerBase(pPrice, pUnits, uSize, unit) : 0;
 
     const payload = {
       name: name.trim(), category, unit,
-      supplier_id: supplierId || null,
-      supplier_reference: supplierRef || null,
-      pack_price: priceHT, pack_units: pUnits, unit_size: uSize,
-      pack_quantity: packQty, vat_rate: parseFloat(vatRate) || 0,
+      supplier_id: pref?.supplier_id || null,
+      supplier_reference: pref?.supplier_reference || null,
+      pack_price: pPrice, pack_units: pUnits, unit_size: uSize, pack_quantity: packTotal(pUnits, uSize),
+      vat_rate: vat, cost_per_base_unit,
       yield_pct: yPct, reorder_threshold: qtyFromDisplay(parseFloat(reorder) || 0, unit),
       selling_price: sellingPrice !== "" ? parseFloat(sellingPrice) : null,
-      cost_per_base_unit: grossPerBase,
       allergens,
       updated_at: new Date().toISOString(),
     };
-
     const { error: err } = await supabase.from("ingredients").update(payload).eq("id", ingredient.id);
     if (err) { setError(err.message); setSaving(false); return; }
 
-    // Track price change
-    if (Math.abs(Number(ingredient.pack_price) - priceHT) > 0.0001) {
-      await supabase.from("ingredient_price_history").insert({
-        ingredient_id: ingredient.id, old_price: ingredient.pack_price, new_price: priceHT, source: "manual",
-      });
-    }
-
-    // Sync alternate suppliers
+    // Rewrite the article list
     await supabase.from("ingredient_suppliers").delete().eq("ingredient_id", ingredient.id);
-    const rows = lines.filter((l) => l.supplier_id).map((l) => ({
-      ingredient_id: ingredient.id, supplier_id: l.supplier_id,
-      supplier_reference: l.supplier_reference || null,
-      pack_units: parseFloat(l.pack_units) || 1, unit_size: parseFloat(l.unit_size) || 1,
-      unit: l.unit || unit, pack_price: parseFloat(l.pack_price) || 0, vat_rate: parseFloat(l.vat_rate) || 0,
+    const rows = validArticles.map((a) => ({
+      ingredient_id: ingredient.id,
+      supplier_id: a.supplier_id || null,
+      supplier_reference: a.supplier_reference || null,
+      pack_units: parseFloat(a.pack_units) || 1,
+      unit_size: parseFloat(a.unit_size) || 1,
+      unit,
+      pack_price: parseFloat(a.pack_price) || 0,
+      vat_rate: parseFloat(a.vat_rate) || 0,
+      is_preferred: a.is_preferred,
     }));
     if (rows.length > 0) await supabase.from("ingredient_suppliers").insert(rows);
 
@@ -181,14 +176,47 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
     router.refresh();
   }
 
+  async function handleMerge() {
+    if (!mergeTargetId) return;
+    setMerging(true);
+    const src = ingredient;
+    const targetId = mergeTargetId;
+    const { data: tgt } = await supabase.from("ingredients").select("stock_qty, cmup, cost_per_base_unit, allergens").eq("id", targetId).single();
+    await supabase.from("recipe_lines").update({ ingredient_id: targetId }).eq("ingredient_id", src.id);
+    await supabase.from("ingredient_suppliers").update({ ingredient_id: targetId }).eq("ingredient_id", src.id);
+    if (src.supplier_id) {
+      await supabase.from("ingredient_suppliers").insert({
+        ingredient_id: targetId, supplier_id: src.supplier_id, supplier_reference: src.supplier_reference,
+        pack_units: src.pack_units ?? 1, unit_size: src.unit_size ?? 1, unit: src.unit,
+        pack_price: src.pack_price ?? 0, vat_rate: src.vat_rate ?? 0,
+      });
+    }
+    const tStock = Number(tgt?.stock_qty ?? 0), sStock = Number(src.stock_qty ?? 0);
+    const tC = Number(tgt?.cmup ?? tgt?.cost_per_base_unit ?? 0), sC = Number(src.cmup ?? src.cost_per_base_unit ?? 0);
+    const newStock = tStock + sStock;
+    const newCmup = newStock > 0 ? (tStock * tC + sStock * sC) / newStock : (tC || sC);
+    const mergedAllergens = Array.from(new Set([...((tgt?.allergens as string[]) ?? []), ...(src.allergens ?? [])]));
+    await supabase.from("ingredients").update({ stock_qty: newStock, cmup: newCmup, allergens: mergedAllergens }).eq("id", targetId);
+    await supabase.from("stock_movements").update({ ingredient_id: targetId }).eq("ingredient_id", src.id);
+    await supabase.from("ingredient_price_history").update({ ingredient_id: targetId }).eq("ingredient_id", src.id);
+    await supabase.from("ingredients").delete().eq("id", src.id);
+    await fetch("/api/recalculate-recipes", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ restaurantId: (ingredient as any).restaurant_id }),
+    }).catch(() => {});
+    router.push(`/ingredients/${targetId}`);
+  }
+
+  const mergeTargets = allIngredients.filter((i) => i.unit === ingredient.unit);
   const inputCls = "w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 transition";
+  const uLabel = displayUnitLabel(unit);
 
   return (
     <div className="p-6 lg:p-8 max-w-3xl mx-auto pb-24">
       {/* Top bar */}
       <div className="flex items-center justify-between mb-5">
         <Link href="/ingredients" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition">
-          <ArrowLeft size={16} /> Tous les ingrédients
+          <ArrowLeft size={16} /> Tous les produits
         </Link>
         <div className="flex items-center gap-2">
           {toast && <span className="text-sm text-emerald-600 font-medium">{toast}</span>}
@@ -217,15 +245,15 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
         </div>
       </div>
 
-      {/* Coût résumé */}
+      {/* Cost summary */}
       <div className="grid grid-cols-3 gap-3 mb-4">
         <div className="bg-white border border-gray-100 rounded-card shadow-card p-4">
           <p className="text-2xs text-gray-400 uppercase tracking-wide">Coût réel</p>
-          <p className="text-lg font-bold text-emerald-600">€{perDisplayUnit(netPerBase, unit).toFixed(2)}<span className="text-xs text-gray-400 font-normal">/{displayUnitLabel(unit)}</span></p>
+          <p className="text-lg font-bold text-emerald-600">€{coutReel.toFixed(2)}<span className="text-xs text-gray-400 font-normal">/{uLabel}</span></p>
         </div>
         <div className="bg-white border border-gray-100 rounded-card shadow-card p-4">
           <p className="text-2xs text-gray-400 uppercase tracking-wide">En stock</p>
-          <p className="text-lg font-bold text-gray-900">{fmtNum(qtyToDisplay(Number(ingredient.stock_qty ?? 0), unit))} <span className="text-xs text-gray-400 font-normal">{displayUnitLabel(unit)}</span></p>
+          <p className="text-lg font-bold text-gray-900">{fmtNum(qtyToDisplay(Number(ingredient.stock_qty ?? 0), unit))} <span className="text-xs text-gray-400 font-normal">{uLabel}</span></p>
         </div>
         <div className="bg-white border border-gray-100 rounded-card shadow-card p-4">
           <p className="text-2xs text-gray-400 uppercase tracking-wide">Valeur stock</p>
@@ -252,117 +280,72 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
             <label className="block text-xs font-medium text-gray-600 mb-1">Alerte stock sous</label>
             <div className="relative">
               <input type="number" min="0" step="any" value={reorder} onChange={(e) => setReorder(e.target.value)} className={clsx(inputCls, "pr-9")} />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">{displayUnitLabel(unit)}</span>
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">{uLabel}</span>
             </div>
             <p className="text-2xs text-gray-400 mt-1">« à commander » si stock ≤</p>
           </div>
         </div>
       </Section>
 
-      {/* 2. Conditionnement de commande */}
-      <Section icon={<ShoppingCart size={16} />} title="Conditionnement de commande" subtitle="Comment tu l'achètes chez ton fournisseur principal.">
-        <div className="flex flex-wrap items-end gap-2 mb-3">
-          <span className="text-sm text-gray-500 pb-2">1 colis =</span>
-          <div>
-            <label className="block text-2xs text-gray-400 mb-1">Nombre</label>
-            <input type="number" min="1" step="any" value={packUnits} onChange={(e) => setPackUnits(e.target.value)} placeholder="6" className={clsx(inputCls, "w-20")} />
-          </div>
-          <span className="text-gray-400 pb-2.5">×</span>
-          <div>
-            <label className="block text-2xs text-gray-400 mb-1">Contenance</label>
-            <input type="number" min="0" step="any" value={unitSize} onChange={(e) => setUnitSize(e.target.value)} placeholder="0,75" className={clsx(inputCls, "w-24")} />
-          </div>
-          <div>
-            <label className="block text-2xs text-gray-400 mb-1">en</label>
-            <select value={unit} onChange={(e) => setUnit(e.target.value)} className={clsx(inputCls, "w-20")}>
-              {UNITS.map((u) => <option key={u}>{u}</option>)}
-            </select>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Prix payé (HT)</label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">€</span>
-              <input type="number" min="0" step="0.01" value={packPrice} onChange={(e) => setPackPrice(e.target.value)} className={clsx(inputCls, "pl-6")} />
-            </div>
-            <p className="text-2xs text-gray-400 mt-1">pour 1 colis</p>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">TVA</label>
-            <select value={vatRate} onChange={(e) => setVatRate(e.target.value)} className={inputCls}>
-              {VAT_PRESETS.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Fournisseur</label>
-            <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)} className={inputCls}>
-              <option value="">Sans fournisseur</option>
-              {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Référence</label>
-            <input value={supplierRef} onChange={(e) => setSupplierRef(e.target.value)} placeholder="code article" className={inputCls} />
-          </div>
-        </div>
-
-        {grossPerBase > 0 && (
-          <div className="mt-3 flex items-start gap-2 px-3 py-2.5 bg-emerald-50 border border-emerald-200 rounded-lg">
-            <Check size={15} className="text-emerald-600 shrink-0 mt-0.5" />
-            <p className="text-sm text-emerald-800">
-              1 colis = <b>{packQty || 0} {unit}</b> · TTC €{ttc.toFixed(2)} · revient à{" "}
-              <b>€{perDisplayUnit(netPerBase, unit).toFixed(2)}/{displayUnitLabel(unit)}</b>
-            </p>
-          </div>
-        )}
-      </Section>
-
-      {/* 3. Fournisseurs */}
-      <Section icon={<Users size={16} />} title="Fournisseurs" subtitle="Autres fournisseurs pour ce même produit (prix + référence pour les commandes)."
-        action={<button onClick={addLine} className="flex items-center gap-1 text-xs font-medium text-emerald-600 hover:text-emerald-700"><Plus size={13} /> Ajouter</button>}>
-        {lines.length === 0 ? (
-          <p className="text-xs text-gray-400">Aucun autre fournisseur. Le coût des recettes suit le prix réellement payé (CMUP).</p>
+      {/* 2. Articles */}
+      <Section icon={<Boxes size={16} />} title="Articles (références d'achat)"
+        subtitle="Chaque article = une référence chez un fournisseur, avec son conditionnement et son prix. Plusieurs articles peuvent alimenter ce produit."
+        action={<button onClick={addArticle} className="flex items-center gap-1 text-xs font-medium text-emerald-600 hover:text-emerald-700"><Plus size={13} /> Ajouter un article</button>}>
+        {articles.length === 0 ? (
+          <p className="text-xs text-gray-400">Aucun article. Ajoute la référence d'achat d'au moins un fournisseur.</p>
         ) : (
-          <div className="space-y-2.5">
-            {lines.map((line, i) => {
-              const cpb = parseFloat(line.pack_price) > 0 && parseFloat(line.unit_size) > 0
-                ? perDisplayUnit(calcCostPerBase(parseFloat(line.pack_price), parseFloat(line.pack_units) || 1, parseFloat(line.unit_size), line.unit), line.unit) : 0;
+          <div className="space-y-3">
+            {articles.map((a, i) => {
+              const cpb = parseFloat(a.pack_price) >= 0 && parseFloat(a.unit_size) > 0 ? perDisplayUnit(articleGross(a), unit) : 0;
+              const ttc = priceTTC(parseFloat(a.pack_price) || 0, parseFloat(a.vat_rate) || 0);
               return (
-                <div key={i} className="border border-gray-200 rounded-lg p-3 space-y-2 bg-gray-50/50">
-                  <div className="flex gap-2">
-                    <select value={line.supplier_id} onChange={(e) => updateLine(i, "supplier_id", e.target.value)} className={clsx(inputCls, "flex-1 py-1.5")}>
+                <div key={i} className={clsx("border rounded-lg p-3 space-y-2.5", a.is_preferred ? "border-emerald-300 bg-emerald-50/30" : "border-gray-200 bg-gray-50/40")}>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setPreferred(i)} title={a.is_preferred ? "Article principal" : "Définir comme principal"}
+                      className={clsx("shrink-0", a.is_preferred ? "text-amber-500" : "text-gray-300 hover:text-amber-400")}>
+                      <Star size={16} fill={a.is_preferred ? "currentColor" : "none"} />
+                    </button>
+                    <select value={a.supplier_id} onChange={(e) => updateArticle(i, "supplier_id", e.target.value)} className={clsx(inputCls, "flex-1 py-1.5")}>
                       <option value="">Choisir un fournisseur…</option>
                       {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                     </select>
-                    <button onClick={() => removeLine(i)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition shrink-0"><Trash2 size={14} /></button>
+                    <button onClick={() => removeArticle(i)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition shrink-0"><Trash2 size={14} /></button>
                   </div>
-                  <div className="flex gap-2">
-                    <input value={line.supplier_reference} onChange={(e) => updateLine(i, "supplier_reference", e.target.value)} placeholder="Référence / code article" className={clsx(inputCls, "flex-1 py-1.5")} />
+
+                  <div className="flex flex-wrap items-end gap-2">
+                    <span className="text-xs text-gray-500 pb-2">1 colis =</span>
+                    <input type="number" min="1" step="any" value={a.pack_units} onChange={(e) => updateArticle(i, "pack_units", e.target.value)} placeholder="1" className="w-16 px-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500" />
+                    <span className="text-gray-400 pb-2">×</span>
+                    <input type="number" min="0" step="any" value={a.unit_size} onChange={(e) => updateArticle(i, "unit_size", e.target.value)} placeholder="18" className="w-20 px-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500" />
+                    <span className="text-sm text-gray-500 pb-2">{unit}</span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
                     <div className="relative w-28">
                       <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">€</span>
-                      <input type="number" min="0" step="0.01" value={line.pack_price} onChange={(e) => updateLine(i, "pack_price", e.target.value)} placeholder="prix HT" className={clsx(inputCls, "pl-5 py-1.5")} />
+                      <input type="number" min="0" step="0.01" value={a.pack_price} onChange={(e) => updateArticle(i, "pack_price", e.target.value)} placeholder="prix HT" className="w-full pl-5 pr-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500" />
                     </div>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                    <span>1 colis =</span>
-                    <input type="number" min="1" step="any" value={line.pack_units} onChange={(e) => updateLine(i, "pack_units", e.target.value)} className="w-14 px-2 py-1 text-xs bg-white border border-gray-200 rounded outline-none" />
-                    <span>×</span>
-                    <input type="number" min="0" step="any" value={line.unit_size} onChange={(e) => updateLine(i, "unit_size", e.target.value)} className="w-16 px-2 py-1 text-xs bg-white border border-gray-200 rounded outline-none" />
-                    <select value={line.unit} onChange={(e) => updateLine(i, "unit", e.target.value)} className="px-1.5 py-1 text-xs bg-white border border-gray-200 rounded outline-none">
-                      {UNITS.map((u) => <option key={u}>{u}</option>)}
+                    <select value={a.vat_rate} onChange={(e) => updateArticle(i, "vat_rate", e.target.value)} className="w-36 px-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500">
+                      {VAT_PRESETS.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
                     </select>
-                    {cpb > 0 && <span className="ml-auto text-emerald-600 font-medium">€{cpb.toFixed(2)}/{displayUnitLabel(line.unit)}</span>}
+                    <input value={a.supplier_reference} onChange={(e) => updateArticle(i, "supplier_reference", e.target.value)} placeholder="réf. / code article" className="flex-1 min-w-[120px] px-2.5 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500" />
                   </div>
+
+                  {cpb > 0 && (
+                    <p className="text-xs text-gray-500">
+                      1 colis = <b>{packTotal(parseFloat(a.pack_units) || 1, parseFloat(a.unit_size) || 0)} {unit}</b> · TTC €{ttc.toFixed(2)} ·
+                      <span className="text-emerald-600 font-medium"> €{cpb.toFixed(2)}/{uLabel}</span>
+                    </p>
+                  )}
                 </div>
               );
             })}
+            <p className="text-2xs text-gray-400">⭐ L'article « principal » sert de prix de référence et est pré-sélectionné dans les bons de commande. Le coût des recettes suit le prix réellement payé (CMUP).</p>
           </div>
         )}
       </Section>
 
-      {/* 4. Allergènes */}
+      {/* 3. Allergènes */}
       <Section title="Allergènes" subtitle="14 allergènes réglementaires UE — hérités automatiquement par les recettes.">
         <div className="flex flex-wrap gap-1.5">
           {ALLERGENS.map((a) => {
@@ -378,7 +361,7 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
         </div>
       </Section>
 
-      {/* 5. Revente directe */}
+      {/* 4. Revente directe */}
       <Section title="Revente directe (optionnel)" subtitle="Si ce produit est vendu tel quel (canette, bouteille…).">
         <div className="grid grid-cols-2 gap-3 items-end">
           <div>
@@ -388,23 +371,16 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
               <input type="number" min="0" step="0.01" value={sellingPrice} onChange={(e) => setSellingPrice(e.target.value)} placeholder="ex. 2.00" className={clsx(inputCls, "pl-6")} />
             </div>
           </div>
-          {sellingPrice && parseFloat(sellingPrice) > 0 && priceHT > 0 && (
-            <div className="px-3 py-2.5 bg-emerald-50 border border-emerald-200 rounded-lg">
-              <p className="text-xs text-gray-500">Marge unitaire</p>
-              <p className="text-sm font-semibold text-emerald-600">€{(parseFloat(sellingPrice) - priceHT).toFixed(2)}</p>
-            </div>
-          )}
         </div>
       </Section>
 
-      {/* 6. Fusionner */}
-      <Section icon={<GitMerge size={16} />} title="Fusionner avec un autre produit" subtitle="Réunit deux produits identiques (même unité) en un seul. Les références fournisseurs, recettes et stock sont regroupés.">
-        <button onClick={() => { setShowMerge(true); setMergeTargetId(""); }}
-          disabled={mergeTargets.length === 0}
+      {/* 5. Fusionner */}
+      <Section icon={<GitMerge size={16} />} title="Fusionner avec un autre produit" subtitle="Réunit deux produits identiques (même unité) en un seul. Les articles, recettes et stock sont regroupés.">
+        <button onClick={() => { setShowMerge(true); setMergeTargetId(""); }} disabled={mergeTargets.length === 0}
           className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition">
           Fusionner ce produit…
         </button>
-        {mergeTargets.length === 0 && <p className="text-xs text-gray-400 mt-2">Aucun autre produit en {displayUnitLabel(ingredient.unit)} avec lequel fusionner.</p>}
+        {mergeTargets.length === 0 && <p className="text-xs text-gray-400 mt-2">Aucun autre produit en {uLabel} avec lequel fusionner.</p>}
       </Section>
 
       {/* Merge modal */}
@@ -417,14 +393,14 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
             </div>
             <div className="p-5 space-y-3">
               <p className="text-sm text-gray-600">
-                Choisis le produit qui sera <b>conservé</b>. « {ingredient.name} » sera supprimé et tout son contenu (références fournisseurs, recettes liées, stock, historique) basculé dessus.
+                Choisis le produit <b>conservé</b>. « {ingredient.name} » sera supprimé et tous ses articles, recettes et stock basculés dessus.
               </p>
               <select value={mergeTargetId} onChange={(e) => setMergeTargetId(e.target.value)} className={inputCls}>
                 <option value="">Choisir le produit à conserver…</option>
                 {mergeTargets.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
               <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                ⚠️ Action irréversible. Le stock des deux produits est additionné, le CMUP recalculé en moyenne pondérée.
+                ⚠️ Action irréversible. Stocks additionnés, CMUP en moyenne pondérée.
               </p>
             </div>
             <div className="flex gap-2 px-5 py-4 border-t border-gray-100">
