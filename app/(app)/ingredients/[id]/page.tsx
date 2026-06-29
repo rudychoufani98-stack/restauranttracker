@@ -12,7 +12,7 @@ export default async function ProductPage({ params }: { params: { id: string } }
     .eq("owner_id", user!.id)
     .single();
 
-  const [{ data: ingredient }, { data: suppliers }, { data: cats }] = await Promise.all([
+  const [{ data: ingredient }, { data: suppliers }, { data: cats }, { data: allIngredients }] = await Promise.all([
     supabase
       .from("ingredients")
       .select("*, suppliers(name), ingredient_suppliers(*, suppliers(name))")
@@ -30,6 +30,12 @@ export default async function ProductPage({ params }: { params: { id: string } }
       .eq("restaurant_id", restaurant!.id)
       .eq("type", "ingredient")
       .order("position"),
+    supabase
+      .from("ingredients")
+      .select("id, name, unit")
+      .eq("restaurant_id", restaurant!.id)
+      .neq("id", params.id)
+      .order("name"),
   ]);
 
   if (!ingredient) notFound();
@@ -41,6 +47,7 @@ export default async function ProductPage({ params }: { params: { id: string } }
       ingredient={ingredient as any}
       suppliers={suppliers ?? []}
       categories={categories.length ? categories : ["Légumes/Fruits", "Viande", "Poisson", "Produits laitiers", "Épicerie", "Boissons", "Autre"]}
+      allIngredients={(allIngredients ?? []) as any}
     />
   );
 }

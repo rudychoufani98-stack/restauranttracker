@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { ArrowLeft, Check, Plus, Trash2, Loader2, Package, ShoppingCart, Users } from "lucide-react";
+import { ArrowLeft, Check, Plus, Trash2, Loader2, Package, ShoppingCart, Users, GitMerge } from "lucide-react";
 import clsx from "clsx";
 import {
   UNITS, VAT_PRESETS, ALLERGENS, packTotal, calcCostPerBase,
@@ -34,9 +34,10 @@ interface Props {
   ingredient: Ingredient;
   suppliers: Supplier[];
   categories: string[];
+  allIngredients: { id: string; name: string; unit: string }[];
 }
 
-export default function ProductClient({ ingredient, suppliers, categories }: Props) {
+export default function ProductClient({ ingredient, suppliers, categories, allIngredients }: Props) {
   const supabase = createClient();
   const router = useRouter();
 
@@ -63,6 +64,53 @@ export default function ProductClient({ ingredient, suppliers, categories }: Pro
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showMerge, setShowMerge] = useState(false);
+  const [mergeTargetId, setMergeTargetId] = useState("");
+  const [merging, setMerging] = useState(false);
+
+  // Merge targets must share the same conditionnement (base usage unit)
+  const mergeTargets = allIngredients.filter((i) => i.unit === ingredient.unit);
+
+  async function handleMerge() {
+    if (!mergeTargetId) return;
+    setMerging(true);
+    const src = ingredient;
+    const targetId = mergeTargetId;
+
+    const { data: tgt } = await supabase
+      .from("ingredients").select("stock_qty, cmup, cost_per_base_unit, allergens").eq("id", targetId).single();
+
+    // 1. Recipes that used the source now use the target
+    await supabase.from("recipe_lines").update({ ingredient_id: targetId }).eq("ingredient_id", src.id);
+    // 2. Move the source's alternate supplier references under the target
+    await supabase.from("ingredient_suppliers").update({ ingredient_id: targetId }).eq("ingredient_id", src.id);
+    // 2b. Keep the source's main supplier as a reference under the target
+    if (src.supplier_id) {
+      await supabase.from("ingredient_suppliers").insert({
+        ingredient_id: targetId, supplier_id: src.supplier_id, supplier_reference: src.supplier_reference,
+        pack_units: src.pack_units ?? 1, unit_size: src.unit_size ?? 1, unit: src.unit,
+        pack_price: src.pack_price ?? 0, vat_rate: src.vat_rate ?? 0,
+      });
+    }
+    // 3. Combine stock + weighted CMUP + union allergens
+    const tStock = Number(tgt?.stock_qty ?? 0), sStock = Number(src.stock_qty ?? 0);
+    const tC = Number(tgt?.cmup ?? tgt?.cost_per_base_unit ?? 0), sC = Number(src.cmup ?? src.cost_per_base_unit ?? 0);
+    const newStock = tStock + sStock;
+    const newCmup = newStock > 0 ? (tStock * tC + sStock * sC) / newStock : (tC || sC);
+    const mergedAllergens = Array.from(new Set([...((tgt?.allergens as string[]) ?? []), ...(src.allergens ?? [])]));
+    await supabase.from("ingredients").update({ stock_qty: newStock, cmup: newCmup, allergens: mergedAllergens }).eq("id", targetId);
+    // 4. Move movement & price history
+    await supabase.from("stock_movements").update({ ingredient_id: targetId }).eq("ingredient_id", src.id);
+    await supabase.from("ingredient_price_history").update({ ingredient_id: targetId }).eq("ingredient_id", src.id);
+    // 5. Remove the now-empty source product
+    await supabase.from("ingredients").delete().eq("id", src.id);
+    // 6. Recompute recipe costs/allergens, then open the surviving product
+    await fetch("/api/recalculate-recipes", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ restaurantId: (ingredient as any).restaurant_id }),
+    }).catch(() => {});
+    router.push(`/ingredients/${targetId}`);
+  }
 
   // Live values
   const priceHT = parseFloat(packPrice) || 0;
@@ -348,6 +396,47 @@ export default function ProductClient({ ingredient, suppliers, categories }: Pro
           )}
         </div>
       </Section>
+
+      {/* 6. Fusionner */}
+      <Section icon={<GitMerge size={16} />} title="Fusionner avec un autre produit" subtitle="Réunit deux produits identiques (même unité) en un seul. Les références fournisseurs, recettes et stock sont regroupés.">
+        <button onClick={() => { setShowMerge(true); setMergeTargetId(""); }}
+          disabled={mergeTargets.length === 0}
+          className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition">
+          Fusionner ce produit…
+        </button>
+        {mergeTargets.length === 0 && <p className="text-xs text-gray-400 mt-2">Aucun autre produit en {displayUnitLabel(ingredient.unit)} avec lequel fusionner.</p>}
+      </Section>
+
+      {/* Merge modal */}
+      {showMerge && (
+        <div className="fixed inset-0 bg-black/30 flex items-start justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-card border border-gray-200 w-full max-w-md shadow-xl my-12">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <h2 className="text-base font-semibold text-gray-900">Fusionner « {ingredient.name} »</h2>
+              <button onClick={() => setShowMerge(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+            <div className="p-5 space-y-3">
+              <p className="text-sm text-gray-600">
+                Choisis le produit qui sera <b>conservé</b>. « {ingredient.name} » sera supprimé et tout son contenu (références fournisseurs, recettes liées, stock, historique) basculé dessus.
+              </p>
+              <select value={mergeTargetId} onChange={(e) => setMergeTargetId(e.target.value)} className={inputCls}>
+                <option value="">Choisir le produit à conserver…</option>
+                {mergeTargets.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+              <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                ⚠️ Action irréversible. Le stock des deux produits est additionné, le CMUP recalculé en moyenne pondérée.
+              </p>
+            </div>
+            <div className="flex gap-2 px-5 py-4 border-t border-gray-100">
+              <button onClick={() => setShowMerge(false)} className="flex-1 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition">Annuler</button>
+              <button onClick={handleMerge} disabled={merging || !mergeTargetId}
+                className="flex-1 py-2 text-sm text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition flex items-center justify-center gap-1.5">
+                {merging ? <Loader2 size={15} className="animate-spin" /> : <GitMerge size={15} />} Fusionner
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
