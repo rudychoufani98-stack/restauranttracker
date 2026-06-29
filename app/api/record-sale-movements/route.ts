@@ -1,55 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-
-type RecipeLine = { ingredient_id: string | null; sub_recipe_id: string | null; quantity: number; unit: string };
-type RecipeRow = { id: string; yield_portions: number; yield_unit: string; recipe_lines: RecipeLine[] };
-
-// Convert a quantity to base units (g / ml / portion / piece). kg→g, l→ml; rest unchanged.
-function toBaseQty(quantity: number, unit: string): number {
-  if (unit === "kg" || unit === "l") return quantity * 1000;
-  return quantity;
-}
-
-/**
- * Ingredient consumption (in base units) per ONE base unit of a recipe's yield.
- * For a portion-yield dish that's "per portion"; for a 2 kg sauce that's "per gram".
- * Recursively flattens sub-recipes (mises en place) so their ingredients are
- * deducted from stock too, at the real consumed fraction. Memoized + cycle-guarded.
- */
-function ingredientsPerYieldBase(
-  recipeId: string,
-  recipeMap: Map<string, RecipeRow>,
-  memo: Map<string, Map<string, number>>,
-  visited: Set<string>
-): Map<string, number> {
-  if (memo.has(recipeId)) return memo.get(recipeId)!;
-  if (visited.has(recipeId)) return new Map();
-  visited.add(recipeId);
-
-  const recipe = recipeMap.get(recipeId);
-  const result = new Map<string, number>();
-  if (!recipe) return result;
-
-  const yieldBase = toBaseQty(recipe.yield_portions || 1, recipe.yield_unit || "portion");
-
-  for (const line of recipe.recipe_lines) {
-    if (line.ingredient_id) {
-      const perYieldBase = toBaseQty(line.quantity, line.unit) / yieldBase;
-      result.set(line.ingredient_id, (result.get(line.ingredient_id) ?? 0) + perYieldBase);
-    } else if (line.sub_recipe_id) {
-      // line.quantity (in its unit) = amount of the sub-recipe consumed by the WHOLE parent batch
-      const subPerYieldBase = ingredientsPerYieldBase(line.sub_recipe_id, recipeMap, memo, new Set(visited));
-      const subBaseConsumedByBatch = toBaseQty(line.quantity, line.unit);
-      const fractionPerParentYieldBase = subBaseConsumedByBatch / yieldBase;
-      for (const [ingId, qty] of Array.from(subPerYieldBase.entries())) {
-        result.set(ingId, (result.get(ingId) ?? 0) + qty * fractionPerParentYieldBase);
-      }
-    }
-  }
-
-  memo.set(recipeId, result);
-  return result;
-}
+import { ingredientsPerYieldBase, RecipeRow } from "@/lib/costing";
 
 export async function POST(req: NextRequest) {
   try {
