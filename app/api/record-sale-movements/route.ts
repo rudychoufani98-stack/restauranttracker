@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
     // Load ALL recipes of the restaurant (needed to flatten sub-recipes recursively)
     const { data: allRecipes } = await supabase
       .from("recipes")
-      .select("id, yield_portions, yield_unit, recipe_lines(ingredient_id, sub_recipe_id, quantity, unit)")
+      .select("id, yield_portions, yield_unit, recipe_lines!recipe_id(ingredient_id, sub_recipe_id, quantity, unit)")
       .eq("restaurant_id", restaurantId);
 
     const recipeMap = new Map<string, RecipeRow>(

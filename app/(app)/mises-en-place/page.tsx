@@ -14,7 +14,7 @@ export default async function MisesEnPlacePage() {
   const [{ data: recipes }, { data: ingredients }, { data: cats }] = await Promise.all([
     supabase
       .from("recipes")
-      .select("*, recipe_lines(*, ingredients(name, cost_per_base_unit, unit))")
+      .select("*, recipe_lines!recipe_id(*, ingredients(name, cost_per_base_unit, unit))")
       .eq("restaurant_id", restaurant!.id)
       .order("name"),
     supabase

@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
 
     const { data: recipes } = await supabase
       .from("recipes")
-      .select("id, yield_portions, yield_unit, recipe_lines(ingredient_id, sub_recipe_id, quantity, unit)")
+      .select("id, yield_portions, yield_unit, recipe_lines!recipe_id(ingredient_id, sub_recipe_id, quantity, unit)")
       .eq("restaurant_id", restaurantId);
 
     if (!recipes) return NextResponse.json({ ok: true });
