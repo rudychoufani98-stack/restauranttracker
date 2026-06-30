@@ -350,7 +350,7 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right text-gray-600">
-                        {cmup > 0 ? `€${cmup.toFixed(4)}` : "—"}
+                        {cmup > 0 ? `€${(["g","kg","ml","l"].includes(ing.unit) ? cmup * 1000 : cmup).toFixed(2)}/${displayUnitLabel(ing.unit)}` : "—"}
                       </td>
                       <td className="px-4 py-3 text-right">
                         <span className={value > 0 ? "text-emerald-700 font-medium" : "text-gray-400"}>
