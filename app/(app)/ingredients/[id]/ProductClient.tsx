@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { ArrowLeft, Check, Plus, Trash2, Loader2, Package, Boxes, Star, GitMerge } from "lucide-react";
+import { ArrowLeft, Check, Plus, Trash2, Loader2, Package, Boxes, Star, GitMerge, Pencil } from "lucide-react";
 import clsx from "clsx";
 import {
   UNITS, VAT_PRESETS, ALLERGENS, packTotal, calcCostPerBase,
@@ -21,9 +21,12 @@ type Article = {
   unit_size: string;
   pack_price: string;
   vat_rate: string;
+  pack_type: string;
   pack_label: string;
   is_preferred: boolean;
 };
+
+const PACK_TYPES = ["colis", "caisse", "carton", "sac", "bidon", "cagette", "barquette", "bouteille", "pièce", "palette"];
 type Ingredient = {
   id: string; name: string; category: string; unit: string;
   supplier_id: string | null; supplier_reference: string | null;
@@ -55,6 +58,7 @@ function initialArticles(ing: Ingredient): Article[] {
       unit_size: String(s.unit_size ?? ""),
       pack_price: String(s.pack_price ?? ""),
       vat_rate: String(s.vat_rate ?? 0),
+      pack_type: s.pack_type ?? "colis",
       pack_label: s.pack_label ?? "",
       is_preferred: !!s.is_preferred,
     }));
@@ -69,6 +73,7 @@ function initialArticles(ing: Ingredient): Article[] {
     unit_size: String(ing.unit_size ?? ing.pack_quantity ?? ""),
     pack_price: String(ing.pack_price ?? ""),
     vat_rate: String(ing.vat_rate ?? 0),
+    pack_type: "colis",
     pack_label: "",
     is_preferred: true,
   }];
@@ -93,6 +98,7 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
   const [showMerge, setShowMerge] = useState(false);
   const [mergeTargetId, setMergeTargetId] = useState("");
   const [merging, setMerging] = useState(false);
+  const [editingName, setEditingName] = useState(false);
 
   const yPct = parseFloat(yieldPct) || 100;
 
@@ -112,7 +118,7 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
   function addArticle() {
     setArticles((p) => [...p, {
       supplier_id: "", supplier_reference: "", pack_units: "1", unit_size: "",
-      pack_price: "", vat_rate: "5.5", pack_label: "", is_preferred: p.length === 0,
+      pack_price: "", vat_rate: "5.5", pack_type: "colis", pack_label: "", is_preferred: p.length === 0,
     }]);
   }
   function updateArticle(i: number, f: keyof Article, v: string | boolean) {
@@ -169,6 +175,7 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
       unit,
       pack_price: parseFloat(a.pack_price) || 0,
       vat_rate: parseFloat(a.vat_rate) || 0,
+      pack_type: a.pack_type || "colis",
       pack_label: a.pack_label || null,
       is_preferred: a.is_preferred,
     }));
@@ -217,6 +224,7 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
 
   return (
     <div className="p-6 lg:p-8 max-w-3xl mx-auto pb-24">
+      <datalist id="pack-types">{PACK_TYPES.map((t) => <option key={t} value={t} />)}</datalist>
       {/* Top bar */}
       <div className="flex items-center justify-between mb-5">
         <Link href="/ingredients" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition">
@@ -235,33 +243,27 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
 
       {/* Identity */}
       <div className="bg-white border border-gray-100 rounded-card shadow-card p-5 mb-4">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="sm:col-span-2">
-            <label className="block text-xs font-medium text-gray-600 mb-1">Nom du produit</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} className={clsx(inputCls, "text-base font-semibold")} />
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            {editingName ? (
+              <input value={name} onChange={(e) => setName(e.target.value)} autoFocus
+                onBlur={() => setEditingName(false)} onKeyDown={(e) => { if (e.key === "Enter") setEditingName(false); }}
+                className={clsx(inputCls, "text-xl font-bold")} />
+            ) : (
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-bold text-gray-900 truncate">{name || "Sans nom"}</h1>
+                <button onClick={() => setEditingName(true)} className="p-1 text-gray-300 hover:text-gray-600 transition" title="Modifier le nom">
+                  <Pencil size={14} />
+                </button>
+              </div>
+            )}
           </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Catégorie</label>
-            <select value={category} onChange={(e) => setCategory(e.target.value)} className={inputCls}>
+          <div className="w-44 shrink-0">
+            <label className="block text-2xs font-medium text-gray-500 uppercase tracking-wide mb-1">Catégorie</label>
+            <select value={category} onChange={(e) => setCategory(e.target.value)} className={clsx(inputCls, "py-1.5")}>
               {Array.from(new Set([...categories, category].filter(Boolean))).map((c) => <option key={c}>{c}</option>)}
             </select>
           </div>
-        </div>
-      </div>
-
-      {/* Cost summary */}
-      <div className="grid grid-cols-3 gap-3 mb-4">
-        <div className="bg-white border border-gray-100 rounded-card shadow-card p-4">
-          <p className="text-2xs text-gray-400 uppercase tracking-wide">Coût réel</p>
-          <p className="text-lg font-bold text-emerald-600">€{coutReel.toFixed(2)}<span className="text-xs text-gray-400 font-normal">/{uLabel}</span></p>
-        </div>
-        <div className="bg-white border border-gray-100 rounded-card shadow-card p-4">
-          <p className="text-2xs text-gray-400 uppercase tracking-wide">En stock</p>
-          <p className="text-lg font-bold text-gray-900">{fmtNum(qtyToDisplay(Number(ingredient.stock_qty ?? 0), unit))} <span className="text-xs text-gray-400 font-normal">{uLabel}</span></p>
-        </div>
-        <div className="bg-white border border-gray-100 rounded-card shadow-card p-4">
-          <p className="text-2xs text-gray-400 uppercase tracking-wide">Valeur stock</p>
-          <p className="text-lg font-bold text-gray-900">€{stockValue.toFixed(2)}</p>
         </div>
       </div>
 
@@ -317,7 +319,9 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
                   </div>
 
                   <div className="flex flex-wrap items-end gap-2">
-                    <span className="text-xs text-gray-500 pb-2">1 colis =</span>
+                    <span className="text-xs text-gray-500 pb-2">1</span>
+                    <input list="pack-types" value={a.pack_type} onChange={(e) => updateArticle(i, "pack_type", e.target.value)} placeholder="colis" className="w-24 px-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500" />
+                    <span className="text-xs text-gray-500 pb-2">=</span>
                     <input type="number" min="1" step="any" value={a.pack_units} onChange={(e) => updateArticle(i, "pack_units", e.target.value)} placeholder="1" className="w-16 px-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500" />
                     <span className="text-gray-400 pb-2">×</span>
                     <input type="number" min="0" step="any" value={a.unit_size} onChange={(e) => updateArticle(i, "unit_size", e.target.value)} placeholder="18" className="w-20 px-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500" />
@@ -338,7 +342,7 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
 
                   {cpb > 0 && (
                     <p className="text-xs text-gray-500">
-                      1 colis = <b>{packTotal(parseFloat(a.pack_units) || 1, parseFloat(a.unit_size) || 0)} {unit}</b> · TTC €{ttc.toFixed(2)} ·
+                      1 {a.pack_type || "colis"} = <b>{packTotal(parseFloat(a.pack_units) || 1, parseFloat(a.unit_size) || 0)} {unit}</b> · TTC €{ttc.toFixed(2)} ·
                       <span className="text-emerald-600 font-medium"> €{cpb.toFixed(2)}/{uLabel}</span>
                     </p>
                   )}

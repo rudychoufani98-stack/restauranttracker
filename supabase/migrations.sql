@@ -103,6 +103,8 @@ create index if not exists idx_ingredient_suppliers_ingredient on ingredient_sup
 
 -- Libellé de conditionnement libre par article (ex. "75 cl / bouteille", "sac 18 kg")
 alter table ingredient_suppliers add column if not exists pack_label text;
+-- Type de conditionnement de commande (colis, caisse, carton, sac, bidon…)
+alter table ingredient_suppliers add column if not exists pack_type text not null default 'colis';
 
 -- Fournisseurs : franco (montant mini pour livraison gratuite) + référence client
 alter table suppliers add column if not exists min_order_amount numeric not null default 0;

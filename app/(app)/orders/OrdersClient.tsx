@@ -33,7 +33,7 @@ const STATUS_COLORS: Record<string, string> = {
 type Article = {
   supplier_id: string | null; supplier_reference: string | null;
   pack_units: number | null; unit_size: number | null; unit: string | null;
-  pack_price: number | null; pack_label: string | null; is_preferred?: boolean;
+  pack_price: number | null; pack_label: string | null; pack_type?: string | null; is_preferred?: boolean;
 };
 type Ingredient = {
   id: string; name: string; unit: string; pack_price: number; pack_quantity: number; cost_per_base_unit: number;
@@ -51,10 +51,11 @@ function articleFor(ing: Ingredient, supplierId: string): Article | null {
   if (ing.supplier_id === supplierId) {
     return { supplier_id: ing.supplier_id, supplier_reference: ing.supplier_reference ?? null,
       pack_units: ing.pack_units ?? 1, unit_size: ing.unit_size ?? ing.pack_quantity ?? null,
-      unit: ing.unit, pack_price: ing.pack_price ?? null, pack_label: null };
+      unit: ing.unit, pack_price: ing.pack_price ?? null, pack_label: null, pack_type: "colis" };
   }
   return null;
 }
+const packTypeOf = (a: Article) => a.pack_type || "colis";
 function condLabel(a: Article): string {
   if (a.pack_label) return a.pack_label;
   const u = Number(a.pack_units ?? 1), s = Number(a.unit_size ?? 0);
@@ -369,14 +370,14 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
                           </div>
                           {art && (
                             <p className="text-2xs text-gray-500 mt-1.5 ml-0.5">
-                              1 colis = <b>{condLabel(art)}</b>{art.supplier_reference ? <> · réf. <b>{art.supplier_reference}</b></> : null}
+                              1 {packTypeOf(art)} = <b>{condLabel(art)}</b>{art.supplier_reference ? <> · réf. <b>{art.supplier_reference}</b></> : null}
                             </p>
                           )}
                           <div className="flex items-center gap-2 mt-2">
                             <div className="flex items-center gap-1">
                               <input type="number" min="0" step="any" value={line.quantity} onChange={(e) => updateLine(i, "quantity", e.target.value)}
                                 placeholder="0" className="w-16 px-2 py-1.5 text-sm text-right border border-gray-200 rounded-lg outline-none focus:border-emerald-500" />
-                              <span className="text-xs text-gray-400">colis</span>
+                              <span className="text-xs text-gray-400">{art ? packTypeOf(art) : "colis"}</span>
                             </div>
                             <span className="text-gray-300">×</span>
                             <div className="relative w-28">
