@@ -652,7 +652,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
 
                   </div>
                   <div className="flex items-center gap-1">
-                    <Link href={`/recipes/${recipe.id}`} onClick={(e) => e.stopPropagation()}
+                    <Link href={`${recipe.is_prep ? "/mises-en-place" : "/recipes"}/${recipe.id}`} onClick={(e) => e.stopPropagation()}
                       className="px-3 py-1.5 text-xs text-gray-600 border border-[#E5E7EB] rounded-lg hover:bg-gray-100 transition">
                       Ouvrir
                     </Link>
