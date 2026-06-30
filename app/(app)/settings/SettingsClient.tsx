@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Check, Plus, Trash2, Tag } from "lucide-react";
+import { Check, Plus, Trash2, Tag, Mail, KeyRound, LogOut, Loader2 } from "lucide-react";
 import { Card, Button, Input, Select, Alert } from "@/components/ui";
+import { logout } from "@/app/auth/actions";
 import clsx from "clsx";
 
 const CUISINE_TYPES = ["Française", "Italienne", "Japonaise", "Méditerranéenne", "Mexicaine", "Indienne", "Américaine", "Autre"];
@@ -28,7 +29,7 @@ type Restaurant = {
 };
 type Tag = { id: string; name: string; color: string };
 
-type Tab = "restaurant" | "tags" | "digest";
+type Tab = "restaurant" | "tags" | "digest" | "compte";
 
 interface Props { restaurant: Restaurant; email: string; initialTags: Tag[] }
 
@@ -99,8 +100,21 @@ export default function SettingsClient({ restaurant, email, initialTags }: Props
     setDeletingTagId(null);
   }
 
+  // --- Account ---
+  const [sendingReset, setSendingReset] = useState(false);
+  const [pwdMsg, setPwdMsg] = useState<string | null>(null);
+  async function handleResetPassword() {
+    setSendingReset(true); setPwdMsg(null);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: typeof window !== "undefined" ? `${window.location.origin}/login` : undefined,
+    });
+    setSendingReset(false);
+    setPwdMsg(error ? "Échec de l'envoi. Réessaie." : "Email de réinitialisation envoyé ✓ — vérifie ta boîte mail.");
+  }
+
   const tabs: { key: Tab; label: string }[] = [
     { key: "restaurant", label: "Restaurant" },
+    { key: "compte",     label: "Compte" },
     { key: "tags",       label: "Tags" },
     { key: "digest",     label: "Récap hebdo" },
   ];
@@ -204,6 +218,44 @@ export default function SettingsClient({ restaurant, email, initialTags }: Props
           >
             {saved ? <><Check size={13} /> Enregistré</> : saving ? "Enregistrement…" : "Enregistrer les paramètres"}
           </Button>
+        </div>
+      )}
+
+      {/* ── Compte tab ── */}
+      {tab === "compte" && (
+        <div className="space-y-5">
+          <Card>
+            <h2 className="text-sm font-semibold text-gray-900 mb-4">Mon compte</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Email de connexion</label>
+                <div className="flex items-center gap-2 px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg text-gray-700">
+                  <Mail size={15} className="text-gray-400" /> {email}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Mot de passe</label>
+                <p className="text-xs text-gray-500 mb-2">Pour des raisons de sécurité, le changement se fait par email.</p>
+                <Button variant="secondary" onClick={handleResetPassword} disabled={sendingReset}>
+                  {sendingReset ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />}
+                  {sendingReset ? "Envoi…" : "Réinitialiser le mot de passe"}
+                </Button>
+                {pwdMsg && <p className="text-xs text-emerald-600 mt-2">{pwdMsg}</p>}
+              </div>
+            </div>
+          </Card>
+
+          <Card>
+            <h2 className="text-sm font-semibold text-gray-900 mb-1">Session</h2>
+            <p className="text-xs text-gray-500 mb-3">Déconnecte-toi de cet appareil.</p>
+            <form action={logout}>
+              <button type="submit"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition">
+                <LogOut size={14} /> Se déconnecter
+              </button>
+            </form>
+          </Card>
         </div>
       )}
 
