@@ -4,7 +4,7 @@ import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Search, Trash2, Check, ChevronDown, Download } from "lucide-react";
+import { Plus, Search, Trash2, Check, ChevronDown, Download, Copy } from "lucide-react";
 import { PageHeader, Card, Button, Input, Select, Modal, Alert, Table, Th, Td, EmptyState } from "@/components/ui";
 import clsx from "clsx";
 
@@ -151,6 +151,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [showTagDropdown, setShowTagDropdown] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -360,6 +361,61 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
     await supabase.from("ingredients").delete().eq("id", id);
     setIngredients((p) => p.filter((i) => i.id !== id));
     setDeletingId(null);
+  }
+
+  async function handleDuplicate(ing: Ingredient) {
+    setDuplicatingId(ing.id);
+    const payload = {
+      restaurant_id: restaurantId,
+      name: `${ing.name} (copie)`,
+      category: ing.category,
+      supplier_id: ing.supplier_id ?? null,
+      pack_description: ing.pack_description ?? null,
+      pack_price: ing.pack_price,
+      pack_quantity: ing.pack_quantity,
+      unit: ing.unit,
+      cost_per_base_unit: ing.cost_per_base_unit,
+      vat_rate: ing.vat_rate ?? 0,
+      selling_price: ing.selling_price ?? null,
+      pack_units: ing.pack_units ?? 1,
+      unit_size: ing.unit_size ?? 1,
+      yield_pct: ing.yield_pct ?? 100,
+      reorder_threshold: ing.reorder_threshold ?? 0,
+      supplier_reference: ing.supplier_reference ?? null,
+      allergens: ing.allergens ?? [],
+    };
+    const { data: created, error: err } = await supabase
+      .from("ingredients").insert(payload).select("*, suppliers(name)").single();
+    if (err || !created) { setDuplicatingId(null); return; }
+
+    // Copie des articles fournisseurs
+    const arts = (ing.ingredient_suppliers ?? []).map((a) => ({
+      ingredient_id: created.id,
+      supplier_id: a.supplier_id ?? null,
+      supplier_reference: a.supplier_reference ?? null,
+      pack_units: a.pack_units ?? 1,
+      unit_size: a.unit_size ?? 1,
+      unit: a.unit,
+      pack_price: a.pack_price ?? 0,
+      vat_rate: a.vat_rate ?? 0,
+      pack_type: a.pack_type ?? "colis",
+      pack_label: a.pack_label ?? null,
+      is_preferred: a.is_preferred ?? false,
+    }));
+    if (arts.length > 0) await supabase.from("ingredient_suppliers").insert(arts);
+
+    // Copie des tags
+    const tagIds = (ing.ingredient_tags ?? []).map((it) => it.tag_id);
+    if (tagIds.length > 0) {
+      await supabase.from("ingredient_tags").insert(tagIds.map((tag_id) => ({ ingredient_id: created.id, tag_id })));
+    }
+
+    const { data: full } = await supabase
+      .from("ingredients")
+      .select("*, suppliers(name), ingredient_tags(tag_id, tags(id, name, color)), ingredient_suppliers(*, suppliers(name))")
+      .eq("id", created.id).single();
+    setIngredients((p) => [...p, full ?? created]);
+    setDuplicatingId(null);
   }
 
   return (
@@ -852,6 +908,11 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                         className="px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100 transition">
                         Ouvrir
                       </Link>
+                      <button onClick={(e) => { e.stopPropagation(); handleDuplicate(ing); }} disabled={duplicatingId === ing.id}
+                        title="Dupliquer"
+                        className="p-1.5 rounded-md text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 transition disabled:opacity-50">
+                        <Copy size={13} />
+                      </button>
                       <button onClick={(e) => { e.stopPropagation(); handleDelete(ing.id); }} disabled={deletingId === ing.id}
                         className="p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 transition">
                         <Trash2 size={13} />
