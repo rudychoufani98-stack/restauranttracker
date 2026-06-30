@@ -30,11 +30,36 @@ const STATUS_COLORS: Record<string, string> = {
   Cancelled: "bg-red-50 text-red-500",
 };
 
+type Article = {
+  supplier_id: string | null; supplier_reference: string | null;
+  pack_units: number | null; unit_size: number | null; unit: string | null;
+  pack_price: number | null; pack_label: string | null; is_preferred?: boolean;
+};
 type Ingredient = {
   id: string; name: string; unit: string; pack_price: number; pack_quantity: number; cost_per_base_unit: number;
+  pack_units?: number | null; unit_size?: number | null;
   stock_qty?: number | null; reorder_threshold?: number | null; supplier_id?: string | null;
   supplier_reference?: string | null; suppliers?: { name: string } | null;
+  ingredient_suppliers?: Article[];
 };
+
+// The purchasable article of a product for a given supplier (from ingredient_suppliers,
+// falling back to the product's main fields). Null if this supplier doesn't carry it.
+function articleFor(ing: Ingredient, supplierId: string): Article | null {
+  const match = (ing.ingredient_suppliers ?? []).find((a) => a.supplier_id === supplierId);
+  if (match) return { ...match, unit: match.unit ?? ing.unit };
+  if (ing.supplier_id === supplierId) {
+    return { supplier_id: ing.supplier_id, supplier_reference: ing.supplier_reference ?? null,
+      pack_units: ing.pack_units ?? 1, unit_size: ing.unit_size ?? ing.pack_quantity ?? null,
+      unit: ing.unit, pack_price: ing.pack_price ?? null, pack_label: null };
+  }
+  return null;
+}
+function condLabel(a: Article): string {
+  if (a.pack_label) return a.pack_label;
+  const u = Number(a.pack_units ?? 1), s = Number(a.unit_size ?? 0);
+  return u > 1 ? `${u} × ${s} ${a.unit}` : `${s} ${a.unit}`;
+}
 type Supplier = { id: string; name: string; email: string | null };
 type POLine = { id?: string; ingredient_id: string | null; quantity: number; expected_price: number | null; ingredients?: { name: string; unit: string } | null };
 type PO = { id: string; supplier_id: string | null; status: string; expected_total: number | null; created_at: string; sent_at: string | null; suppliers?: { name: string } | null; purchase_order_lines: POLine[] };
@@ -100,6 +125,13 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
     setShowRestock(false);
   }
 
+  // Only the products this supplier actually carries
+  const supplierProducts = supplierId ? ingredients.filter((ing) => articleFor(ing, supplierId)) : [];
+
+  function changeSupplier(sid: string) {
+    setSupplierId(sid);
+    setLines([{ ingredient_id: "", quantity: "", expected_price: "" }]); // reset stale lines
+  }
   function addLine() { setLines((p) => [...p, { ingredient_id: "", quantity: "", expected_price: "" }]); }
   function removeLine(i: number) { setLines((p) => p.filter((_, idx) => idx !== i)); }
   function updateLine(i: number, field: keyof DraftLine, val: string) {
@@ -108,7 +140,8 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
       next[i] = { ...next[i], [field]: val };
       if (field === "ingredient_id") {
         const ing = ingredients.find((g) => g.id === val);
-        if (ing) next[i].expected_price = String(ing.pack_price);
+        const art = ing ? articleFor(ing, supplierId) : null;
+        if (art) next[i].expected_price = String(art.pack_price ?? "");
       }
       return next;
     });
@@ -297,38 +330,68 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
               {error && <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</div>}
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Fournisseur</label>
-                <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 bg-white transition">
+                <select value={supplierId} onChange={(e) => changeSupplier(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-emerald-500 bg-white transition">
                   <option value="">Choisir un fournisseur…</option>
                   {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}{s.email ? ` (${s.email})` : ""}</option>)}
                 </select>
               </div>
 
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-medium text-gray-600">Lignes de commande</label>
-                  <button onClick={addLine} className="text-xs text-emerald-600 hover:underline flex items-center gap-1"><Plus size={12} /> Ajouter une ligne</button>
+              {!supplierId ? (
+                <p className="text-sm text-gray-400 text-center py-8 border border-dashed border-gray-200 rounded-lg">
+                  Choisis un fournisseur pour voir les produits qu'il fournit.
+                </p>
+              ) : supplierProducts.length === 0 ? (
+                <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-3 text-center">
+                  Aucun produit n'a d'article chez ce fournisseur.<br />
+                  <span className="text-xs text-amber-600">Ajoute-le sur la fiche produit → section « Articles ».</span>
+                </p>
+              ) : (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs font-medium text-gray-600">Produits à commander</label>
+                    <button onClick={addLine} className="text-xs text-emerald-600 hover:underline flex items-center gap-1"><Plus size={12} /> Ajouter une ligne</button>
+                  </div>
+                  <div className="space-y-2.5">
+                    {lines.map((line, i) => {
+                      const ing = ingredients.find((g) => g.id === line.ingredient_id);
+                      const art = ing ? articleFor(ing, supplierId) : null;
+                      const sub = (parseFloat(line.quantity) || 0) * (parseFloat(line.expected_price) || 0);
+                      return (
+                        <div key={i} className="border border-gray-200 rounded-lg p-2.5 bg-gray-50/40">
+                          <div className="flex gap-2 items-center">
+                            <select value={line.ingredient_id} onChange={(e) => updateLine(i, "ingredient_id", e.target.value)}
+                              className="flex-1 px-2.5 py-1.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-emerald-500 bg-white transition">
+                              <option value="">Choisir un produit…</option>
+                              {supplierProducts.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                            </select>
+                            <button onClick={() => removeLine(i)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition shrink-0"><Trash2 size={14} /></button>
+                          </div>
+                          {art && (
+                            <p className="text-2xs text-gray-500 mt-1.5 ml-0.5">
+                              1 colis = <b>{condLabel(art)}</b>{art.supplier_reference ? <> · réf. <b>{art.supplier_reference}</b></> : null}
+                            </p>
+                          )}
+                          <div className="flex items-center gap-2 mt-2">
+                            <div className="flex items-center gap-1">
+                              <input type="number" min="0" step="any" value={line.quantity} onChange={(e) => updateLine(i, "quantity", e.target.value)}
+                                placeholder="0" className="w-16 px-2 py-1.5 text-sm text-right border border-gray-200 rounded-lg outline-none focus:border-emerald-500" />
+                              <span className="text-xs text-gray-400">colis</span>
+                            </div>
+                            <span className="text-gray-300">×</span>
+                            <div className="relative w-28">
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">€</span>
+                              <input type="number" min="0" step="0.01" value={line.expected_price} onChange={(e) => updateLine(i, "expected_price", e.target.value)}
+                                placeholder="prix/colis" className="w-full pl-5 pr-2 py-1.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-emerald-500" />
+                            </div>
+                            <span className="ml-auto text-sm font-semibold text-gray-900">€{sub.toFixed(2)}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  {lines.map((line, i) => (
-                    <div key={i} className="flex gap-2 items-center">
-                      <select value={line.ingredient_id} onChange={(e) => updateLine(i, "ingredient_id", e.target.value)}
-                        className="flex-1 px-2 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 bg-white transition">
-                        <option value="">Choisir un ingrédient…</option>
-                        {ingredients.map((ing) => <option key={ing.id} value={ing.id}>{ing.name}</option>)}
-                      </select>
-                      <input type="number" min="0" step="any" value={line.quantity} onChange={(e) => updateLine(i, "quantity", e.target.value)}
-                        placeholder="Qty" className="w-20 px-2 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 transition" />
-                      <div className="relative w-28">
-                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">€</span>
-                        <input type="number" min="0" step="0.01" value={line.expected_price} onChange={(e) => updateLine(i, "expected_price", e.target.value)}
-                          placeholder="Price" className="w-full pl-5 pr-2 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 transition" />
-                      </div>
-                      <button onClick={() => removeLine(i)} className="text-gray-300 hover:text-red-400 transition"><Trash2 size={14} /></button>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              )}
 
               <div className="flex items-center justify-between px-4 py-3 bg-gray-50 rounded-lg border border-[#E5E7EB]">
                 <span className="text-sm text-gray-600">Total prévisionnel</span>

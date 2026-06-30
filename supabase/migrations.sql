@@ -101,6 +101,9 @@ create table if not exists ingredient_suppliers (
 
 create index if not exists idx_ingredient_suppliers_ingredient on ingredient_suppliers(ingredient_id);
 
+-- Libellé de conditionnement libre par article (ex. "75 cl / bouteille", "sac 18 kg")
+alter table ingredient_suppliers add column if not exists pack_label text;
+
 alter table ingredient_suppliers enable row level security;
 drop policy if exists rls_ingredient_suppliers on ingredient_suppliers;
 create policy rls_ingredient_suppliers on ingredient_suppliers

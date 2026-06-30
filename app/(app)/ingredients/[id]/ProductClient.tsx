@@ -21,6 +21,7 @@ type Article = {
   unit_size: string;
   pack_price: string;
   vat_rate: string;
+  pack_label: string;
   is_preferred: boolean;
 };
 type Ingredient = {
@@ -54,6 +55,7 @@ function initialArticles(ing: Ingredient): Article[] {
       unit_size: String(s.unit_size ?? ""),
       pack_price: String(s.pack_price ?? ""),
       vat_rate: String(s.vat_rate ?? 0),
+      pack_label: s.pack_label ?? "",
       is_preferred: !!s.is_preferred,
     }));
     if (!arts.some((a) => a.is_preferred)) arts[0].is_preferred = true;
@@ -67,6 +69,7 @@ function initialArticles(ing: Ingredient): Article[] {
     unit_size: String(ing.unit_size ?? ing.pack_quantity ?? ""),
     pack_price: String(ing.pack_price ?? ""),
     vat_rate: String(ing.vat_rate ?? 0),
+    pack_label: "",
     is_preferred: true,
   }];
 }
@@ -109,7 +112,7 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
   function addArticle() {
     setArticles((p) => [...p, {
       supplier_id: "", supplier_reference: "", pack_units: "1", unit_size: "",
-      pack_price: "", vat_rate: "5.5", is_preferred: p.length === 0,
+      pack_price: "", vat_rate: "5.5", pack_label: "", is_preferred: p.length === 0,
     }]);
   }
   function updateArticle(i: number, f: keyof Article, v: string | boolean) {
@@ -166,6 +169,7 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
       unit,
       pack_price: parseFloat(a.pack_price) || 0,
       vat_rate: parseFloat(a.vat_rate) || 0,
+      pack_label: a.pack_label || null,
       is_preferred: a.is_preferred,
     }));
     if (rows.length > 0) await supabase.from("ingredient_suppliers").insert(rows);
@@ -330,6 +334,7 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
                     </select>
                     <input value={a.supplier_reference} onChange={(e) => updateArticle(i, "supplier_reference", e.target.value)} placeholder="réf. / code article" className="flex-1 min-w-[120px] px-2.5 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500" />
                   </div>
+                  <input value={a.pack_label} onChange={(e) => updateArticle(i, "pack_label", e.target.value)} placeholder="Conditionnement (texte libre, ex. « 75 cl / bouteille », « sac 18 kg »)" className="w-full px-2.5 py-1.5 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500" />
 
                   {cpb > 0 && (
                     <p className="text-xs text-gray-500">
