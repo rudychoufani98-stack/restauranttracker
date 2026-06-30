@@ -2,8 +2,9 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Search, Pencil, Trash2, Check, ChevronDown, Download } from "lucide-react";
+import { Plus, Search, Trash2, Check, ChevronDown, Download } from "lucide-react";
 import { PageHeader, Card, Button, Input, Select, Modal, Alert, Table, Th, Td, EmptyState } from "@/components/ui";
 import clsx from "clsx";
 
@@ -136,6 +137,7 @@ interface Props {
 
 export default function IngredientsClient({ restaurantId, initialIngredients, suppliers, allTags, categories: CATEGORIES }: Props) {
   const supabase = createClient();
+  const router = useRouter();
   const [ingredients, setIngredients] = useState<Ingredient[]>(initialIngredients);
   const [search, setSearch] = useState("");
   const [filterCategory, setFilterCategory] = useState("All");
@@ -764,9 +766,11 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
               const ttc = priceTTC(ing.pack_price, ing.vat_rate ?? 0);
               const tags = (ing.ingredient_tags ?? []).map((it) => it.tags).filter(Boolean);
               return (
-                <tr key={ing.id} className="row-hover">
+                <tr key={ing.id} className="row-hover cursor-pointer"
+                  onClick={() => router.push(`/ingredients/${ing.id}`)}>
                   <Td>
-                    <Link href={`/ingredients/${ing.id}`} className="font-medium text-gray-900 hover:text-emerald-600 transition">
+                    <Link href={`/ingredients/${ing.id}`} onClick={(e) => e.stopPropagation()}
+                      className="font-medium text-gray-900 hover:text-emerald-600 transition">
                       {ing.name}
                     </Link>
                   </Td>
@@ -844,11 +848,11 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                   </Td>
                   <Td right>
                     <div className="flex items-center gap-1 justify-end">
-                      <Link href={`/ingredients/${ing.id}`}
-                        className="p-1.5 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition">
-                        <Pencil size={13} />
+                      <Link href={`/ingredients/${ing.id}`} onClick={(e) => e.stopPropagation()}
+                        className="px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100 transition">
+                        Ouvrir
                       </Link>
-                      <button onClick={() => handleDelete(ing.id)} disabled={deletingId === ing.id}
+                      <button onClick={(e) => { e.stopPropagation(); handleDelete(ing.id); }} disabled={deletingId === ing.id}
                         className="p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 transition">
                         <Trash2 size={13} />
                       </button>
