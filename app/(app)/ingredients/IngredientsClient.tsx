@@ -48,9 +48,24 @@ type SupplierRef = {
   unit: string;
   pack_price: number | null;
   vat_rate: number | null;
+  pack_type?: string | null;
+  pack_label?: string | null;
   is_preferred?: boolean;
   suppliers?: { name: string } | null;
 };
+
+// Readable conditionnement of an ingredient's preferred article.
+function condText(ing: { unit: string; pack_units?: number | null; unit_size?: number | null; pack_quantity?: number; ingredient_suppliers?: SupplierRef[] }): string {
+  const arts = ing.ingredient_suppliers ?? [];
+  const pref = arts.find((a) => a.is_preferred) ?? arts[0];
+  const pType = pref?.pack_type || "colis";
+  const pUnits = Number(pref?.pack_units ?? ing.pack_units ?? 1);
+  const uSize = Number(pref?.unit_size ?? ing.unit_size ?? ing.pack_quantity ?? 0);
+  const u = pref?.unit ?? ing.unit;
+  if (pref?.pack_label) return pref.pack_label;
+  if (!uSize) return "—";
+  return pUnits > 1 ? `${pUnits} ${pType} × ${uSize} ${u}` : `${uSize} ${u}`;
+}
 
 // Editable form row for an alternate supplier
 type SupplierLine = {
@@ -739,7 +754,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
               <Th>Nom</Th>
               <Th>Catégorie</Th>
               <Th>Tags</Th>
-              <Th>Colis</Th>
+              <Th>Conditionnement</Th>
               <Th right>Prix HT</Th>
               <Th right>TVA</Th>
               <Th right>Prix TTC</Th>
@@ -779,13 +794,10 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                     </div>
                   </Td>
                   <Td muted>
-                    {(ing.pack_units ?? 1) > 1
-                      ? <>{ing.pack_units} × {ing.unit_size ?? ing.pack_quantity} {ing.unit}</>
-                      : <>{ing.unit_size ?? ing.pack_quantity} {ing.unit}</>}
+                    {condText(ing)}
                     {(ing.yield_pct ?? 100) < 100 && (
                       <span className="ml-1.5 px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-2xs font-medium">rdt {ing.yield_pct}%</span>
                     )}
-                    {ing.pack_description && <span className="text-gray-300 ml-1">· {ing.pack_description}</span>}
                   </Td>
                   <Td right><span className="text-gray-700">€{Number(ing.pack_price).toFixed(2)}</span></Td>
                   <Td right><span className="text-gray-500">{ing.vat_rate ?? 0}%</span></Td>
