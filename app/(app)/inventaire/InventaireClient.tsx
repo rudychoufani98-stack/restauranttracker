@@ -37,10 +37,22 @@ type Movement = {
   created_at: string;
 };
 
+type InventoryLine = {
+  ingredient_id: string | null; ingredient_name: string | null; unit: string | null;
+  theoretical_qty: number | null; counted_qty: number | null; ecart: number | null;
+  cmup: number | null; ecart_value: number | null;
+};
+type InventorySession = {
+  id: string; created_at: string; items_counted: number;
+  manquant_value: number; surplus_value: number; net_value: number; notes: string | null;
+  inventory_lines: InventoryLine[];
+};
+
 interface Props {
   restaurantId: string;
   ingredients: Ingredient[];
   recentMovements: Movement[];
+  inventorySessions: InventorySession[];
 }
 
 const UNIT_LABELS: Record<string, string> = {
@@ -77,9 +89,11 @@ function displayToBase(qty: number, unit: string): number {
   return isWeightVol ? qty * 1000 : qty;
 }
 
-export default function InventaireClient({ restaurantId, ingredients, recentMovements }: Props) {
+export default function InventaireClient({ restaurantId, ingredients, recentMovements, inventorySessions }: Props) {
   const supabase = createClient();
-  const [tab, setTab] = useState<"stock" | "count" | "history">("stock");
+  const [tab, setTab] = useState<"stock" | "count" | "sessions" | "history">("stock");
+  const [sessions, setSessions] = useState<InventorySession[]>(inventorySessions);
+  const [expandedSession, setExpandedSession] = useState<string | null>(null);
   const [counts, setCounts] = useState<Record<string, string>>({});
   const [validatingCount, setValidatingCount] = useState(false);
   const [countDone, setCountDone] = useState<string | null>(null);
@@ -175,14 +189,20 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
     setValidatingCount(true);
     const movements: any[] = [];
     const updates: { id: string; qty: number }[] = [];
+    const sessionLines: InventoryLine[] = [];
 
     for (const ing of localIngredients) {
       const real = countedBase(ing);
       if (real === null) continue;
       const theo = Number(ing.stock_qty ?? 0);
-      const diff = real - theo;
-      if (diff === 0) continue;
       const cmup = Number(ing.cmup ?? ing.cost_per_base_unit ?? 0);
+      const diff = real - theo;
+      // Archive every counted line (even if no écart) for the inventory record
+      sessionLines.push({
+        ingredient_id: ing.id, ingredient_name: ing.name, unit: ing.unit,
+        theoretical_qty: theo, counted_qty: real, ecart: diff, cmup, ecart_value: diff * cmup,
+      });
+      if (diff === 0) continue;
       updates.push({ id: ing.id, qty: real });
       if (diff < 0) {
         // Manquant inexpliqué -> perte "Écart inventaire"
@@ -208,6 +228,18 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
     }
     if (movements.length > 0) {
       await supabase.from("stock_movements").insert(movements);
+    }
+
+    // Archive this inventory as a session (so it can be reviewed later)
+    if (sessionLines.length > 0) {
+      const { data: session } = await supabase.from("inventory_sessions").insert({
+        restaurant_id: restaurantId, items_counted: sessionLines.length,
+        manquant_value: countSummary.manque, surplus_value: countSummary.surplus, net_value: countSummary.net,
+      }).select().single();
+      if (session) {
+        await supabase.from("inventory_lines").insert(sessionLines.map((l) => ({ session_id: session.id, ...l })));
+        setSessions((prev) => [{ ...session, inventory_lines: sessionLines } as InventorySession, ...prev]);
+      }
     }
 
     setLocalIngredients((prev) =>
@@ -270,6 +302,7 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
         {[
           { key: "stock", label: "Stock actuel", icon: ClipboardList },
           { key: "count", label: "Prise d'inventaire", icon: Check },
+          { key: "sessions", label: `Mes inventaires${sessions.length ? ` (${sessions.length})` : ""}`, icon: History },
           { key: "history", label: "Historique des mouvements", icon: History },
         ].map(({ key, label, icon: Icon }) => (
           <button
@@ -522,6 +555,93 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
             (vol, sur-portionnage, oublis), un surplus devient un ajustement. Les pertes déjà saisies (DLC, casse) ne sont pas recomptées ici.
           </p>
         </>
+      )}
+
+      {/* SESSIONS TAB — saved inventories */}
+      {tab === "sessions" && (
+        <div className="space-y-3">
+          {sessions.length === 0 ? (
+            <div className="bg-white border border-gray-200 rounded-xl p-10 text-center">
+              <ClipboardList size={28} className="text-gray-300 mx-auto mb-3" />
+              <p className="text-sm text-gray-500">Aucun inventaire enregistré pour l'instant.</p>
+              <button onClick={() => setTab("count")} className="mt-3 px-4 py-2 text-sm text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition">
+                Faire un inventaire →
+              </button>
+            </div>
+          ) : (
+            sessions.map((s) => {
+              const open = expandedSession === s.id;
+              return (
+                <div key={s.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                  <button onClick={() => setExpandedSession(open ? null : s.id)}
+                    className="w-full flex items-center gap-4 px-5 py-4 hover:bg-gray-50 transition text-left">
+                    <div className="flex-1">
+                      <p className="font-medium text-gray-900">
+                        Inventaire du {new Date(s.created_at).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {new Date(s.created_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })} · {s.items_counted} produit{s.items_counted !== 1 ? "s" : ""} compté{s.items_counted !== 1 ? "s" : ""}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-4 text-sm">
+                      <div className="text-right">
+                        <p className="text-2xs text-gray-400 uppercase">Manquant</p>
+                        <p className="font-semibold text-red-500">-€{Number(s.manquant_value).toFixed(2)}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-2xs text-gray-400 uppercase">Surplus</p>
+                        <p className="font-semibold text-emerald-600">+€{Number(s.surplus_value).toFixed(2)}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-2xs text-gray-400 uppercase">Écart net</p>
+                        <p className={clsx("font-bold", Number(s.net_value) < 0 ? "text-red-600" : "text-emerald-700")}>
+                          {Number(s.net_value) < 0 ? "-" : "+"}€{Math.abs(Number(s.net_value)).toFixed(2)}
+                        </p>
+                      </div>
+                      {open ? <TrendingUp size={16} className="text-gray-400 rotate-180" /> : <TrendingDown size={16} className="text-gray-400" />}
+                    </div>
+                  </button>
+
+                  {open && (
+                    <div className="border-t border-gray-100 px-5 py-4 overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-2xs text-gray-400 uppercase tracking-wider">
+                            <th className="text-left pb-2">Produit</th>
+                            <th className="text-right pb-2">Théorique</th>
+                            <th className="text-right pb-2">Compté</th>
+                            <th className="text-right pb-2">Écart</th>
+                            <th className="text-right pb-2">Valeur</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {(s.inventory_lines ?? []).slice().sort((a, b) => Number(a.ecart_value ?? 0) - Number(b.ecart_value ?? 0)).map((l, i) => {
+                            const u = l.unit ?? "unit";
+                            const ec = Number(l.ecart ?? 0);
+                            const ev = Number(l.ecart_value ?? 0);
+                            return (
+                              <tr key={i}>
+                                <td className="py-1.5 text-gray-700">{l.ingredient_name ?? "—"}</td>
+                                <td className="py-1.5 text-right text-gray-500">{formatQty(Number(l.theoretical_qty ?? 0), u)}</td>
+                                <td className="py-1.5 text-right text-gray-700">{formatQty(Number(l.counted_qty ?? 0), u)}</td>
+                                <td className={clsx("py-1.5 text-right font-medium", ec < 0 ? "text-red-500" : ec > 0 ? "text-emerald-600" : "text-gray-400")}>
+                                  {ec === 0 ? "—" : `${ec > 0 ? "+" : "-"}${formatQty(Math.abs(ec), u)}`}
+                                </td>
+                                <td className={clsx("py-1.5 text-right", ev < 0 ? "text-red-600" : ev > 0 ? "text-emerald-600" : "text-gray-400")}>
+                                  {ev === 0 ? "—" : `${ev < 0 ? "-" : "+"}€${Math.abs(ev).toFixed(2)}`}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
       )}
 
       {/* HISTORY TAB */}

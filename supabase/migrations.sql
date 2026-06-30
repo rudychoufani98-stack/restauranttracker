@@ -123,6 +123,45 @@ create policy rls_ingredient_suppliers on ingredient_suppliers
 -- ---------------------------------------------------------------------
 delete from recipes where name = 'Grilled Chicken';
 
+-- ---------------------------------------------------------------------
+-- 9) Sessions d'inventaire — chaque prise d'inventaire est archivée
+--    (date + lignes comptées) pour pouvoir la reconsulter ensuite.
+-- ---------------------------------------------------------------------
+create table if not exists inventory_sessions (
+  id uuid primary key default gen_random_uuid(),
+  restaurant_id uuid not null references restaurants(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  items_counted int not null default 0,
+  manquant_value numeric not null default 0,
+  surplus_value numeric not null default 0,
+  net_value numeric not null default 0,
+  notes text
+);
+create table if not exists inventory_lines (
+  id uuid primary key default gen_random_uuid(),
+  session_id uuid not null references inventory_sessions(id) on delete cascade,
+  ingredient_id uuid references ingredients(id) on delete set null,
+  ingredient_name text,
+  unit text,
+  theoretical_qty numeric,
+  counted_qty numeric,
+  ecart numeric,
+  cmup numeric,
+  ecart_value numeric
+);
+create index if not exists idx_inventory_lines_session on inventory_lines(session_id);
+
+alter table inventory_sessions enable row level security;
+drop policy if exists rls_inventory_sessions on inventory_sessions;
+create policy rls_inventory_sessions on inventory_sessions for all
+  using (owns_restaurant(restaurant_id)) with check (owns_restaurant(restaurant_id));
+
+alter table inventory_lines enable row level security;
+drop policy if exists rls_inventory_lines on inventory_lines;
+create policy rls_inventory_lines on inventory_lines for all
+  using (exists (select 1 from inventory_sessions s where s.id = inventory_lines.session_id and owns_restaurant(s.restaurant_id)))
+  with check (exists (select 1 from inventory_sessions s where s.id = inventory_lines.session_id and owns_restaurant(s.restaurant_id)));
+
 -- =====================================================================
 -- Rappel : lance aussi supabase/security.sql (RLS) si ce n'est pas fait.
 -- =====================================================================

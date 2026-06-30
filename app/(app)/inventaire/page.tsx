@@ -18,18 +18,26 @@ export default async function InventairePage() {
     .order("category")
     .order("name");
 
-  const { data: recentMovements } = await supabase
-    .from("stock_movements")
-    .select("ingredient_id, movement_type, qty, unit_cost, reference_type, created_at")
-    .eq("restaurant_id", restaurant!.id)
-    .order("created_at", { ascending: false })
-    .limit(100);
+  const [{ data: recentMovements }, { data: inventorySessions }] = await Promise.all([
+    supabase
+      .from("stock_movements")
+      .select("ingredient_id, movement_type, qty, unit_cost, reference_type, created_at")
+      .eq("restaurant_id", restaurant!.id)
+      .order("created_at", { ascending: false })
+      .limit(100),
+    supabase
+      .from("inventory_sessions")
+      .select("*, inventory_lines(*)")
+      .eq("restaurant_id", restaurant!.id)
+      .order("created_at", { ascending: false }),
+  ]);
 
   return (
     <InventaireClient
       restaurantId={restaurant!.id}
       ingredients={(ingredients ?? []) as any}
       recentMovements={recentMovements ?? []}
+      inventorySessions={(inventorySessions ?? []) as any}
     />
   );
 }
