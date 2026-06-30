@@ -198,8 +198,8 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
     <div className="p-6 lg:p-8 max-w-3xl mx-auto pb-24">
       {/* Top bar */}
       <div className="flex items-center justify-between mb-5">
-        <Link href="/recipes" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition">
-          <ArrowLeft size={16} /> Toutes les recettes
+        <Link href={isPrep ? "/mises-en-place" : "/recipes"} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition">
+          <ArrowLeft size={16} /> {isPrep ? "Toutes les mises en place" : "Toutes les recettes"}
         </Link>
         <div className="flex items-center gap-2">
           {toast && <span className="text-sm text-emerald-600 font-medium">{toast}</span>}
