@@ -6,8 +6,8 @@ import { Plus, Pencil, Trash2, X } from "lucide-react";
 
 const CATEGORIES = ["Légumes/Fruits", "Viande", "Poisson", "Produits laitiers", "Épicerie", "Boissons", "Autre"];
 
-type Supplier = { id: string; name: string; email: string | null; contact: string | null; category: string | null };
-const EMPTY = { name: "", email: "", contact: "", category: "Autre" };
+type Supplier = { id: string; name: string; email: string | null; contact: string | null; category: string | null; min_order_amount: number | null; customer_reference: string | null };
+const EMPTY = { name: "", email: "", contact: "", category: "Autre", min_order_amount: "", customer_reference: "" };
 
 interface Props { restaurantId: string; initialSuppliers: Supplier[] }
 
@@ -23,14 +23,20 @@ export default function SuppliersClient({ restaurantId, initialSuppliers }: Prop
   function openAdd() { setEditingId(null); setForm({ ...EMPTY }); setError(null); setShowForm(true); }
   function openEdit(s: Supplier) {
     setEditingId(s.id);
-    setForm({ name: s.name, email: s.email ?? "", contact: s.contact ?? "", category: s.category ?? "Autre" });
+    setForm({ name: s.name, email: s.email ?? "", contact: s.contact ?? "", category: s.category ?? "Autre",
+      min_order_amount: s.min_order_amount != null ? String(s.min_order_amount) : "", customer_reference: s.customer_reference ?? "" });
     setError(null); setShowForm(true);
   }
 
   async function handleSave() {
     if (!form.name.trim()) return setError("Le nom du fournisseur est requis.");
     setSaving(true);
-    const payload = { name: form.name.trim(), email: form.email || null, contact: form.contact || null, category: form.category, restaurant_id: restaurantId };
+    const payload = {
+      name: form.name.trim(), email: form.email || null, contact: form.contact || null, category: form.category,
+      min_order_amount: parseFloat(form.min_order_amount) || 0,
+      customer_reference: form.customer_reference || null,
+      restaurant_id: restaurantId,
+    };
 
     if (editingId) {
       const { data, error: err } = await supabase.from("suppliers").update(payload).eq("id", editingId).select().single();
@@ -82,6 +88,25 @@ export default function SuppliersClient({ restaurantId, initialSuppliers }: Prop
                     className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition" />
                 </div>
               ))}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Franco / minimum (€)</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">€</span>
+                    <input type="number" min="0" step="0.01" value={form.min_order_amount}
+                      onChange={(e) => setForm({ ...form, min_order_amount: e.target.value })} placeholder="0"
+                      className="w-full pl-6 pr-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 transition" />
+                  </div>
+                  <p className="text-2xs text-gray-400 mt-1">montant mini pour livraison gratuite</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Référence client</label>
+                  <input value={form.customer_reference} onChange={(e) => setForm({ ...form, customer_reference: e.target.value })}
+                    placeholder="ton n° de compte" className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 transition" />
+                  <p className="text-2xs text-gray-400 mt-1">apparaît sur le bon de commande</p>
+                </div>
+              </div>
+
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Catégorie</label>
                 <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}
@@ -115,7 +140,8 @@ export default function SuppliersClient({ restaurantId, initialSuppliers }: Prop
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Nom</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Catégorie</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Email</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Contact</th>
+                <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Franco</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Réf. client</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
@@ -125,7 +151,8 @@ export default function SuppliersClient({ restaurantId, initialSuppliers }: Prop
                   <td className="px-4 py-3 font-medium text-gray-900">{s.name}</td>
                   <td className="px-4 py-3"><span className="px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">{s.category ?? "—"}</span></td>
                   <td className="px-4 py-3 text-gray-500">{s.email ?? "—"}</td>
-                  <td className="px-4 py-3 text-gray-500">{s.contact ?? "—"}</td>
+                  <td className="px-4 py-3 text-right text-gray-600">{s.min_order_amount ? `€${Number(s.min_order_amount).toFixed(0)}` : "—"}</td>
+                  <td className="px-4 py-3 text-gray-500">{s.customer_reference ?? "—"}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1 justify-end">
                       <button onClick={() => openEdit(s)} className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition"><Pencil size={14} /></button>

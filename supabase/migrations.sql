@@ -104,6 +104,10 @@ create index if not exists idx_ingredient_suppliers_ingredient on ingredient_sup
 -- Libellé de conditionnement libre par article (ex. "75 cl / bouteille", "sac 18 kg")
 alter table ingredient_suppliers add column if not exists pack_label text;
 
+-- Fournisseurs : franco (montant mini pour livraison gratuite) + référence client
+alter table suppliers add column if not exists min_order_amount numeric not null default 0;
+alter table suppliers add column if not exists customer_reference text;
+
 alter table ingredient_suppliers enable row level security;
 drop policy if exists rls_ingredient_suppliers on ingredient_suppliers;
 create policy rls_ingredient_suppliers on ingredient_suppliers

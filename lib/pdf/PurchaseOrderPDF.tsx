@@ -87,6 +87,7 @@ type POPDFProps = {
     email?: string;
     contact?: string;
     category?: string;
+    customer_reference?: string;
   };
   lines: POLine[];
 };
@@ -147,6 +148,7 @@ export function PurchaseOrderPDF({ orderNumber, orderDate, restaurant, supplier,
             <Text style={S.addressName}>{supplier.name}</Text>
             {supplier.contact && <Text style={S.addressLine}>Contact : {supplier.contact}</Text>}
             {supplier.email && <Text style={S.addressLine}>{supplier.email}</Text>}
+            {supplier.customer_reference && <Text style={S.addressLine}>Réf. client : {supplier.customer_reference}</Text>}
             {supplier.category && <Text style={S.addressLine}>Catégorie : {supplier.category}</Text>}
           </View>
         </View>

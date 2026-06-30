@@ -25,7 +25,7 @@ export async function GET(
       .from("purchase_orders")
       .select(`
         id, order_number, created_at, expected_total,
-        suppliers(name, email, contact, category),
+        suppliers(name, email, contact, category, customer_reference),
         purchase_order_lines(
           quantity, expected_price,
           ingredients(name, unit, vat_rate)
@@ -79,6 +79,7 @@ export async function GET(
         email: supplier.email ?? undefined,
         contact: supplier.contact ?? undefined,
         category: supplier.category ?? undefined,
+        customer_reference: supplier.customer_reference ?? undefined,
       },
       lines,
     });

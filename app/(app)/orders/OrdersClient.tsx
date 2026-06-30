@@ -60,7 +60,7 @@ function condLabel(a: Article): string {
   const u = Number(a.pack_units ?? 1), s = Number(a.unit_size ?? 0);
   return u > 1 ? `${u} × ${s} ${a.unit}` : `${s} ${a.unit}`;
 }
-type Supplier = { id: string; name: string; email: string | null };
+type Supplier = { id: string; name: string; email: string | null; min_order_amount?: number | null; customer_reference?: string | null };
 type POLine = { id?: string; ingredient_id: string | null; quantity: number; expected_price: number | null; ingredients?: { name: string; unit: string } | null };
 type PO = { id: string; supplier_id: string | null; status: string; expected_total: number | null; created_at: string; sent_at: string | null; suppliers?: { name: string } | null; purchase_order_lines: POLine[] };
 
@@ -393,10 +393,33 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
                 </div>
               )}
 
-              <div className="flex items-center justify-between px-4 py-3 bg-gray-50 rounded-lg border border-[#E5E7EB]">
-                <span className="text-sm text-gray-600">Total prévisionnel</span>
-                <span className="text-base font-medium text-gray-900">€{expectedTotal.toFixed(2)}</span>
-              </div>
+              {(() => {
+                const sup = suppliers.find((s) => s.id === supplierId);
+                const franco = Number(sup?.min_order_amount ?? 0);
+                const reached = franco > 0 && expectedTotal >= franco;
+                const missing = franco - expectedTotal;
+                return (
+                  <div className="px-4 py-3 bg-gray-50 rounded-lg border border-[#E5E7EB] space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">Total prévisionnel</span>
+                      <span className="text-base font-medium text-gray-900">€{expectedTotal.toFixed(2)}</span>
+                    </div>
+                    {franco > 0 && (
+                      <>
+                        <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                          <div className={clsx("h-full rounded-full transition-all", reached ? "bg-emerald-500" : "bg-amber-400")}
+                            style={{ width: `${Math.min(100, (expectedTotal / franco) * 100)}%` }} />
+                        </div>
+                        <p className={clsx("text-xs", reached ? "text-emerald-600" : "text-amber-600")}>
+                          {reached
+                            ? `✓ Franco atteint (€${franco.toFixed(0)}) — livraison gratuite`
+                            : `Franco à €${franco.toFixed(0)} — il manque €${missing.toFixed(2)}`}
+                        </p>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
             <div className="flex gap-2 px-5 py-4 border-t border-[#E5E7EB]">
               <button onClick={() => setShowForm(false)} className="flex-1 py-2 text-sm text-gray-600 border border-[#E5E7EB] rounded-lg hover:bg-gray-50 transition">Annuler</button>
