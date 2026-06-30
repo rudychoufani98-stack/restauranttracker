@@ -97,9 +97,10 @@ interface Props {
   allRecipes: Recipe[];
   menuCategories: string[];
   prepCategories: string[];
+  lockMode?: "recipe" | "prep"; // when set, this page only shows that type (no tab switch)
 }
 
-export default function RecipesClient({ restaurantId, initialRecipes, ingredients, allRecipes: allRecipesProp, menuCategories, prepCategories }: Props) {
+export default function RecipesClient({ restaurantId, initialRecipes, ingredients, allRecipes: allRecipesProp, menuCategories, prepCategories, lockMode }: Props) {
   const supabase = createClient();
   const [recipes, setRecipes] = useState<Recipe[]>(initialRecipes);
   const [allRecipes, setAllRecipes] = useState<Recipe[]>(allRecipesProp);
@@ -113,7 +114,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
   const [recalcing, setRecalcing] = useState(false);
   const [recalcMsg, setRecalcMsg] = useState<string | null>(null);
 
-  const [tab, setTab] = useState<"recipe" | "prep">("recipe");
+  const [tab, setTab] = useState<"recipe" | "prep">(lockMode ?? "recipe");
   const [name, setName] = useState("");
   const [category, setCategory] = useState("Plat");
   const [isPrep, setIsPrep] = useState(false);
@@ -357,10 +358,14 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
     <div className="p-8 max-w-5xl mx-auto">
       <div className="flex items-end justify-between mb-5 pb-5 border-b border-gray-200">
         <div>
-          <p className="text-xs font-semibold text-emerald-600 uppercase tracking-widest mb-1">Catalogue</p>
-          <h1 className="text-2xl font-bold text-gray-900">Recettes</h1>
+          <p className="text-xs font-semibold text-emerald-600 uppercase tracking-widest mb-1">Ma cuisine</p>
+          <h1 className="text-2xl font-bold text-gray-900">{lockMode === "prep" ? "Mises en place" : "Recettes"}</h1>
           <p className="text-sm text-gray-500 mt-1">
-            {menuRecipes.length} fiche{menuRecipes.length !== 1 ? "s" : ""} technique{menuRecipes.length !== 1 ? "s" : ""} · {prepRecipes.length} mise{prepRecipes.length !== 1 ? "s" : ""} en place
+            {lockMode === "prep"
+              ? `${prepRecipes.length} mise${prepRecipes.length !== 1 ? "s" : ""} en place (sauces, fonds, bases…)`
+              : lockMode === "recipe"
+              ? `${menuRecipes.length} fiche${menuRecipes.length !== 1 ? "s" : ""} technique${menuRecipes.length !== 1 ? "s" : ""}`
+              : `${menuRecipes.length} fiche${menuRecipes.length !== 1 ? "s" : ""} technique${menuRecipes.length !== 1 ? "s" : ""} · ${prepRecipes.length} mise${prepRecipes.length !== 1 ? "s" : ""} en place`}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -389,31 +394,33 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="flex gap-1 mb-6 p-1 bg-gray-100 rounded-lg w-fit">
-        {([
-          { key: "recipe" as const, label: "Fiches techniques", count: menuRecipes.length },
-          { key: "prep" as const, label: "Mises en place", count: prepRecipes.length },
-        ]).map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={clsx(
-              "px-4 py-2 text-sm font-medium rounded-md transition",
-              tab === t.key ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
-            )}
-          >
-            {t.label} <span className={clsx("ml-1 text-xs", tab === t.key ? "text-emerald-600" : "text-gray-400")}>{t.count}</span>
-          </button>
-        ))}
-      </div>
+      {/* Tabs — hidden when the page is locked to a single type */}
+      {!lockMode && (
+        <div className="flex gap-1 mb-6 p-1 bg-gray-100 rounded-lg w-fit">
+          {([
+            { key: "recipe" as const, label: "Fiches techniques", count: menuRecipes.length },
+            { key: "prep" as const, label: "Mises en place", count: prepRecipes.length },
+          ]).map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={clsx(
+                "px-4 py-2 text-sm font-medium rounded-md transition",
+                tab === t.key ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+              )}
+            >
+              {t.label} <span className={clsx("ml-1 text-xs", tab === t.key ? "text-emerald-600" : "text-gray-400")}>{t.count}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Recipe form modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black/30 flex items-start justify-center z-50 p-4 overflow-y-auto">
           <div className="bg-white rounded-card border border-[#E5E7EB] w-full max-w-2xl shadow-xl my-8">
             <div className="flex items-center justify-between px-5 py-4 border-b border-[#E5E7EB]">
-              <h2 className="text-base font-medium text-gray-900">{editingId ? "Modifier la recette" : "Nouvelle recette"}</h2>
+              <h2 className="text-base font-medium text-gray-900">{editingId ? "Modifier" : "Nouveau"} {tab === "prep" ? "— mise en place" : "— fiche technique"}</h2>
               <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
 
@@ -451,25 +458,27 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                 </div>
               </div>
 
-              {/* Type toggle */}
-              <label className="flex items-start gap-3 px-4 py-3 rounded-lg border border-[#E5E7EB] bg-gray-50 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={isPrep}
-                  onChange={(e) => {
-                    const v = e.target.checked;
-                    setIsPrep(v);
-                    setCategory((v ? prepCategories : menuCategories)[0] ?? "");
-                  }}
-                  className="mt-0.5 w-4 h-4 accent-emerald-600"
-                />
-                <span>
-                  <span className="block text-sm font-medium text-gray-800">Mise en place (sous-recette)</span>
-                  <span className="block text-xs text-gray-500 mt-0.5">
-                    Préparation de base (sauce, fond, pâte…) qui alimente d'autres fiches techniques. N'apparaît pas au menu.
+              {/* Type toggle — hidden when the page is locked to a single type */}
+              {!lockMode && (
+                <label className="flex items-start gap-3 px-4 py-3 rounded-lg border border-[#E5E7EB] bg-gray-50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isPrep}
+                    onChange={(e) => {
+                      const v = e.target.checked;
+                      setIsPrep(v);
+                      setCategory((v ? prepCategories : menuCategories)[0] ?? "");
+                    }}
+                    className="mt-0.5 w-4 h-4 accent-emerald-600"
+                  />
+                  <span>
+                    <span className="block text-sm font-medium text-gray-800">Mise en place (sous-recette)</span>
+                    <span className="block text-xs text-gray-500 mt-0.5">
+                      Préparation de base (sauce, fond, pâte…) qui alimente d'autres fiches techniques. N'apparaît pas au menu.
+                    </span>
                   </span>
-                </span>
-              </label>
+                </label>
+              )}
 
               {/* Ingredient lines */}
               <div>

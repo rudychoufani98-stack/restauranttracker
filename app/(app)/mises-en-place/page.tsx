@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
-import RecipesClient from "./RecipesClient";
+import RecipesClient from "../recipes/RecipesClient";
 
-export default async function RecipesPage() {
+export default async function MisesEnPlacePage() {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -41,7 +41,7 @@ export default async function RecipesPage() {
       allRecipes={recipes ?? []}
       menuCategories={menuCategories.length ? menuCategories : ["Entrée", "Plat", "Accompagnement", "Dessert", "Boisson", "Menu"]}
       prepCategories={prepCategories.length ? prepCategories : ["Sauce", "Fond/Bouillon", "Pâte", "Garniture", "Marinade", "Base"]}
-      lockMode="recipe"
+      lockMode="prep"
     />
   );
 }

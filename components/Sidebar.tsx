@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   Package,
   ChefHat,
+  Soup,
   UtensilsCrossed,
   ShoppingCart,
   Truck,
@@ -30,8 +31,9 @@ const NAV_GROUPS = [
   {
     label: "Ma cuisine",
     items: [
-      { href: "/ingredients", label: "Ingrédients", icon: Package },
-      { href: "/recipes",     label: "Recettes",    icon: ChefHat },
+      { href: "/ingredients",    label: "Ingrédients",    icon: Package },
+      { href: "/mises-en-place", label: "Mises en place", icon: Soup },
+      { href: "/recipes",        label: "Recettes",       icon: ChefHat },
       { href: "/menu",        label: "Ma carte",    icon: UtensilsCrossed },
       { href: "/categories",  label: "Catégories",  icon: Tags },
     ],
