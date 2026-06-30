@@ -81,7 +81,7 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
   const router = useRouter();
 
   const [name, setName] = useState(recipe.name);
-  const [isPrep, setIsPrep] = useState(recipe.is_prep);
+  const isPrep = recipe.is_prep; // type figé : MEP et recettes ont des pages séparées
   const [category, setCategory] = useState(recipe.category);
   const [yieldPortions, setYieldPortions] = useState(String(recipe.yield_portions));
   const [yieldUnit, setYieldUnit] = useState(recipe.yield_unit || "portion");
@@ -226,13 +226,6 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
             </select>
           </div>
         </div>
-        <label className="flex items-start gap-3 mt-4 px-3 py-2.5 rounded-lg border border-gray-200 bg-gray-50 cursor-pointer">
-          <input type="checkbox" checked={isPrep} onChange={(e) => { setIsPrep(e.target.checked); setCategory((e.target.checked ? prepCategories : menuCategories)[0] ?? category); }} className="mt-0.5 w-4 h-4 accent-emerald-600" />
-          <span>
-            <span className="block text-sm font-medium text-gray-800">Mise en place (sous-recette)</span>
-            <span className="block text-xs text-gray-500 mt-0.5">Préparation de base réutilisée dans d&apos;autres fiches. N&apos;apparaît pas au menu.</span>
-          </span>
-        </label>
       </div>
 
       {/* Cost summary */}
