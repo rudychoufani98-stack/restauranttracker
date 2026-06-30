@@ -101,7 +101,7 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
   const [error, setError] = useState<string | null>(null);
 
   const cats = isPrep ? prepCategories : menuCategories;
-  const subRecipeOptions = allRecipes.filter((r) => r.id !== recipe.id);
+  const subRecipeOptions = allRecipes.filter((r) => r.id !== recipe.id && r.is_prep);
 
   const totalCost = useMemo(() => lines.reduce((s, l) => s + calcLineCost(l, ingredients, allRecipes), 0), [lines, ingredients, allRecipes]);
   const yp = parseFloat(yieldPortions) || 1;
@@ -158,7 +158,7 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
     if (!name.trim()) return setError("Le nom est requis.");
     if (yp <= 0) return setError("Le rendement doit être supérieur à 0.");
     const valid = lines.filter((l) => l.ingredient_id || l.sub_recipe_id);
-    if (valid.length === 0) return setError("Ajoute au moins un ingrédient ou une sous-recette.");
+    if (valid.length === 0) return setError("Ajoute au moins un ingrédient ou une mise en place.");
     setSaving(true);
 
     const { error: err } = await supabase.from("recipes").update({
@@ -289,7 +289,7 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
       </Section>
 
       {/* Ingredients */}
-      <Section icon={<ListChecks size={16} />} title="Ingrédients & sous-recettes" subtitle="Quantités nettes utilisées dans la recette."
+      <Section icon={<ListChecks size={16} />} title="Ingrédients & mises en place" subtitle="Ajoute des ingrédients bruts et/ou des mises en place. Quand la recette est vendue, les ingrédients (y compris ceux des MEP) sont déstockés."
         action={<button onClick={addLine} className="flex items-center gap-1 text-xs font-medium text-emerald-600 hover:text-emerald-700"><Plus size={13} /> Ligne</button>}>
         <div className="space-y-2">
           {lines.map((line, idx) => {
@@ -300,7 +300,7 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
               <div key={idx} className="flex gap-2 items-start">
                 <select value={line.type} onChange={(e) => updateLine(idx, "type", e.target.value)} className="px-2 py-2 text-xs border border-gray-200 rounded-lg bg-white outline-none focus:border-emerald-500">
                   <option value="ingredient">Ingrédient</option>
-                  <option value="sub_recipe">Sous-recette</option>
+                  <option value="sub_recipe">Mise en place</option>
                 </select>
                 {line.type === "ingredient" ? (
                   <select value={line.ingredient_id} onChange={(e) => updateLine(idx, "ingredient_id", e.target.value)} className="flex-1 px-2 py-2 text-sm border border-gray-200 rounded-lg bg-white outline-none focus:border-emerald-500">
@@ -309,7 +309,7 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
                   </select>
                 ) : (
                   <select value={line.sub_recipe_id} onChange={(e) => updateLine(idx, "sub_recipe_id", e.target.value)} className="flex-1 px-2 py-2 text-sm border border-gray-200 rounded-lg bg-white outline-none focus:border-emerald-500">
-                    <option value="">Choisir…</option>
+                    <option value="">Choisir une mise en place…</option>
                     {subRecipeOptions.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
                   </select>
                 )}

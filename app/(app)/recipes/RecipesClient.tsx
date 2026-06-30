@@ -204,7 +204,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
     const yp = parseFloat(yieldPortions);
     if (isNaN(yp) || yp <= 0) return setError("Le nombre de portions doit être supérieur à 0.");
     const validLines = lines.filter((l) => l.ingredient_id || l.sub_recipe_id);
-    if (validLines.length === 0) return setError("Ajoutez au moins un ingrédient ou une sous-recette.");
+    if (validLines.length === 0) return setError("Ajoutez au moins un ingrédient ou une mise en place.");
 
     setSaving(true);
     const recipePayload = {
@@ -478,7 +478,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                     className="mt-0.5 w-4 h-4 accent-emerald-600"
                   />
                   <span>
-                    <span className="block text-sm font-medium text-gray-800">Mise en place (sous-recette)</span>
+                    <span className="block text-sm font-medium text-gray-800">Mise en place</span>
                     <span className="block text-xs text-gray-500 mt-0.5">
                       Préparation de base (sauce, fond, pâte…) qui alimente d'autres fiches techniques. N'apparaît pas au menu.
                     </span>
@@ -489,7 +489,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
               {/* Ingredient lines */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-medium text-gray-600">Ingrédients et sous-recettes</label>
+                  <label className="text-xs font-medium text-gray-600">Ingrédients et mises en place</label>
                   <button onClick={addLine} className="text-xs text-emerald-600 hover:underline flex items-center gap-1">
                     <Plus size={12} /> Ajouter une ligne
                   </button>
@@ -501,7 +501,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                       <select value={line.type} onChange={(e) => updateLine(idx, "type", e.target.value)}
                         className="px-2 py-2 text-xs border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 bg-white transition">
                         <option value="ingredient">Ingrédient</option>
-                        <option value="sub_recipe">Sous-recette</option>
+                        <option value="sub_recipe">Mise en place</option>
                       </select>
 
                       {line.type === "ingredient" ? (
@@ -513,8 +513,8 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                       ) : (
                         <select value={line.sub_recipe_id} onChange={(e) => updateLine(idx, "sub_recipe_id", e.target.value)}
                           className="flex-1 px-2 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 bg-white transition">
-                          <option value="">Choisir une recette…</option>
-                          {allRecipes.filter((r) => r.id !== editingId).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                          <option value="">Choisir une mise en place…</option>
+                          {allRecipes.filter((r) => r.id !== editingId && r.is_prep).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
                         </select>
                       )}
 
@@ -676,7 +676,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="text-xs text-gray-400 uppercase">
-                          <th className="text-left pb-2">Ingrédient / Sous-recette</th>
+                          <th className="text-left pb-2">Ingrédient / Mise en place</th>
                           <th className="text-right pb-2">Quantité</th>
                           <th className="text-right pb-2">Coût</th>
                         </tr>
@@ -693,7 +693,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                           return (
                             <tr key={i}>
                               <td className="py-1.5 text-gray-700">
-                                {isSubRecipe && <span className="text-xs text-blue-500 mr-1">[sous-recette]</span>}
+                                {isSubRecipe && <span className="text-xs text-blue-500 mr-1">[mise en place]</span>}
                                 {label}
                               </td>
                               <td className="text-right text-gray-500">{line.quantity} {line.unit}</td>
