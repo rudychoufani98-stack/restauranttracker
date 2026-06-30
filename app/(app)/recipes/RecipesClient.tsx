@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Trash2, X, ChevronDown, ChevronUp, RefreshCw, Copy } from "lucide-react";
+import { Plus, Trash2, X, ChevronDown, ChevronUp, RefreshCw, Copy, Search } from "lucide-react";
 import clsx from "clsx";
 
 
@@ -107,6 +107,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -125,7 +126,12 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
   // Split recipes by type
   const menuRecipes = useMemo(() => recipes.filter((r) => !r.is_prep), [recipes]);
   const prepRecipes = useMemo(() => recipes.filter((r) => r.is_prep), [recipes]);
-  const visibleRecipes = tab === "recipe" ? menuRecipes : prepRecipes;
+  const visibleRecipes = useMemo(() => {
+    const base = tab === "recipe" ? menuRecipes : prepRecipes;
+    const q = search.trim().toLowerCase();
+    if (!q) return base;
+    return base.filter((r) => r.name.toLowerCase().includes(q) || (r.category ?? "").toLowerCase().includes(q));
+  }, [tab, menuRecipes, prepRecipes, search]);
 
   const totalCost = useMemo(() =>
     lines.reduce((sum, l) => sum + calcLineCost(l, ingredients, allRecipes), 0),
@@ -576,8 +582,29 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
         </div>
       )}
 
+      {/* Search */}
+      <div className="relative mb-4 max-w-sm">
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={tab === "prep" ? "Rechercher une mise en place…" : "Rechercher une recette…"}
+          className="w-full pl-9 pr-8 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 transition"
+        />
+        {search && (
+          <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+            <X size={14} />
+          </button>
+        )}
+      </div>
+
       {/* Recipe list */}
       {visibleRecipes.length === 0 ? (
+        search.trim() ? (
+          <div className="bg-white border border-gray-100 rounded-card p-10 text-center">
+            <p className="text-sm text-gray-500">Aucun résultat pour « {search} ».</p>
+          </div>
+        ) : (
         <div className="bg-white border border-[#E5E7EB] rounded-card p-12 text-center">
           <div className="text-4xl mb-3">{tab === "prep" ? "🥣" : "👨‍🍳"}</div>
           <h2 className="text-base font-medium text-gray-900 mb-1">
@@ -592,6 +619,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
             {tab === "prep" ? "Créer la première mise en place" : "Créer la première recette"}
           </button>
         </div>
+        )
       ) : (
         <div className="space-y-3">
           {visibleRecipes.map((recipe) => {
