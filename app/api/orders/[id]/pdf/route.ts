@@ -25,7 +25,7 @@ export async function GET(
       .from("purchase_orders")
       .select(`
         id, order_number, created_at, expected_total,
-        suppliers(name, email, contact, category, customer_reference),
+        suppliers(*),
         purchase_order_lines(
           quantity, expected_price,
           ingredients(name, unit, vat_rate)
