@@ -61,19 +61,17 @@ export default function Sidebar({ restaurantName }: { restaurantName: string }) 
 
   return (
     <aside className="w-56 shrink-0 flex flex-col h-screen sticky top-0 bg-white border-r border-gray-100">
-      {/* Brand */}
+      {/* Brand — Amaly wordmark */}
       <div className="px-4 pt-5 pb-4 border-b border-gray-100">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center shadow-sm text-base">
-            🍽
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-2xs text-gray-400 uppercase tracking-wider font-semibold leading-none">Restaurant</p>
-            <p className="text-sm font-semibold text-gray-900 truncate leading-snug mt-0.5">
-              {restaurantName}
-            </p>
-          </div>
-        </div>
+        <p
+          className="text-3xl font-bold text-gray-900 leading-none"
+          style={{ fontFamily: 'Georgia, "Times New Roman", "Playfair Display", serif', letterSpacing: "-0.01em" }}
+        >
+          Amaly
+        </p>
+        <p className="text-2xs text-gray-400 uppercase tracking-widest font-semibold mt-1.5 truncate">
+          {restaurantName}
+        </p>
       </div>
 
       {/* Nav */}
