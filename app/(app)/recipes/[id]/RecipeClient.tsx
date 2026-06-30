@@ -25,6 +25,19 @@ const YIELD_UNITS = [
 const toBase = (qty: number, unit: string) => (unit === "kg" || unit === "l" ? qty * 1000 : qty);
 const yieldInBase = (r: RecipeRef) => toBase(r.yield_portions || 1, r.yield_unit || "portion");
 
+// Arrondi propre (supprime les zéros inutiles)
+const fmtNum = (n: number, d = 3) => String(Math.round(n * 10 ** d) / 10 ** d);
+// Quantité mise à l'échelle, avec conversion auto kg↔g / L↔ml pour rester lisible
+function fmtScaled(qty: number, unit: string): string {
+  if (!isFinite(qty) || qty === 0) return "—";
+  if (unit === "kg") return qty < 1 ? `${fmtNum(qty * 1000, 1)} g` : `${fmtNum(qty, 3)} kg`;
+  if (unit === "l")  return qty < 1 ? `${fmtNum(qty * 1000, 1)} ml` : `${fmtNum(qty, 3)} L`;
+  if (unit === "g")  return qty >= 1000 ? `${fmtNum(qty / 1000, 3)} kg` : `${fmtNum(qty, 1)} g`;
+  if (unit === "ml") return qty >= 1000 ? `${fmtNum(qty / 1000, 3)} L` : `${fmtNum(qty, 1)} ml`;
+  if (unit === "unit" || unit === "piece") return fmtNum(qty, 2);
+  return `${fmtNum(qty, 2)} ${unit}`;
+}
+
 function unitsForSubRecipe(yieldUnit: string): string[] {
   switch (yieldUnit) {
     case "kg": case "g": return ["g", "kg"];
@@ -72,6 +85,7 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
   const [category, setCategory] = useState(recipe.category);
   const [yieldPortions, setYieldPortions] = useState(String(recipe.yield_portions));
   const [yieldUnit, setYieldUnit] = useState(recipe.yield_unit || "portion");
+  const [targetQty, setTargetQty] = useState(String(recipe.yield_portions)); // outil de ratio
   const [lines, setLines] = useState<DraftLine[]>(
     recipe.recipe_lines.length > 0
       ? recipe.recipe_lines.map((l) => ({
@@ -92,6 +106,16 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
   const yp = parseFloat(yieldPortions) || 1;
   const costPerYield = totalCost / yp;
   const yLabel = YIELD_UNITS.find((u) => u.value === yieldUnit)?.label ?? yieldUnit;
+
+  // --- Outil de ratio (mise à l'échelle) ---
+  const yQtyNum = parseFloat(yieldPortions) || 0;
+  const tQtyNum = parseFloat(targetQty) || 0;
+  const ratioFactor = yQtyNum > 0 ? tQtyNum / yQtyNum : 0;
+  const scalableLines = lines.filter((l) => (l.ingredient_id || l.sub_recipe_id) && parseFloat(l.quantity) > 0);
+  const lineName = (l: DraftLine) =>
+    l.type === "ingredient"
+      ? ingredients.find((i) => i.id === l.ingredient_id)?.name ?? "—"
+      : allRecipes.find((r) => r.id === l.sub_recipe_id)?.name ?? "—";
 
   // Food cost (only meaningful for priced menu dishes)
   const fc = recipe.menu_price && recipe.menu_price > 0 ? (costPerYield / recipe.menu_price) * 100 : null;
@@ -216,6 +240,59 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
             {YIELD_UNITS.map((u) => <option key={u.value} value={u.value}>{u.label}</option>)}
           </select>
         </div>
+      </Section>
+
+      {/* Ratio / mise à l'échelle */}
+      <Section icon={<Scale size={16} />} title="Ratio / mise à l'échelle"
+        subtitle={`Base : ${fmtNum(yQtyNum)} ${yLabel}. Entre une quantité cible pour recalculer toutes les quantités au prorata.`}>
+        {scalableLines.length === 0 ? (
+          <p className="text-xs text-gray-400">Ajoute des ingrédients avec des quantités pour utiliser le ratio.</p>
+        ) : (
+          <>
+            <div className="flex items-end gap-2 mb-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Ramener à</label>
+                <div className="flex gap-2">
+                  <input type="number" min="0" step="any" value={targetQty} onChange={(e) => setTargetQty(e.target.value)} className={clsx(inputCls, "w-28")} />
+                  <span className="px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg text-gray-600">{yLabel}</span>
+                </div>
+              </div>
+              <div className="flex gap-1.5 pb-0.5">
+                {[1, 10, 100].map((v) => (
+                  <button key={v} type="button" onClick={() => setTargetQty(String(v))}
+                    className="px-2.5 py-1.5 text-xs font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition">
+                    {v} {yLabel}
+                  </button>
+                ))}
+              </div>
+              <span className="ml-auto text-xs text-gray-400 pb-2">×{fmtNum(ratioFactor, 4)}</span>
+            </div>
+            <div className="overflow-hidden rounded-lg border border-gray-200">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 text-2xs text-gray-400 uppercase tracking-wide">
+                    <th className="px-3 py-2 text-left font-semibold">Ingrédient</th>
+                    <th className="px-3 py-2 text-right font-semibold">Base ({fmtNum(yQtyNum)} {yLabel})</th>
+                    <th className="px-3 py-2 text-right font-semibold">→ {fmtNum(tQtyNum)} {yLabel}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {scalableLines.map((l, i) => {
+                    const q = parseFloat(l.quantity);
+                    return (
+                      <tr key={i}>
+                        <td className="px-3 py-2 text-gray-800">{lineName(l)}</td>
+                        <td className="px-3 py-2 text-right text-gray-400">{fmtScaled(q, l.unit)}</td>
+                        <td className="px-3 py-2 text-right font-medium text-emerald-700">{fmtScaled(q * ratioFactor, l.unit)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-2xs text-gray-400 mt-2">Outil de calcul uniquement — ne modifie pas la fiche enregistrée.</p>
+          </>
+        )}
       </Section>
 
       {/* Ingredients */}
