@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Check, Plus, Trash2, Tag, Mail, KeyRound, LogOut, Loader2 } from "lucide-react";
-import { Card, Button, Input, Select, Alert } from "@/components/ui";
+import { Check, Plus, Trash2, Tag, Mail, KeyRound, LogOut, Loader2, Users, UserPlus, Shield } from "lucide-react";
+import { Card, Button, Input, Select, Alert, Badge } from "@/components/ui";
 import { logout } from "@/app/auth/actions";
 import clsx from "clsx";
 
@@ -28,12 +28,21 @@ type Restaurant = {
   address?: string; phone?: string; siret?: string;
 };
 type Tag = { id: string; name: string; color: string };
+type Member = { id: string; email: string; role: string; status: string; created_at: string };
 
-type Tab = "restaurant" | "tags" | "digest" | "compte";
+type Tab = "restaurant" | "tags" | "digest" | "compte" | "utilisateurs";
 
-interface Props { restaurant: Restaurant; email: string; initialTags: Tag[] }
+// Rôles des membres d'équipe (clé stockée en base → libellé affiché)
+const MEMBER_ROLES: { value: string; label: string }[] = [
+  { value: "admin",   label: "Admin" },
+  { value: "manager", label: "Manager" },
+  { value: "staff",   label: "Staff" },
+];
+const roleLabel = (r: string) => MEMBER_ROLES.find((x) => x.value === r)?.label ?? r;
 
-export default function SettingsClient({ restaurant, email, initialTags }: Props) {
+interface Props { restaurant: Restaurant; email: string; initialTags: Tag[]; initialMembers: Member[] }
+
+export default function SettingsClient({ restaurant, email, initialTags, initialMembers }: Props) {
   const supabase = createClient();
   const [tab, setTab] = useState<Tab>("restaurant");
 
@@ -112,11 +121,63 @@ export default function SettingsClient({ restaurant, email, initialTags }: Props
     setPwdMsg(error ? "Échec de l'envoi. Réessaie." : "Email de réinitialisation envoyé ✓ — vérifie ta boîte mail.");
   }
 
+  // --- Utilisateurs (membres d'équipe) ---
+  const [members, setMembers] = useState<Member[]>(initialMembers);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("staff");
+  const [memberError, setMemberError] = useState<string | null>(null);
+  const [inviting, setInviting] = useState(false);
+  const [deletingMemberId, setDeletingMemberId] = useState<string | null>(null);
+
+  async function handleInviteMember() {
+    setMemberError(null);
+    const value = inviteEmail.trim().toLowerCase();
+    if (!value) return setMemberError("L'email est requis.");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return setMemberError("Email invalide.");
+    if (value === email.toLowerCase()) return setMemberError("Vous êtes déjà le propriétaire de ce compte.");
+    if (members.find((m) => m.email.toLowerCase() === value)) {
+      return setMemberError("Ce membre est déjà dans la liste.");
+    }
+    setInviting(true);
+    const { data, error } = await supabase.from("restaurant_members").insert({
+      restaurant_id: restaurant.id,
+      email: value,
+      role: inviteRole,
+      status: "invited",
+    }).select().single();
+    if (error) {
+      setMemberError(
+        error.message.includes("restaurant_members")
+          ? "La table « restaurant_members » n'existe pas encore — lance la migration Supabase (voir migrations.sql §10)."
+          : error.message
+      );
+      setInviting(false);
+      return;
+    }
+    setMembers((p) => [...p, data]);
+    setInviteEmail("");
+    setInviteRole("staff");
+    setInviting(false);
+  }
+
+  async function handleChangeMemberRole(id: string, role: string) {
+    setMembers((p) => p.map((m) => (m.id === id ? { ...m, role } : m)));
+    await supabase.from("restaurant_members").update({ role }).eq("id", id);
+  }
+
+  async function handleDeleteMember(id: string) {
+    setDeletingMemberId(id);
+    await supabase.from("restaurant_members").delete().eq("id", id);
+    setMembers((p) => p.filter((m) => m.id !== id));
+    setDeletingMemberId(null);
+  }
+
   const tabs: { key: Tab; label: string }[] = [
-    { key: "restaurant", label: "Restaurant" },
-    { key: "compte",     label: "Compte" },
-    { key: "tags",       label: "Tags" },
-    { key: "digest",     label: "Récap hebdo" },
+    { key: "restaurant",   label: "Restaurant" },
+    { key: "compte",       label: "Compte" },
+    { key: "utilisateurs", label: "Utilisateurs" },
+    { key: "tags",         label: "Tags" },
+    { key: "digest",       label: "Récap hebdo" },
   ];
 
   return (
@@ -255,6 +316,99 @@ export default function SettingsClient({ restaurant, email, initialTags }: Props
                 <LogOut size={14} /> Se déconnecter
               </button>
             </form>
+          </Card>
+        </div>
+      )}
+
+      {/* ── Utilisateurs tab ── */}
+      {tab === "utilisateurs" && (
+        <div className="space-y-5">
+          <Card>
+            <h2 className="text-sm font-semibold text-gray-900 mb-1">Utilisateurs</h2>
+            <p className="text-xs text-gray-500 mb-5">
+              Invitez votre équipe (manager, cuisine, salle) à ce restaurant. Pour l&apos;instant c&apos;est un annuaire d&apos;équipe : les membres invités n&apos;ont pas encore d&apos;accès de connexion partagé — cela viendra dans une prochaine étape.
+            </p>
+
+            {/* Invite form */}
+            <div className="flex gap-2 items-end mb-5">
+              <div className="flex-1">
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Email du membre</label>
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleInviteMember()}
+                  placeholder="manager@restaurant.com"
+                  className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition"
+                />
+              </div>
+              <Select
+                label="Rôle"
+                value={inviteRole}
+                onChange={(e) => setInviteRole(e.target.value)}
+                className="w-36"
+              >
+                {MEMBER_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+              </Select>
+              <Button variant="primary" onClick={handleInviteMember} disabled={inviting}>
+                {inviting ? <Loader2 size={13} className="animate-spin" /> : <UserPlus size={13} />}
+                Inviter
+              </Button>
+            </div>
+
+            {memberError && <Alert variant="error">{memberError}</Alert>}
+
+            {/* Owner + members list */}
+            <div className="mt-1 divide-y divide-gray-100">
+              {/* Owner row (toujours en premier, non modifiable) */}
+              <div className="flex items-center justify-between px-3 py-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center shrink-0">
+                    <Shield size={15} className="text-emerald-600" />
+                  </div>
+                  <span className="text-sm text-gray-800 truncate">{email}</span>
+                </div>
+                <Badge variant="green">Propriétaire</Badge>
+              </div>
+
+              {/* Invited members */}
+              {members.map((m) => (
+                <div key={m.id} className="flex items-center justify-between px-3 py-3 group">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
+                      <Mail size={14} className="text-gray-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm text-gray-800 truncate">{m.email}</p>
+                      {m.status === "invited" && <p className="text-2xs text-amber-600 mt-0.5">Invité — en attente</p>}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <select
+                      value={m.role}
+                      onChange={(e) => handleChangeMemberRole(m.id, e.target.value)}
+                      className="px-2.5 py-1.5 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition appearance-none"
+                    >
+                      {MEMBER_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+                    </select>
+                    <button
+                      onClick={() => handleDeleteMember(m.id)}
+                      disabled={deletingMemberId === m.id}
+                      className="p-1.5 rounded-md text-gray-300 hover:text-red-500 hover:bg-red-50 transition opacity-0 group-hover:opacity-100"
+                    >
+                      {deletingMemberId === m.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {members.length === 0 && (
+                <div className="py-8 text-center">
+                  <Users size={28} className="mx-auto text-gray-200 mb-3" />
+                  <p className="text-sm text-gray-500">Aucun membre invité. Ajoutez votre équipe ci-dessus.</p>
+                </div>
+              )}
+            </div>
           </Card>
         </div>
       )}

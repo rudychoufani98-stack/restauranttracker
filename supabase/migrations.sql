@@ -162,6 +162,47 @@ create policy rls_inventory_lines on inventory_lines for all
   using (exists (select 1 from inventory_sessions s where s.id = inventory_lines.session_id and owns_restaurant(s.restaurant_id)))
   with check (exists (select 1 from inventory_sessions s where s.id = inventory_lines.session_id and owns_restaurant(s.restaurant_id)));
 
+-- ---------------------------------------------------------------------
+-- 10) Gestion des utilisateurs — membres d'équipe par restaurant
+--     Le propriétaire (restaurants.owner_id) peut inviter des membres
+--     (email + rôle). NOTE : pour l'instant c'est un annuaire d'équipe —
+--     les membres invités ne partagent PAS encore l'accès aux données
+--     (cela nécessitera de réécrire owns_restaurant + la RLS). Seul le
+--     propriétaire peut lire/écrire cette liste (RLS owns_restaurant).
+-- ---------------------------------------------------------------------
+create table if not exists restaurant_members (
+  id uuid primary key default gen_random_uuid(),
+  restaurant_id uuid not null references restaurants(id) on delete cascade,
+  email text not null,
+  role text not null default 'staff',
+  status text not null default 'invited',
+  created_at timestamptz not null default now()
+);
+
+do $$ begin
+  alter table restaurant_members drop constraint if exists restaurant_members_role_check;
+exception when others then null; end $$;
+alter table restaurant_members
+  add constraint restaurant_members_role_check check (role in ('admin', 'manager', 'staff'));
+
+do $$ begin
+  alter table restaurant_members drop constraint if exists restaurant_members_status_check;
+exception when others then null; end $$;
+alter table restaurant_members
+  add constraint restaurant_members_status_check check (status in ('invited', 'active'));
+
+-- Un même email ne peut être invité qu'une fois par restaurant (insensible à la casse)
+create unique index if not exists idx_restaurant_members_unique
+  on restaurant_members(restaurant_id, lower(email));
+create index if not exists idx_restaurant_members_restaurant
+  on restaurant_members(restaurant_id);
+
+alter table restaurant_members enable row level security;
+drop policy if exists rls_restaurant_members on restaurant_members;
+create policy rls_restaurant_members on restaurant_members for all
+  using (owns_restaurant(restaurant_id))
+  with check (owns_restaurant(restaurant_id));
+
 -- =====================================================================
 -- Rappel : lance aussi supabase/security.sql (RLS) si ce n'est pas fait.
 -- =====================================================================
