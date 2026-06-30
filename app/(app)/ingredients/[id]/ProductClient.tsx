@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { ArrowLeft, Check, Plus, Trash2, Loader2, Package, Boxes, Star, GitMerge, Pencil } from "lucide-react";
+import { ArrowLeft, Check, Plus, Trash2, Loader2, Package, Boxes, GitMerge, Pencil } from "lucide-react";
 import clsx from "clsx";
 import {
   UNITS, VAT_PRESETS, ALLERGENS, packTotal, calcCostPerBase,
@@ -102,15 +102,8 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
 
   const yPct = parseFloat(yieldPct) || 100;
 
-  // Article cost helpers
+  // €/display-unit of an article (for the live "revient à" hint)
   const articleGross = (a: Article) => calcCostPerBase(parseFloat(a.pack_price) || 0, parseFloat(a.pack_units) || 1, parseFloat(a.unit_size) || 0, unit);
-  const preferred = articles.find((a) => a.is_preferred) ?? articles[0];
-  const prefGross = preferred ? articleGross(preferred) : 0;
-  const cmup = Number(ingredient.cmup ?? 0);
-  const grossBase = cmup > 0 ? cmup : prefGross;
-  const netBase = yPct > 0 ? grossBase / (yPct / 100) : grossBase;
-  const coutReel = perDisplayUnit(netBase, unit);
-  const stockValue = Number(ingredient.stock_qty ?? 0) * grossBase;
 
   function toggleAllergen(a: string) {
     setAllergens((p) => p.includes(a) ? p.filter((x) => x !== a) : [...p, a]);
@@ -118,21 +111,14 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
   function addArticle() {
     setArticles((p) => [...p, {
       supplier_id: "", supplier_reference: "", pack_units: "1", unit_size: "",
-      pack_price: "", vat_rate: "5.5", pack_type: "colis", pack_label: "", is_preferred: p.length === 0,
+      pack_price: "", vat_rate: "5.5", pack_type: "colis", pack_label: "", is_preferred: false,
     }]);
   }
   function updateArticle(i: number, f: keyof Article, v: string | boolean) {
     setArticles((p) => p.map((a, idx) => idx === i ? { ...a, [f]: v } : a));
   }
-  function setPreferred(i: number) {
-    setArticles((p) => p.map((a, idx) => ({ ...a, is_preferred: idx === i })));
-  }
   function removeArticle(i: number) {
-    setArticles((p) => {
-      const next = p.filter((_, idx) => idx !== i);
-      if (next.length > 0 && !next.some((a) => a.is_preferred)) next[0].is_preferred = true;
-      return next;
-    });
+    setArticles((p) => p.filter((_, idx) => idx !== i));
   }
 
   async function handleSave() {
@@ -142,8 +128,10 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
     const validArticles = articles.filter((a) => parseFloat(a.pack_price) >= 0 && parseFloat(a.unit_size) > 0);
     setSaving(true);
 
-    // Preferred article drives the product's purchase fields + cost
-    const pref = validArticles.find((a) => a.is_preferred) ?? validArticles[0];
+    // Reference article = cheapest priced one (drives the fallback cost +
+    // the "main" supplier on the product; the real recipe cost follows CMUP).
+    const priced = validArticles.filter((a) => (parseFloat(a.pack_price) || 0) > 0);
+    const pref = (priced.length > 0 ? [...priced].sort((a, b) => articleGross(a) - articleGross(b))[0] : validArticles[0]);
     const pUnits = pref ? parseFloat(pref.pack_units) || 1 : 1;
     const uSize = pref ? parseFloat(pref.unit_size) || 0 : 0;
     const pPrice = pref ? parseFloat(pref.pack_price) || 0 : 0;
@@ -177,7 +165,7 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
       vat_rate: parseFloat(a.vat_rate) || 0,
       pack_type: a.pack_type || "colis",
       pack_label: a.pack_label || null,
-      is_preferred: a.is_preferred,
+      is_preferred: a === pref,
     }));
     if (rows.length > 0) await supabase.from("ingredient_suppliers").insert(rows);
 
@@ -268,7 +256,7 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
       </div>
 
       {/* 1. Conditionnement de base */}
-      <Section icon={<Package size={16} />} title="Conditionnement de base" subtitle="Comment tu l'utilises en recette et tu le comptes en stock.">
+      <Section icon={<Package size={16} />} title="Conditionnement de base" subtitle="L'unité dans laquelle tu l'utilises en recette et le comptes en stock — c'est la base de tout.">
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Unité d'usage</label>
@@ -295,7 +283,7 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
 
       {/* 2. Articles */}
       <Section icon={<Boxes size={16} />} title="Articles (références d'achat)"
-        subtitle="Chaque article = une référence chez un fournisseur, avec son conditionnement et son prix. Plusieurs articles peuvent alimenter ce produit."
+        subtitle="Un article par fournisseur : sa référence, son conditionnement de commande (colissage) et son prix. Sert uniquement pour les commandes."
         action={<button onClick={addArticle} className="flex items-center gap-1 text-xs font-medium text-emerald-600 hover:text-emerald-700"><Plus size={13} /> Ajouter un article</button>}>
         {articles.length === 0 ? (
           <p className="text-xs text-gray-400">Aucun article. Ajoute la référence d'achat d'au moins un fournisseur.</p>
@@ -305,12 +293,9 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
               const cpb = parseFloat(a.pack_price) >= 0 && parseFloat(a.unit_size) > 0 ? perDisplayUnit(articleGross(a), unit) : 0;
               const ttc = priceTTC(parseFloat(a.pack_price) || 0, parseFloat(a.vat_rate) || 0);
               return (
-                <div key={i} className={clsx("border rounded-lg p-3 space-y-2.5", a.is_preferred ? "border-emerald-300 bg-emerald-50/30" : "border-gray-200 bg-gray-50/40")}>
+                <div key={i} className="border border-gray-200 bg-gray-50/40 rounded-lg p-3 space-y-2.5">
                   <div className="flex items-center gap-2">
-                    <button onClick={() => setPreferred(i)} title={a.is_preferred ? "Article principal" : "Définir comme principal"}
-                      className={clsx("shrink-0", a.is_preferred ? "text-amber-500" : "text-gray-300 hover:text-amber-400")}>
-                      <Star size={16} fill={a.is_preferred ? "currentColor" : "none"} />
-                    </button>
+                    <span className="text-2xs font-semibold text-gray-400 shrink-0">#{i + 1}</span>
                     <select value={a.supplier_id} onChange={(e) => updateArticle(i, "supplier_id", e.target.value)} className={clsx(inputCls, "flex-1 py-1.5")}>
                       <option value="">Choisir un fournisseur…</option>
                       {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -318,6 +303,7 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
                     <button onClick={() => removeArticle(i)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition shrink-0"><Trash2 size={14} /></button>
                   </div>
 
+                  <p className="text-2xs font-medium text-gray-400 uppercase tracking-wide">Conditionnement de commande (colissage)</p>
                   <div className="flex flex-wrap items-end gap-2">
                     <span className="text-xs text-gray-500 pb-2">1</span>
                     <input list="pack-types" value={a.pack_type} onChange={(e) => updateArticle(i, "pack_type", e.target.value)} placeholder="colis" className="w-24 px-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500" />
@@ -349,7 +335,7 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
                 </div>
               );
             })}
-            <p className="text-2xs text-gray-400">⭐ L'article « principal » sert de prix de référence et est pré-sélectionné dans les bons de commande. Le coût des recettes suit le prix réellement payé (CMUP).</p>
+            <p className="text-2xs text-gray-400">Le coût des recettes suit le prix réellement payé (CMUP). En commande, chaque fournisseur propose son article avec son colissage et son prix.</p>
           </div>
         )}
       </Section>
