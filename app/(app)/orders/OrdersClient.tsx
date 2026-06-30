@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Plus, Trash2, X, Send, Download, ChevronDown, ChevronUp, Zap } from "lucide-react";
 import clsx from "clsx";
@@ -250,10 +251,10 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
               <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-white text-2xs">{restockGroups.reduce((s, g) => s + g.items.length, 0)}</span>
             )}
           </button>
-          <button onClick={() => { setShowForm(true); setError(null); }}
+          <Link href="/orders/new"
             className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 transition shadow-sm">
             <Plus size={15} /> Nouvelle commande
-          </button>
+          </Link>
         </div>
       </div>
 
@@ -438,7 +439,7 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
           <div className="text-4xl mb-3">📦</div>
           <h2 className="text-base font-medium text-gray-900 mb-1">Aucune commande</h2>
           <p className="text-sm text-gray-500 mb-5">Créez un bon de commande pour l'envoyer à vos fournisseurs.</p>
-          <button onClick={() => setShowForm(true)} className="px-4 py-2 text-sm text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 transition">Créer la première commande</button>
+          <Link href="/orders/new" className="inline-block px-4 py-2 text-sm text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 transition">Créer la première commande</Link>
         </div>
       ) : (
         <div className="space-y-3">
