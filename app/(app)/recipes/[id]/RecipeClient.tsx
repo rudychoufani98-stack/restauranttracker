@@ -105,8 +105,6 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
 
   const totalCost = useMemo(() => lines.reduce((s, l) => s + calcLineCost(l, ingredients, allRecipes), 0), [lines, ingredients, allRecipes]);
   const yp = parseFloat(yieldPortions) || 1;
-  const costPerYield = totalCost / yp;
-  const yLabel = YIELD_UNITS.find((u) => u.value === yieldUnit)?.label ?? yieldUnit;
 
   // --- Outil de ratio (mise à l'échelle) ---
   const unitLabel = (u: string) => ({ kg: "kg", g: "g", l: "L", ml: "ml", portion: "portion(s)", piece: "pièce(s)" } as Record<string, string>)[u] ?? u;
@@ -135,9 +133,6 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
     l.type === "ingredient"
       ? ingredients.find((i) => i.id === l.ingredient_id)?.name ?? "—"
       : allRecipes.find((r) => r.id === l.sub_recipe_id)?.name ?? "—";
-
-  // Food cost (only meaningful for priced menu dishes)
-  const fc = recipe.menu_price && recipe.menu_price > 0 ? (costPerYield / recipe.menu_price) * 100 : null;
 
   function updateLine(idx: number, field: keyof DraftLine, value: string) {
     setLines((prev) => {
@@ -225,22 +220,6 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
               {Array.from(new Set([...cats, category].filter(Boolean))).map((c) => <option key={c}>{c}</option>)}
             </select>
           </div>
-        </div>
-      </div>
-
-      {/* Cost summary */}
-      <div className="grid grid-cols-3 gap-3 mb-4">
-        <div className="bg-white border border-gray-100 rounded-card shadow-card p-4">
-          <p className="text-2xs text-gray-400 uppercase tracking-wide">Coût total</p>
-          <p className="text-lg font-bold text-gray-900">€{totalCost.toFixed(2)}</p>
-        </div>
-        <div className="bg-white border border-gray-100 rounded-card shadow-card p-4">
-          <p className="text-2xs text-gray-400 uppercase tracking-wide">Coût / {yLabel}</p>
-          <p className="text-lg font-bold text-emerald-600">€{costPerYield.toFixed(2)}</p>
-        </div>
-        <div className="bg-white border border-gray-100 rounded-card shadow-card p-4">
-          <p className="text-2xs text-gray-400 uppercase tracking-wide">Food cost</p>
-          <p className="text-lg font-bold text-gray-900">{fc !== null ? `${fc.toFixed(1)}%` : "—"}</p>
         </div>
       </div>
 
