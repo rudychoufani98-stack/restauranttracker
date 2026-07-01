@@ -357,6 +357,8 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
   }
 
   async function handleDelete(id: string) {
+    const name = ingredients.find((i) => i.id === id)?.name ?? "cet ingrédient";
+    if (!window.confirm(`Supprimer « ${name} » ? Cette action est irréversible.`)) return;
     setDeletingId(id);
     await supabase.from("ingredients").delete().eq("id", id);
     setIngredients((p) => p.filter((i) => i.id !== id));

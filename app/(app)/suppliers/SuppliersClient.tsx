@@ -51,6 +51,8 @@ export default function SuppliersClient({ restaurantId, initialSuppliers }: Prop
   }
 
   async function handleDelete(id: string) {
+    const name = suppliers.find((s) => s.id === id)?.name ?? "ce fournisseur";
+    if (!window.confirm(`Supprimer « ${name} » ? Cette action est irréversible.`)) return;
     await supabase.from("suppliers").delete().eq("id", id);
     setSuppliers((p) => p.filter((s) => s.id !== id));
   }

@@ -231,6 +231,9 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
   }
 
   async function handleDelete(id: string) {
+    const o = orders.find((x) => x.id === id);
+    const label = o?.suppliers?.name ? `la commande « ${o.suppliers.name} »` : "cette commande";
+    if (!window.confirm(`Supprimer ${label} ? Cette action est irréversible.`)) return;
     await supabase.from("purchase_orders").delete().eq("id", id);
     setOrders((p) => p.filter((o) => o.id !== id));
   }

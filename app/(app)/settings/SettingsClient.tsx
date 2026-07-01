@@ -103,6 +103,8 @@ export default function SettingsClient({ restaurant, email, initialTags, initial
   }
 
   async function handleDeleteTag(id: string) {
+    const name = tags.find((t) => t.id === id)?.name ?? "ce tag";
+    if (!window.confirm(`Supprimer le tag « ${name} » ?`)) return;
     setDeletingTagId(id);
     await supabase.from("tags").delete().eq("id", id);
     setTags((p) => p.filter((t) => t.id !== id));
@@ -166,6 +168,8 @@ export default function SettingsClient({ restaurant, email, initialTags, initial
   }
 
   async function handleDeleteMember(id: string) {
+    const email = members.find((m) => m.id === id)?.email ?? "ce membre";
+    if (!window.confirm(`Retirer « ${email} » de l'équipe ?`)) return;
     setDeletingMemberId(id);
     await supabase.from("restaurant_members").delete().eq("id", id);
     setMembers((p) => p.filter((m) => m.id !== id));

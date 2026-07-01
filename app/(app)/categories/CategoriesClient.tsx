@@ -61,6 +61,8 @@ export default function CategoriesClient({ restaurantId, initialCategories }: Pr
   }
 
   async function remove(id: string) {
+    const name = cats.find((c) => c.id === id)?.name ?? "cette catégorie";
+    if (!window.confirm(`Supprimer la catégorie « ${name} » ?`)) return;
     await supabase.from("categories").delete().eq("id", id);
     setCats((p) => p.filter((c) => c.id !== id));
   }
