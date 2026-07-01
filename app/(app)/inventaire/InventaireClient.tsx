@@ -43,7 +43,8 @@ type InventoryLine = {
   cmup: number | null; ecart_value: number | null;
 };
 type InventorySession = {
-  id: string; created_at: string; items_counted: number;
+  id: string; created_at: string; closing_at: string | null; status: string; finalized_at: string | null;
+  items_counted: number;
   manquant_value: number; surplus_value: number; net_value: number; notes: string | null;
   inventory_lines: InventoryLine[];
 };
@@ -94,6 +95,12 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
   const [tab, setTab] = useState<"stock" | "count" | "sessions" | "history">("stock");
   const [sessions, setSessions] = useState<InventorySession[]>(inventorySessions);
   const [expandedSession, setExpandedSession] = useState<string | null>(null);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [newClosingAt, setNewClosingAt] = useState<string>(() => {
+    const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    return d.toISOString().slice(0, 16); // "YYYY-MM-DDTHH:mm" (local) for datetime-local input
+  });
+  const [creatingDraft, setCreatingDraft] = useState(false);
   const [counts, setCounts] = useState<Record<string, string>>({});
   const [validatingCount, setValidatingCount] = useState(false);
   const [countDone, setCountDone] = useState<string | null>(null);
@@ -185,7 +192,47 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
     return { manque, surplus, counted, net: surplus - manque };
   }, [counts, localIngredients]);
 
-  async function validateCount() {
+  const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
+
+  // Base (g/ml/pièce) → the display value the user typed (kg/L/pièce)
+  function baseToDisplay(qty: number, unit: string): number {
+    const wv = unit === "g" || unit === "kg" || unit === "ml" || unit === "l";
+    return wv ? qty / 1000 : qty;
+  }
+
+  async function createDraft() {
+    setCreatingDraft(true);
+    const { data: session } = await supabase.from("inventory_sessions").insert({
+      restaurant_id: restaurantId, status: "draft",
+      closing_at: newClosingAt ? new Date(newClosingAt).toISOString() : new Date().toISOString(),
+      items_counted: 0,
+    }).select().single();
+    setCreatingDraft(false);
+    if (session) {
+      setSessions((prev) => [{ ...session, inventory_lines: [] } as InventorySession, ...prev]);
+      setActiveSessionId(session.id);
+      setCounts({});
+      setCountDone(null);
+      setTab("count");
+    }
+  }
+
+  function loadDraft(s: InventorySession) {
+    const next: Record<string, string> = {};
+    for (const l of s.inventory_lines ?? []) {
+      if (l.ingredient_id && l.counted_qty != null) {
+        const ing = localIngredients.find((i) => i.id === l.ingredient_id);
+        next[l.ingredient_id] = String(baseToDisplay(Number(l.counted_qty), ing?.unit ?? l.unit ?? "unit"));
+      }
+    }
+    setCounts(next);
+    setActiveSessionId(s.id);
+    setCountDone(null);
+    setTab("count");
+  }
+
+  async function saveSession(finalize: boolean) {
+    if (!activeSessionId) return;
     setValidatingCount(true);
     const movements: any[] = [];
     const updates: { id: string; qty: number }[] = [];
@@ -197,60 +244,49 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
       const theo = Number(ing.stock_qty ?? 0);
       const cmup = Number(ing.cmup ?? ing.cost_per_base_unit ?? 0);
       const diff = real - theo;
-      // Archive every counted line (even if no écart) for the inventory record
       sessionLines.push({
         ingredient_id: ing.id, ingredient_name: ing.name, unit: ing.unit,
         theoretical_qty: theo, counted_qty: real, ecart: diff, cmup, ecart_value: diff * cmup,
       });
-      if (diff === 0) continue;
-      updates.push({ id: ing.id, qty: real });
-      if (diff < 0) {
-        // Manquant inexpliqué -> perte "Écart inventaire"
-        movements.push({
-          restaurant_id: restaurantId, ingredient_id: ing.id,
-          movement_type: "loss", qty: Math.abs(diff), unit_cost: cmup,
-          reference_type: "inventory", loss_reason: "Écart inventaire",
-          notes: `Prise d'inventaire : ${theo} → ${real}`,
-        });
-      } else {
-        // Surplus -> ajustement positif
-        movements.push({
-          restaurant_id: restaurantId, ingredient_id: ing.id,
-          movement_type: "adjustment", qty: diff, unit_cost: cmup,
-          reference_type: "inventory",
-          notes: `Prise d'inventaire : ${theo} → ${real}`,
-        });
+      if (finalize && diff !== 0) {
+        updates.push({ id: ing.id, qty: real });
+        movements.push(diff < 0
+          ? { restaurant_id: restaurantId, ingredient_id: ing.id, movement_type: "loss", qty: Math.abs(diff), unit_cost: cmup, reference_type: "inventory", loss_reason: "Écart inventaire", notes: `Inventaire : ${theo} → ${real}` }
+          : { restaurant_id: restaurantId, ingredient_id: ing.id, movement_type: "adjustment", qty: diff, unit_cost: cmup, reference_type: "inventory", notes: `Inventaire : ${theo} → ${real}` });
       }
     }
 
-    for (const u of updates) {
-      await supabase.from("ingredients").update({ stock_qty: u.qty }).eq("id", u.id);
-    }
-    if (movements.length > 0) {
-      await supabase.from("stock_movements").insert(movements);
-    }
-
-    // Archive this inventory as a session (so it can be reviewed later)
+    // Replace the session's saved lines with the current count
+    await supabase.from("inventory_lines").delete().eq("session_id", activeSessionId);
     if (sessionLines.length > 0) {
-      const { data: session } = await supabase.from("inventory_sessions").insert({
-        restaurant_id: restaurantId, items_counted: sessionLines.length,
-        manquant_value: countSummary.manque, surplus_value: countSummary.surplus, net_value: countSummary.net,
-      }).select().single();
-      if (session) {
-        await supabase.from("inventory_lines").insert(sessionLines.map((l) => ({ session_id: session.id, ...l })));
-        setSessions((prev) => [{ ...session, inventory_lines: sessionLines } as InventorySession, ...prev]);
-      }
+      await supabase.from("inventory_lines").insert(sessionLines.map((l) => ({ session_id: activeSessionId, ...l })));
     }
 
-    setLocalIngredients((prev) =>
-      prev.map((i) => {
-        const u = updates.find((x) => x.id === i.id);
-        return u ? { ...i, stock_qty: u.qty } : i;
-      })
-    );
-    setCounts({});
+    const patch: any = {
+      items_counted: sessionLines.length,
+      manquant_value: countSummary.manque, surplus_value: countSummary.surplus, net_value: countSummary.net,
+    };
+    if (finalize) { patch.status = "finalized"; patch.finalized_at = new Date().toISOString(); }
+    await supabase.from("inventory_sessions").update(patch).eq("id", activeSessionId);
+
+    // Apply stock only when finalizing
+    if (finalize) {
+      for (const u of updates) await supabase.from("ingredients").update({ stock_qty: u.qty }).eq("id", u.id);
+      if (movements.length > 0) await supabase.from("stock_movements").insert(movements);
+      setLocalIngredients((prev) => prev.map((i) => { const u = updates.find((x) => x.id === i.id); return u ? { ...i, stock_qty: u.qty } : i; }));
+    }
+
+    setSessions((prev) => prev.map((s) => s.id === activeSessionId ? { ...s, ...patch, inventory_lines: sessionLines } : s));
     setValidatingCount(false);
-    setCountDone(`Inventaire validé : ${updates.length} ajustement(s), écart net €${countSummary.net.toFixed(2)}.`);
+
+    if (finalize) {
+      setCounts({});
+      setActiveSessionId(null);
+      setCountDone(`Inventaire finalisé : ${updates.length} ajustement(s) appliqué(s), écart net €${countSummary.net.toFixed(2)}.`);
+      setTab("sessions");
+    } else {
+      setCountDone("Brouillon enregistré ✓");
+    }
   }
 
   // Group movements by date for display
@@ -467,6 +503,46 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
             </div>
           )}
 
+          {!activeSession ? (
+            <div className="bg-white border border-gray-200 rounded-xl p-8 max-w-md mx-auto text-center">
+              <ClipboardList size={28} className="text-gray-300 mx-auto mb-3" />
+              <h2 className="text-base font-semibold text-gray-900 mb-1">Nouvelle fiche d&apos;inventaire</h2>
+              <p className="text-sm text-gray-500 mb-4">Choisis la date et l&apos;heure de l&apos;inventaire (pour savoir si c&apos;est avant ou après service). Tu peux la laisser en brouillon et la finir plus tard.</p>
+              <div className="flex flex-wrap items-end gap-2 justify-center">
+                <div className="text-left">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Date &amp; heure de l&apos;inventaire</label>
+                  <input type="datetime-local" value={newClosingAt} onChange={(e) => setNewClosingAt(e.target.value)}
+                    className="px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-emerald-500" />
+                </div>
+                <button onClick={createDraft} disabled={creatingDraft}
+                  className="px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition">
+                  {creatingDraft ? "Création…" : "Créer la fiche"}
+                </button>
+              </div>
+            </div>
+          ) : (
+          <>
+          {/* Fiche header + actions */}
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl">
+            <div>
+              <p className="text-sm font-semibold text-gray-900">
+                Inventaire du {activeSession.closing_at ? new Date(activeSession.closing_at).toLocaleString("fr-FR", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"}
+              </p>
+              <p className="text-2xs text-amber-600 uppercase tracking-wide font-semibold">Brouillon · {countSummary.counted} produit(s) compté(s)</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => { setActiveSessionId(null); setCounts({}); }} className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700">Quitter</button>
+              <button onClick={() => saveSession(false)} disabled={validatingCount}
+                className="px-3.5 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition">
+                Enregistrer brouillon
+              </button>
+              <button onClick={() => saveSession(true)} disabled={validatingCount || countSummary.counted === 0}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 disabled:opacity-40 transition">
+                {validatingCount ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Finaliser
+              </button>
+            </div>
+          </div>
+
           {/* Summary */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
             <div className="bg-white border border-gray-200 rounded-xl p-4">
@@ -485,16 +561,7 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
             </div>
           </div>
 
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-sm text-gray-500">Saisis le stock physique compté. L'écart avec le théorique se calcule en direct.</p>
-            <button
-              onClick={validateCount}
-              disabled={validatingCount || countSummary.counted === 0}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 disabled:opacity-40 transition"
-            >
-              {validatingCount ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Valider l'inventaire
-            </button>
-          </div>
+          <p className="text-sm text-gray-500 mb-3">Saisis le stock physique compté. <b>Enregistrer brouillon</b> ne touche pas au stock ; <b>Finaliser</b> applique les écarts et archive la fiche.</p>
 
           <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
             <table className="w-full text-sm">
@@ -551,38 +618,44 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
             </table>
           </div>
           <p className="text-xs text-gray-400 mt-3">
-            À la validation : le stock théorique est aligné sur le réel. Un manquant devient une perte « Écart inventaire »
+            À la finalisation : le stock théorique est aligné sur le réel. Un manquant devient une perte « Écart inventaire »
             (vol, sur-portionnage, oublis), un surplus devient un ajustement. Les pertes déjà saisies (DLC, casse) ne sont pas recomptées ici.
           </p>
+          </>
+          )}
         </>
       )}
 
       {/* SESSIONS TAB — saved inventories */}
       {tab === "sessions" && (
         <div className="space-y-3">
+          <div className="flex justify-end">
+            <button onClick={() => { setActiveSessionId(null); setCountDone(null); setTab("count"); }}
+              className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition">
+              <ClipboardList size={14} /> Nouvel inventaire
+            </button>
+          </div>
           {sessions.length === 0 ? (
             <div className="bg-white border border-gray-200 rounded-xl p-10 text-center">
               <ClipboardList size={28} className="text-gray-300 mx-auto mb-3" />
-              <p className="text-sm text-gray-500">Aucun inventaire enregistré pour l'instant.</p>
-              <button onClick={() => setTab("count")} className="mt-3 px-4 py-2 text-sm text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition">
-                Faire un inventaire →
-              </button>
+              <p className="text-sm text-gray-500">Aucun inventaire pour l'instant. Crée ta première fiche.</p>
             </div>
           ) : (
             sessions.map((s) => {
               const open = expandedSession === s.id;
+              const draft = s.status === "draft";
               return (
-                <div key={s.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                  <button onClick={() => setExpandedSession(open ? null : s.id)}
-                    className="w-full flex items-center gap-4 px-5 py-4 hover:bg-gray-50 transition text-left">
-                    <div className="flex-1">
-                      <p className="font-medium text-gray-900">
-                        Inventaire du {new Date(s.created_at).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })}
+                <div key={s.id} className={clsx("bg-white border rounded-xl overflow-hidden", draft ? "border-amber-200" : "border-gray-200")}>
+                  <div className="flex items-center gap-4 px-5 py-4">
+                    <button onClick={() => draft ? loadDraft(s) : setExpandedSession(open ? null : s.id)} className="flex-1 text-left">
+                      <p className="font-medium text-gray-900 flex items-center gap-2 flex-wrap">
+                        Inventaire du {new Date(s.closing_at ?? s.created_at).toLocaleString("fr-FR", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        <span className={clsx("px-1.5 py-0.5 rounded text-2xs font-semibold uppercase", draft ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700")}>
+                          {draft ? "Brouillon" : "Finalisé"}
+                        </span>
                       </p>
-                      <p className="text-xs text-gray-400 mt-0.5">
-                        {new Date(s.created_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })} · {s.items_counted} produit{s.items_counted !== 1 ? "s" : ""} compté{s.items_counted !== 1 ? "s" : ""}
-                      </p>
-                    </div>
+                      <p className="text-xs text-gray-400 mt-0.5">{s.items_counted} produit{s.items_counted !== 1 ? "s" : ""} compté{s.items_counted !== 1 ? "s" : ""}</p>
+                    </button>
                     <div className="flex items-center gap-4 text-sm">
                       <div className="text-right">
                         <p className="text-2xs text-gray-400 uppercase">Manquant</p>
@@ -598,11 +671,19 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
                           {Number(s.net_value) < 0 ? "-" : "+"}€{Math.abs(Number(s.net_value)).toFixed(2)}
                         </p>
                       </div>
-                      {open ? <TrendingUp size={16} className="text-gray-400 rotate-180" /> : <TrendingDown size={16} className="text-gray-400" />}
+                      {draft ? (
+                        <button onClick={() => loadDraft(s)} className="px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition">
+                          Continuer →
+                        </button>
+                      ) : (
+                        <button onClick={() => setExpandedSession(open ? null : s.id)} className="text-gray-400">
+                          {open ? <TrendingUp size={16} className="rotate-180" /> : <TrendingDown size={16} />}
+                        </button>
+                      )}
                     </div>
-                  </button>
+                  </div>
 
-                  {open && (
+                  {open && !draft && (
                     <div className="border-t border-gray-100 px-5 py-4 overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead>

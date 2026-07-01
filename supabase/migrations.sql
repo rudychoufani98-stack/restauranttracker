@@ -131,12 +131,19 @@ create table if not exists inventory_sessions (
   id uuid primary key default gen_random_uuid(),
   restaurant_id uuid not null references restaurants(id) on delete cascade,
   created_at timestamptz not null default now(),
+  closing_at timestamptz,                    -- date + heure de l'inventaire (avant/après service)
+  status text not null default 'draft',      -- 'draft' | 'finalized'
+  finalized_at timestamptz,
   items_counted int not null default 0,
   manquant_value numeric not null default 0,
   surplus_value numeric not null default 0,
   net_value numeric not null default 0,
   notes text
 );
+-- (si la table existait déjà sans ces colonnes)
+alter table inventory_sessions add column if not exists closing_at timestamptz;
+alter table inventory_sessions add column if not exists status text not null default 'draft';
+alter table inventory_sessions add column if not exists finalized_at timestamptz;
 create table if not exists inventory_lines (
   id uuid primary key default gen_random_uuid(),
   session_id uuid not null references inventory_sessions(id) on delete cascade,
