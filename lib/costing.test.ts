@@ -95,4 +95,27 @@ describe("ingredientsPerYieldBase (stock deduction)", () => {
     ]);
     expect(ingredientsPerYieldBase("r", map).get("rice")).toBeCloseTo(200, 5);
   });
+
+  it("Baklawa scenario: dish using 150 g of a 70.1 kg MEP deducts each raw ingredient at 0.214%", () => {
+    // MEP "baklawa" yields 70.1 kg from: pâte 18 kg, pistache 12 kg, sucre 25 kg, samneh 15 kg, eau de rose 100 ml
+    const map = new Map<string, RecipeRow>([
+      ["baklawa_mep", { id: "baklawa_mep", yield_portions: 70.1, yield_unit: "kg", recipe_lines: [
+        { ingredient_id: "pate", sub_recipe_id: null, quantity: 18, unit: "kg" },
+        { ingredient_id: "pistache", sub_recipe_id: null, quantity: 12, unit: "kg" },
+        { ingredient_id: "sucre", sub_recipe_id: null, quantity: 25, unit: "kg" },
+        { ingredient_id: "samneh", sub_recipe_id: null, quantity: 15, unit: "kg" },
+        { ingredient_id: "eaurose", sub_recipe_id: null, quantity: 100, unit: "ml" },
+      ] }],
+      // Menu dish uses 150 g of the MEP per portion
+      ["dish", { id: "dish", yield_portions: 1, yield_unit: "portion", recipe_lines: [
+        { ingredient_id: null, sub_recipe_id: "baklawa_mep", quantity: 150, unit: "g" },
+      ] }],
+    ]);
+    const per = ingredientsPerYieldBase("dish", map);
+    const ratio = 150 / 70100; // 0.214%
+    expect(per.get("pate")).toBeCloseTo(18000 * ratio, 4);      // ≈ 38.52 g
+    expect(per.get("pistache")).toBeCloseTo(12000 * ratio, 4);  // ≈ 25.68 g
+    expect(per.get("sucre")).toBeCloseTo(25000 * ratio, 4);     // ≈ 53.50 g
+    expect(per.get("eaurose")).toBeCloseTo(100 * ratio, 4);     // ≈ 0.21 ml
+  });
 });
