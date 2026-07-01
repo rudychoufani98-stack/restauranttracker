@@ -153,6 +153,26 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
   const addLine = () => setLines((p) => [...p, { ...EMPTY_LINE }]);
   const removeLine = (idx: number) => setLines((p) => p.filter((_, i) => i !== idx));
 
+  // Unified picker: value is "mep:<id>" (mise en place) or "ing:<id>" (ingrédient)
+  function selectItem(idx: number, value: string) {
+    setLines((prev) => prev.map((l, i) => {
+      if (i !== idx) return l;
+      if (value.startsWith("mep:")) {
+        const id = value.slice(4);
+        const sub = allRecipes.find((r) => r.id === id);
+        return { ...l, type: "sub_recipe", sub_recipe_id: id, ingredient_id: "", unit: unitsForSubRecipe(sub?.yield_unit || "portion")[0] };
+      }
+      if (value.startsWith("ing:")) {
+        const id = value.slice(4);
+        const ing = ingredients.find((g) => g.id === id);
+        const unit = ing ? (ing.unit === "kg" ? "g" : ing.unit === "l" ? "ml" : ing.unit) : "g";
+        return { ...l, type: "ingredient", ingredient_id: id, sub_recipe_id: "", unit };
+      }
+      return { ...l, type: "ingredient", ingredient_id: "", sub_recipe_id: "" };
+    }));
+  }
+  const lineValue = (l: DraftLine) => l.sub_recipe_id ? `mep:${l.sub_recipe_id}` : l.ingredient_id ? `ing:${l.ingredient_id}` : "";
+
   async function handleSave() {
     setError(null);
     if (!name.trim()) return setError("Le nom est requis.");
@@ -298,21 +318,17 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
               : ["g", "kg", "ml", "l", "unit"];
             return (
               <div key={idx} className="flex gap-2 items-start">
-                <select value={line.type} onChange={(e) => updateLine(idx, "type", e.target.value)} className="px-2 py-2 text-xs border border-gray-200 rounded-lg bg-white outline-none focus:border-emerald-500">
-                  <option value="ingredient">Ingrédient</option>
-                  <option value="sub_recipe">Mise en place</option>
+                <select value={lineValue(line)} onChange={(e) => selectItem(idx, e.target.value)} className="flex-1 px-2 py-2 text-sm border border-gray-200 rounded-lg bg-white outline-none focus:border-emerald-500">
+                  <option value="">Choisir un ingrédient ou une mise en place…</option>
+                  {subRecipeOptions.length > 0 && (
+                    <optgroup label="Mises en place">
+                      {subRecipeOptions.map((r) => <option key={r.id} value={`mep:${r.id}`}>{r.name}</option>)}
+                    </optgroup>
+                  )}
+                  <optgroup label="Ingrédients">
+                    {ingredients.map((i) => <option key={i.id} value={`ing:${i.id}`}>{i.name}</option>)}
+                  </optgroup>
                 </select>
-                {line.type === "ingredient" ? (
-                  <select value={line.ingredient_id} onChange={(e) => updateLine(idx, "ingredient_id", e.target.value)} className="flex-1 px-2 py-2 text-sm border border-gray-200 rounded-lg bg-white outline-none focus:border-emerald-500">
-                    <option value="">Choisir…</option>
-                    {ingredients.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
-                  </select>
-                ) : (
-                  <select value={line.sub_recipe_id} onChange={(e) => updateLine(idx, "sub_recipe_id", e.target.value)} className="flex-1 px-2 py-2 text-sm border border-gray-200 rounded-lg bg-white outline-none focus:border-emerald-500">
-                    <option value="">Choisir une mise en place…</option>
-                    {subRecipeOptions.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-                  </select>
-                )}
                 <input type="number" min="0" step="any" value={line.quantity} onChange={(e) => updateLine(idx, "quantity", e.target.value)} placeholder="Qté" className="w-20 px-2 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-emerald-500" />
                 <select value={line.unit} onChange={(e) => updateLine(idx, "unit", e.target.value)} className="w-16 px-2 py-2 text-xs border border-gray-200 rounded-lg bg-white outline-none focus:border-emerald-500">
                   {subUnits.map((u) => <option key={u} value={u}>{u === "portion" ? "port." : u}</option>)}
