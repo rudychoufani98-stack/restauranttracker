@@ -211,7 +211,7 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
   const uLabel = displayUnitLabel(unit);
 
   return (
-    <div className="p-6 lg:p-8 max-w-3xl mx-auto pb-24">
+    <div className="p-6 lg:p-8 max-w-6xl mx-auto pb-24">
       <datalist id="pack-types">{PACK_TYPES.map((t) => <option key={t} value={t} />)}</datalist>
       {/* Top bar */}
       <div className="flex items-center justify-between mb-5">

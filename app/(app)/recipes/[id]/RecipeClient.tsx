@@ -190,7 +190,7 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
   const inputCls = "w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 transition";
 
   return (
-    <div className="p-6 lg:p-8 max-w-3xl mx-auto pb-24">
+    <div className="p-6 lg:p-8 max-w-6xl mx-auto pb-24">
       {/* Top bar */}
       <div className="flex items-center justify-between mb-5">
         <Link href={isPrep ? "/mises-en-place" : "/recipes"} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition">
