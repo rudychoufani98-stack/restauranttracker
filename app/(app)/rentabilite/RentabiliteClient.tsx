@@ -86,9 +86,40 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
     ...simpleProducts.map((p) => ({ recipe_id: `__sp__${p.id}`, qty_sold: "" })),
   ]);
 
+  const [saleSearch, setSaleSearch] = useState("");
+  const [saleCat, setSaleCat] = useState("all");
+
   function updateQty(recipeId: string, val: string) {
     setDraftLines((p) => p.map((l) => l.recipe_id === recipeId ? { ...l, qty_sold: val } : l));
   }
+  function qtyOf(key: string) { return parseFloat(draftLines.find((l) => l.recipe_id === key)?.qty_sold || "0") || 0; }
+  function inc(key: string, step = 1) { updateQty(key, String(Math.max(0, qtyOf(key) + step))); }
+
+  // Unified sellable items (recipes + resale products) like the caisse
+  const saleItems = useMemo(() => {
+    const fromR = recipes
+      .filter((r) => r.menu_price && r.menu_price > 0)
+      .map((r) => ({ key: r.id, name: r.name, category: r.category || "Autre", price: Number(r.menu_price), cost: r.total_cost / (r.yield_portions || 1), resale: false }));
+    const fromP = simpleProducts
+      .filter((p) => p.selling_price && p.selling_price > 0)
+      .map((p) => ({ key: `__sp__${p.id}`, name: p.name, category: p.category || "Autre", price: Number(p.selling_price), cost: Number(p.pack_price || 0), resale: true }));
+    return [...fromR, ...fromP];
+  }, [recipes, simpleProducts]);
+
+  const saleCategories = useMemo(() => Array.from(new Set(saleItems.map((i) => i.category))).sort(), [saleItems]);
+  const filteredSaleItems = useMemo(() => {
+    const q = saleSearch.trim().toLowerCase();
+    return saleItems.filter((i) => (saleCat === "all" || i.category === saleCat) && (!q || i.name.toLowerCase().includes(q)));
+  }, [saleItems, saleSearch, saleCat]);
+  const groupedSaleItems = useMemo(() => {
+    const map = new Map<string, typeof saleItems>();
+    for (const it of filteredSaleItems) {
+      if (!map.has(it.category)) map.set(it.category, []);
+      map.get(it.category)!.push(it);
+    }
+    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([cat, items]) => ({ cat, items: items.sort((x, y) => x.name.localeCompare(y.name)) }));
+  }, [filteredSaleItems]);
 
   // Live preview of totals while filling the form
   const preview = useMemo(() => {
@@ -233,7 +264,7 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
       {/* Sales entry form */}
       {showForm && (
         <div className="fixed inset-0 bg-black/30 flex items-start justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-card border border-[#E5E7EB] w-full max-w-2xl shadow-xl my-8">
+          <div className="bg-white rounded-card border border-[#E5E7EB] w-full max-w-5xl shadow-xl my-8">
             <div className="flex items-center justify-between px-5 py-4 border-b border-[#E5E7EB]">
               <h2 className="text-base font-medium text-gray-900">Saisie des ventes</h2>
               <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
@@ -264,71 +295,85 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
                 </div>
               </div>
 
-              {/* Recipes + produits simples */}
-              <div className="border border-[#E5E7EB] rounded-lg overflow-hidden">
-                <div className="grid grid-cols-12 px-4 py-2 bg-gray-50 border-b border-[#E5E7EB] text-xs font-medium text-gray-500 uppercase tracking-wide">
-                  <div className="col-span-5">Produit / Plat</div>
-                  <div className="col-span-2 text-right">Prix vente</div>
-                  <div className="col-span-2 text-right">Coût</div>
-                  <div className="col-span-3 text-right">Qté vendue</div>
+              {/* Caisse-like interactive tiles */}
+              <div>
+                <p className="text-xs text-gray-500 mb-2">Cliquez sur un plat pour ajouter <span className="font-medium">+1 vente</span>. Utilisez − / + ou le champ pour ajuster.</p>
+
+                {/* Search + category filter */}
+                <div className="flex flex-wrap items-center gap-2 mb-3">
+                  <input
+                    type="text"
+                    value={saleSearch}
+                    onChange={(e) => setSaleSearch(e.target.value)}
+                    placeholder="Rechercher un plat…"
+                    className="flex-1 min-w-[180px] px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 transition"
+                  />
+                  <div className="flex flex-wrap gap-1.5">
+                    <button onClick={() => setSaleCat("all")}
+                      className={clsx("px-3 py-1.5 text-xs rounded-full border transition", saleCat === "all" ? "bg-emerald-500 text-white border-emerald-500" : "bg-white text-gray-600 border-[#E5E7EB] hover:bg-gray-50")}>
+                      Tout
+                    </button>
+                    {saleCategories.map((cat) => (
+                      <button key={cat} onClick={() => setSaleCat(cat)}
+                        className={clsx("px-3 py-1.5 text-xs rounded-full border transition", saleCat === cat ? "bg-emerald-500 text-white border-emerald-500" : "bg-white text-gray-600 border-[#E5E7EB] hover:bg-gray-50")}>
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className="divide-y divide-[#E5E7EB] max-h-96 overflow-y-auto">
-                  {/* Produits revendus */}
-                  {simpleProducts.length > 0 && (
-                    <>
-                      <div className="px-4 py-1.5 bg-blue-50 border-b border-blue-100">
-                        <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Produits revendus</p>
-                      </div>
-                      {simpleProducts.map((prod) => {
-                        const key = `__sp__${prod.id}`;
-                        const dl = draftLines.find((l) => l.recipe_id === key);
-                        const qty = parseFloat(dl?.qty_sold || "0") || 0;
-                        return (
-                          <div key={prod.id} className={clsx("grid grid-cols-12 px-4 py-2.5 items-center", qty > 0 && "bg-blue-50/50")}>
-                            <div className="col-span-5">
-                              <p className="text-sm font-medium text-gray-900">{prod.name}</p>
-                              <p className="text-xs text-gray-400">{prod.category}</p>
-                            </div>
-                            <div className="col-span-2 text-right text-sm text-gray-600">€{prod.selling_price.toFixed(2)}</div>
-                            <div className="col-span-2 text-right text-sm text-gray-500">€{prod.pack_price.toFixed(2)}</div>
-                            <div className="col-span-3 text-right">
-                              <input type="number" min="0" step="1" value={dl?.qty_sold ?? ""}
-                                onChange={(e) => updateQty(key, e.target.value)} placeholder="0"
-                                className="w-20 px-2 py-1.5 text-sm text-right border border-[#E5E7EB] rounded-lg outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-300 transition" />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </>
+
+                {/* Tile grid grouped by category */}
+                <div className="max-h-[26rem] overflow-y-auto pr-1 space-y-4">
+                  {groupedSaleItems.length === 0 && (
+                    <p className="text-sm text-gray-400 text-center py-8">Aucun plat ne correspond.</p>
                   )}
-                  {/* Recettes */}
-                  {pricedRecipes.length > 0 && (
-                    <>
-                      <div className="px-4 py-1.5 bg-emerald-50 border-b border-emerald-100">
-                        <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wide">Recettes</p>
+                  {groupedSaleItems.map(({ cat, items }) => (
+                    <div key={cat}>
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">{cat}</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+                        {items.map((it) => {
+                          const qty = qtyOf(it.key);
+                          const active = qty > 0;
+                          const marginPct = it.price > 0 ? ((it.price - it.cost) / it.price) * 100 : 0;
+                          return (
+                            <div
+                              key={it.key}
+                              onClick={() => inc(it.key, 1)}
+                              className={clsx(
+                                "relative cursor-pointer select-none rounded-xl border p-3 transition text-left",
+                                active
+                                  ? (it.resale ? "border-blue-400 bg-blue-50 ring-1 ring-blue-300" : "border-emerald-400 bg-emerald-50 ring-1 ring-emerald-300")
+                                  : "border-[#E5E7EB] bg-white hover:border-gray-300 hover:shadow-sm"
+                              )}
+                            >
+                              {active && (
+                                <span className={clsx("absolute -top-2 -right-2 min-w-[22px] h-[22px] px-1 flex items-center justify-center rounded-full text-xs font-bold text-white shadow", it.resale ? "bg-blue-500" : "bg-emerald-500")}>
+                                  {qty}
+                                </span>
+                              )}
+                              <p className="text-sm font-medium text-gray-900 leading-snug line-clamp-2">{it.name}</p>
+                              <div className="mt-1.5 flex items-center justify-between">
+                                <span className="text-sm font-semibold text-gray-800">€{it.price.toFixed(2)}</span>
+                                <span className={clsx("text-2xs font-medium", marginPct >= 60 ? "text-emerald-600" : marginPct >= 30 ? "text-amber-600" : "text-red-500")}>
+                                  {marginPct.toFixed(0)}% marge
+                                </span>
+                              </div>
+                              {/* Steppers */}
+                              <div className="mt-2 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                                <button onClick={() => inc(it.key, -1)} disabled={qty <= 0}
+                                  className="w-7 h-7 flex items-center justify-center rounded-lg border border-[#E5E7EB] text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition text-base leading-none">−</button>
+                                <input type="number" min="0" step="1" value={draftLines.find((l) => l.recipe_id === it.key)?.qty_sold ?? ""}
+                                  onChange={(e) => updateQty(it.key, e.target.value)} placeholder="0"
+                                  className="flex-1 w-full px-2 py-1 text-sm text-center border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 transition" />
+                                <button onClick={() => inc(it.key, 1)}
+                                  className="w-7 h-7 flex items-center justify-center rounded-lg border border-[#E5E7EB] text-gray-600 hover:bg-gray-50 transition text-base leading-none">+</button>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                      {pricedRecipes.map((recipe) => {
-                        const cpp = recipe.total_cost / (recipe.yield_portions || 1);
-                        const dl = draftLines.find((l) => l.recipe_id === recipe.id);
-                        const qty = parseFloat(dl?.qty_sold || "0") || 0;
-                        return (
-                          <div key={recipe.id} className={clsx("grid grid-cols-12 px-4 py-2.5 items-center", qty > 0 && "bg-emerald-50/50")}>
-                            <div className="col-span-5">
-                              <p className="text-sm font-medium text-gray-900">{recipe.name}</p>
-                              <p className="text-xs text-gray-400">{recipe.category}</p>
-                            </div>
-                            <div className="col-span-2 text-right text-sm text-gray-600">€{Number(recipe.menu_price).toFixed(2)}</div>
-                            <div className="col-span-2 text-right text-sm text-gray-500">€{cpp.toFixed(2)}</div>
-                            <div className="col-span-3 text-right">
-                              <input type="number" min="0" step="1" value={dl?.qty_sold ?? ""}
-                                onChange={(e) => updateQty(recipe.id, e.target.value)} placeholder="0"
-                                className="w-20 px-2 py-1.5 text-sm text-right border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition" />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </>
-                  )}
+                    </div>
+                  ))}
                 </div>
               </div>
 

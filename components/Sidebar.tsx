@@ -36,6 +36,7 @@ const NAV_GROUPS = [
       { href: "/recipes",        label: "Recettes",       icon: ChefHat },
       { href: "/menu",        label: "Ma carte",    icon: UtensilsCrossed },
       { href: "/categories",  label: "Catégories",  icon: Tags },
+      { href: "/pertes",      label: "Pertes",      icon: Trash2 },
     ],
   },
   {
@@ -51,7 +52,6 @@ const NAV_GROUPS = [
     items: [
       { href: "/caisse",      label: "Caisse",   icon: CreditCard },
       { href: "/rentabilite", label: "Ventes & marges", icon: TrendingUp },
-      { href: "/pertes",      label: "Pertes",   icon: Trash2 },
     ],
   },
 ];
