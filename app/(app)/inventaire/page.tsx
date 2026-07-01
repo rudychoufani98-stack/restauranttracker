@@ -21,10 +21,10 @@ export default async function InventairePage() {
   const [{ data: recentMovements }, { data: inventorySessions }] = await Promise.all([
     supabase
       .from("stock_movements")
-      .select("ingredient_id, movement_type, qty, unit_cost, reference_type, created_at")
+      .select("ingredient_id, movement_type, qty, unit_cost, reference_type, loss_reason, created_at")
       .eq("restaurant_id", restaurant!.id)
       .order("created_at", { ascending: false })
-      .limit(100),
+      .limit(5000),
     supabase
       .from("inventory_sessions")
       .select("*, inventory_lines(*)")

@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Warehouse, TrendingDown, TrendingUp, AlertTriangle, Check, Loader2, History, ClipboardList, Trash2, Download } from "lucide-react";
+import { Warehouse, TrendingDown, TrendingUp, AlertTriangle, Check, Loader2, History, ClipboardList, Trash2, Download, Search } from "lucide-react";
 import clsx from "clsx";
 
 type Ingredient = {
@@ -34,6 +34,7 @@ type Movement = {
   qty: number;
   unit_cost: number | null;
   reference_type: string;
+  loss_reason?: string | null;
   created_at: string;
 };
 
@@ -92,7 +93,9 @@ function displayToBase(qty: number, unit: string): number {
 
 export default function InventaireClient({ restaurantId, ingredients, recentMovements, inventorySessions }: Props) {
   const supabase = createClient();
-  const [tab, setTab] = useState<"stock" | "count" | "sessions" | "history">("stock");
+  const [tab, setTab] = useState<"count" | "sessions" | "history">("history");
+  const [expandedIng, setExpandedIng] = useState<string | null>(null);
+  const [moveSearch, setMoveSearch] = useState("");
   const [sessions, setSessions] = useState<InventorySession[]>(inventorySessions);
   const [expandedSession, setExpandedSession] = useState<string | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -289,17 +292,51 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
     }
   }
 
-  // Group movements by date for display
-  const movementsByDay = useMemo(() => {
-    const groups: Record<string, (Movement & { ingredientName: string })[]> = {};
-    const ingMap = new Map(ingredients.map((i) => [i.id, i.name]));
+  // All movements grouped per ingredient (for the stock & mouvements view)
+  const movesByIngredient = useMemo(() => {
+    const map = new Map<string, Movement[]>();
     for (const m of recentMovements) {
-      const day = m.created_at.slice(0, 10);
-      if (!groups[day]) groups[day] = [];
-      groups[day].push({ ...m, ingredientName: ingMap.get(m.ingredient_id) ?? "?" });
+      if (!m.ingredient_id) continue;
+      if (!map.has(m.ingredient_id)) map.set(m.ingredient_id, []);
+      map.get(m.ingredient_id)!.push(m);
     }
-    return groups;
-  }, [recentMovements, ingredients]);
+    return map;
+  }, [recentMovements]);
+
+  // Ingredient rows for the stock & mouvements list (with current stock + value)
+  const stockRows = useMemo(() => {
+    const q = moveSearch.trim().toLowerCase();
+    return localIngredients
+      .filter((i) => !q || i.name.toLowerCase().includes(q) || (i.category ?? "").toLowerCase().includes(q))
+      .map((i) => {
+        const qty = Number(i.stock_qty ?? 0);
+        const cmup = Number(i.cmup ?? i.cost_per_base_unit ?? 0);
+        return { ing: i, qty, value: qty * cmup, moves: movesByIngredient.get(i.id) ?? [] };
+      })
+      .sort((a, b) => a.ing.name.localeCompare(b.ing.name));
+  }, [localIngredients, moveSearch, movesByIngredient]);
+
+  const MOVE_META: Record<string, { label: string; sign: string; color: string }> = {
+    in: { label: "Réception", sign: "+", color: "text-emerald-600" },
+    out: { label: "Vente (déstockage)", sign: "-", color: "text-gray-600" },
+    loss: { label: "Perte", sign: "-", color: "text-red-500" },
+    adjustment: { label: "Ajustement", sign: "±", color: "text-blue-600" },
+  };
+  // Group one ingredient's movements by month (label + list)
+  function movesByMonth(moves: Movement[]) {
+    const groups = new Map<string, Movement[]>();
+    for (const m of moves) {
+      const key = m.created_at.slice(0, 7);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(m);
+    }
+    return Array.from(groups.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+  }
+  function monthLabel(key: string) {
+    const MONTHS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+    const [y, m] = key.split("-");
+    return `${MONTHS[parseInt(m, 10) - 1] ?? m} ${y}`;
+  }
 
   return (
     <div className="p-8 max-w-5xl mx-auto">
@@ -336,10 +373,9 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
       {/* Tabs */}
       <div className="flex gap-1 mb-5 border-b border-gray-200">
         {[
-          { key: "stock", label: "Stock actuel", icon: ClipboardList },
+          { key: "history", label: "Stock & mouvements", icon: Warehouse },
           { key: "count", label: "Prise d'inventaire", icon: Check },
           { key: "sessions", label: `Mes inventaires${sessions.length ? ` (${sessions.length})` : ""}`, icon: History },
-          { key: "history", label: "Historique des mouvements", icon: History },
         ].map(({ key, label, icon: Icon }) => (
           <button
             key={key}
@@ -354,145 +390,6 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
         ))}
       </div>
 
-      {/* STOCK TAB */}
-      {tab === "stock" && (
-        <>
-          {/* Filters */}
-          <div className="flex gap-2 mb-4">
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Rechercher…"
-              className="px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-emerald-500 w-52"
-            />
-            <select
-              value={filterCat}
-              onChange={(e) => setFilterCat(e.target.value)}
-              className="px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-emerald-500"
-            >
-              {categories.map((c) => <option key={c}>{c}</option>)}
-            </select>
-          </div>
-
-          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 text-xs font-medium text-gray-500 uppercase tracking-wide">
-                  <th className="text-left px-4 py-3">Ingrédient</th>
-                  <th className="text-left px-4 py-3">Catégorie</th>
-                  <th className="text-right px-4 py-3">Stock théorique</th>
-                  <th className="text-right px-4 py-3">CMUP</th>
-                  <th className="text-right px-4 py-3">Valeur</th>
-                  <th className="text-right px-4 py-3">Ajuster</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filtered.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="text-center py-10 text-gray-400 text-sm">
-                      Aucun ingrédient trouvé
-                    </td>
-                  </tr>
-                )}
-                {filtered.map((ing) => {
-                  const qty = Number(ing.stock_qty ?? 0);
-                  const cmup = Number(ing.cmup ?? ing.cost_per_base_unit ?? 0);
-                  const value = qty * cmup;
-                  const isEmpty = qty <= 0;
-                  const lowStock = !isEmpty && needsReorder(ing);
-                  const isAdjusting = adjustId === ing.id;
-
-                  return (
-                    <tr key={ing.id} className={clsx("hover:bg-gray-50 transition", isEmpty && "bg-red-50/30", lowStock && "bg-amber-50/40")}>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          {isEmpty && <AlertTriangle size={13} className="text-red-400 shrink-0" />}
-                          {lowStock && <AlertTriangle size={13} className="text-amber-400 shrink-0" />}
-                          <span className={clsx("font-medium", isEmpty ? "text-red-700" : lowStock ? "text-amber-700" : "text-gray-900")}>{ing.name}</span>
-                          {lowStock && <span className="text-2xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium">à commander</span>}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-gray-500">{ing.category || "—"}</td>
-                      <td className="px-4 py-3 text-right">
-                        <span className={clsx("font-medium", isEmpty ? "text-red-500" : "text-gray-900")}>
-                          {formatQty(qty, ing.unit)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right text-gray-600">
-                        {cmup > 0 ? `€${(["g","kg","ml","l"].includes(ing.unit) ? cmup * 1000 : cmup).toFixed(2)}/${displayUnitLabel(ing.unit)}` : "—"}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className={value > 0 ? "text-emerald-700 font-medium" : "text-gray-400"}>
-                          {value > 0 ? `€${value.toFixed(2)}` : "—"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {isAdjusting ? (
-                          <div className="flex items-center gap-2 justify-end">
-                            <div>
-                              <input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                value={adjustQty}
-                                onChange={(e) => setAdjustQty(e.target.value)}
-                                placeholder={formatQty(qty, ing.unit)}
-                                className="w-24 px-2 py-1 text-sm text-right border border-emerald-400 rounded-lg outline-none focus:ring-1 focus:ring-emerald-300"
-                                autoFocus
-                              />
-                              <input
-                                type="text"
-                                value={adjustNotes}
-                                onChange={(e) => setAdjustNotes(e.target.value)}
-                                placeholder="Raison (optionnel)"
-                                className="mt-1 w-36 px-2 py-1 text-xs border border-gray-200 rounded-lg outline-none focus:border-emerald-400"
-                              />
-                            </div>
-                            <button
-                              onClick={() => handleAdjust(ing)}
-                              disabled={saving || !adjustQty}
-                              className="p-1.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 disabled:opacity-40 transition"
-                            >
-                              {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-                            </button>
-                            <button
-                              onClick={() => { setAdjustId(null); setAdjustQty(""); setAdjustNotes(""); }}
-                              className="p-1.5 text-gray-400 hover:text-gray-600 border border-gray-200 rounded-lg"
-                            >
-                              ×
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => { setAdjustId(ing.id); setAdjustQty(String(qty)); }}
-                            className="px-3 py-1.5 text-xs text-gray-600 border border-gray-200 rounded-lg hover:border-emerald-400 hover:text-emerald-600 transition"
-                          >
-                            Corriger
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              {filtered.length > 0 && (
-                <tfoot>
-                  <tr className="bg-gray-50 border-t-2 border-gray-200">
-                    <td colSpan={4} className="px-4 py-3 text-sm font-medium text-gray-700">Total stock</td>
-                    <td className="px-4 py-3 text-right font-bold text-emerald-700">€{totalValue.toFixed(2)}</td>
-                    <td />
-                  </tr>
-                </tfoot>
-              )}
-            </table>
-          </div>
-
-          <p className="text-xs text-gray-400 mt-3">
-            Le stock théorique est calculé automatiquement : +entrées lors des réceptions facturées, -sorties lors de la saisie des ventes mensuelles.
-            Utilisez &quot;Corriger&quot; pour ajuster après un inventaire physique.
-          </p>
-        </>
-      )}
 
       {/* COUNT TAB — prise d'inventaire */}
       {tab === "count" && (
@@ -727,62 +624,74 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
 
       {/* HISTORY TAB */}
       {tab === "history" && (
-        <div className="space-y-4">
-          {Object.keys(movementsByDay).length === 0 && (
-            <div className="bg-white border border-gray-200 rounded-xl p-10 text-center text-gray-400 text-sm">
-              Aucun mouvement de stock pour l&apos;instant.<br />
-              Les mouvements apparaîtront après validation de factures et saisie de ventes.
-            </div>
-          )}
-          {Object.entries(movementsByDay).map(([day, moves]) => (
-            <div key={day} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-              <div className="px-4 py-2 bg-gray-50 border-b border-gray-100">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  {new Date(day).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
-                </p>
-              </div>
-              <div className="divide-y divide-gray-50">
-                {moves.map((m, i) => (
-                  <div key={i} className="flex items-center gap-3 px-4 py-3">
-                    <div className={clsx(
-                      "w-7 h-7 rounded-full flex items-center justify-center shrink-0",
-                      m.movement_type === "in" ? "bg-emerald-100" :
-                      m.movement_type === "out" ? "bg-red-100" :
-                      m.movement_type === "loss" ? "bg-orange-100" : "bg-amber-100"
-                    )}>
-                      {m.movement_type === "in"
-                        ? <TrendingUp size={13} className="text-emerald-600" />
-                        : m.movement_type === "out"
-                        ? <TrendingDown size={13} className="text-red-500" />
-                        : m.movement_type === "loss"
-                        ? <Trash2 size={13} className="text-orange-500" />
-                        : <AlertTriangle size={13} className="text-amber-500" />}
-                    </div>
+        <div className="space-y-3">
+          <div className="relative max-w-sm">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input value={moveSearch} onChange={(e) => setMoveSearch(e.target.value)} placeholder="Rechercher un ingrédient…"
+              className="w-full pl-9 pr-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500" />
+          </div>
+
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden divide-y divide-gray-50">
+            {stockRows.length === 0 ? (
+              <div className="p-10 text-center text-gray-400 text-sm">Aucun ingrédient.</div>
+            ) : stockRows.map(({ ing, qty, value, moves }) => {
+              const open = expandedIng === ing.id;
+              return (
+                <div key={ing.id}>
+                  <button onClick={() => setExpandedIng(open ? null : ing.id)} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition text-left">
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900">{m.ingredientName}</p>
-                      <p className="text-xs text-gray-400">
-                        {m.movement_type === "in" ? "Réception" : m.movement_type === "out" ? "Vente" : m.movement_type === "loss" ? "Perte" : "Ajustement"} ·{" "}
-                        {m.reference_type}
-                      </p>
+                      <p className="text-sm font-medium text-gray-900">{ing.name}</p>
+                      <p className="text-2xs text-gray-400">{ing.category || "—"} · {moves.length} mouvement{moves.length !== 1 ? "s" : ""}</p>
                     </div>
                     <div className="text-right">
-                      <p className={clsx(
-                        "text-sm font-semibold",
-                        m.movement_type === "in" ? "text-emerald-600" :
-                        m.movement_type === "out" ? "text-red-500" :
-                        m.movement_type === "loss" ? "text-orange-500" : "text-amber-600"
-                      )}>
-                        {m.movement_type === "in" ? "+" : "-"}{m.qty.toFixed(1)}
-                      </p>
-                      {m.unit_cost && m.unit_cost > 0 && (
-                        <p className="text-xs text-gray-400">CMUP €{m.unit_cost.toFixed(4)}</p>
+                      <p className="text-sm font-semibold text-gray-900">{formatQty(qty, ing.unit)}</p>
+                      <p className="text-2xs text-gray-400">{value > 0 ? `€${value.toFixed(2)}` : "—"}</p>
+                    </div>
+                    {open ? <TrendingUp size={15} className="text-gray-400 rotate-180" /> : <TrendingDown size={15} className="text-gray-400" />}
+                  </button>
+
+                  {open && (
+                    <div className="bg-gray-50/50 border-t border-gray-100 px-4 py-3">
+                      {moves.length === 0 ? (
+                        <p className="text-xs text-gray-400 py-2">Aucun mouvement pour ce produit.</p>
+                      ) : (
+                        movesByMonth(moves).map(([mk, ms]) => {
+                          const inQty = ms.filter((m) => m.movement_type === "in").reduce((s, m) => s + m.qty, 0);
+                          const outQty = ms.filter((m) => m.movement_type === "out" || m.movement_type === "loss").reduce((s, m) => s + m.qty, 0);
+                          return (
+                            <div key={mk} className="mb-3 last:mb-0">
+                              <div className="flex items-center justify-between mb-1">
+                                <p className="text-2xs font-semibold text-gray-500 uppercase tracking-wide">{monthLabel(mk)}</p>
+                                <p className="text-2xs text-gray-400">
+                                  {inQty > 0 && <span className="text-emerald-600">+{formatQty(inQty, ing.unit)} reçu</span>}
+                                  {inQty > 0 && outQty > 0 && " · "}
+                                  {outQty > 0 && <span className="text-red-500">-{formatQty(outQty, ing.unit)} sorti</span>}
+                                </p>
+                              </div>
+                              <div className="space-y-1">
+                                {ms.map((m, i) => {
+                                  const meta = MOVE_META[m.movement_type] ?? MOVE_META.adjustment;
+                                  return (
+                                    <div key={i} className="flex items-center justify-between text-xs bg-white border border-gray-100 rounded-lg px-3 py-1.5">
+                                      <span className="text-gray-500">
+                                        {new Date(m.created_at).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })} · {meta.label}
+                                        {m.loss_reason ? ` (${m.loss_reason})` : ""}
+                                      </span>
+                                      <span className={clsx("font-semibold", meta.color)}>{meta.sign}{formatQty(m.qty, ing.unit)}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })
                       )}
                     </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
