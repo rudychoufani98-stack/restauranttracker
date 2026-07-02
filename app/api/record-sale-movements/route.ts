@@ -56,7 +56,23 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const allIngredientIds = Array.from(deductions.keys());
+    // Previous destockage already applied for this period (so re-saving a month
+    // reconciles by delta instead of deducting twice).
+    const prevGross = new Map<string, number>();
+    if (periodId) {
+      const { data: prevMoves } = await supabase
+        .from("stock_movements")
+        .select("ingredient_id, qty")
+        .eq("restaurant_id", restaurantId)
+        .eq("reference_type", "sale")
+        .eq("reference_id", periodId);
+      for (const m of prevMoves ?? []) {
+        if (m.ingredient_id) prevGross.set(m.ingredient_id, (prevGross.get(m.ingredient_id) ?? 0) + Number(m.qty));
+      }
+    }
+
+    // New gross deductions per ingredient (apply material yield: gross = net / yield).
+    const allIngredientIds = Array.from(new Set([...Array.from(deductions.keys()), ...Array.from(prevGross.keys())]));
     if (allIngredientIds.length === 0) {
       return NextResponse.json({ ok: true, movements: 0 });
     }
@@ -65,40 +81,48 @@ export async function POST(req: NextRequest) {
       .from("ingredients")
       .select("id, stock_qty, cmup, cost_per_base_unit, yield_pct")
       .in("id", allIngredientIds);
-
     const ingMap = new Map((ingredients ?? []).map((i: any) => [i.id, i]));
 
-    // Apply deductions
-    const movements: any[] = [];
-
+    const newGross = new Map<string, number>();
     for (const [ingredientId, qtyDeductNet] of Array.from(deductions.entries())) {
       const ing = ingMap.get(ingredientId);
       if (!ing) continue;
-
-      // Recipe quantities are NET (usable); real stock drawn is gross = net / yield.
       const yieldF = Number(ing.yield_pct ?? 100) > 0 ? Number(ing.yield_pct ?? 100) / 100 : 1;
-      const qtyDeduct = qtyDeductNet / yieldF;
-
-      const currentStock = Number(ing.stock_qty ?? 0);
-      const unitCost = Number(ing.cmup ?? ing.cost_per_base_unit ?? 0);
-      const newStock = Math.max(0, currentStock - qtyDeduct);
-
-      await supabase
-        .from("ingredients")
-        .update({ stock_qty: newStock })
-        .eq("id", ingredientId);
-
-      movements.push({
-        restaurant_id: restaurantId,
-        ingredient_id: ingredientId,
-        movement_type: "out",
-        qty: qtyDeduct,
-        unit_cost: unitCost,
-        reference_type: "sale",
-        reference_id: periodId,
-      });
+      newGross.set(ingredientId, qtyDeductNet / yieldF);
     }
 
+    // Reconcile stock by delta = new − previous, then replace the period's movements.
+    const movements: any[] = [];
+    for (const ingredientId of allIngredientIds) {
+      const ing = ingMap.get(ingredientId);
+      if (!ing) continue;
+      const gross = newGross.get(ingredientId) ?? 0;
+      const prev = prevGross.get(ingredientId) ?? 0;
+      const delta = gross - prev; // extra to remove (or add back if negative)
+      const currentStock = Number(ing.stock_qty ?? 0);
+      const unitCost = Number(ing.cmup ?? ing.cost_per_base_unit ?? 0);
+      const newStock = Math.max(0, currentStock - delta);
+
+      await supabase.from("ingredients").update({ stock_qty: newStock }).eq("id", ingredientId);
+
+      if (gross > 0) {
+        movements.push({
+          restaurant_id: restaurantId,
+          ingredient_id: ingredientId,
+          movement_type: "out",
+          qty: gross,
+          unit_cost: unitCost,
+          reference_type: "sale",
+          reference_id: periodId,
+        });
+      }
+    }
+
+    // Replace the period's previous "sale" movements with the new set.
+    if (periodId && prevGross.size > 0) {
+      await supabase.from("stock_movements").delete()
+        .eq("restaurant_id", restaurantId).eq("reference_type", "sale").eq("reference_id", periodId);
+    }
     if (movements.length > 0) {
       await supabase.from("stock_movements").insert(movements);
     }
