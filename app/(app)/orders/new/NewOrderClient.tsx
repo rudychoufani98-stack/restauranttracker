@@ -126,8 +126,16 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
       // Replace the draft's lines with the current cart.
       await supabase.from("purchase_order_lines").delete().eq("po_id", orderId);
     } else {
+      // Sequential order number BDC-YEAR-NNNN so it's visible from creation.
+      const year = new Date().getFullYear();
+      const { count } = await supabase
+        .from("purchase_orders")
+        .select("*", { count: "exact", head: true })
+        .eq("restaurant_id", restaurantId);
+      const orderNumber = `BDC-${year}-${String((count ?? 0) + 1).padStart(4, "0")}`;
       const { data: po, error: poErr } = await supabase.from("purchase_orders").insert({
         restaurant_id: restaurantId, supplier_id: supplierId,
+        order_number: orderNumber,
         status: send ? "Sent" : "Draft",
         sent_at: send ? new Date().toISOString() : null,
         expected_total: total,

@@ -32,6 +32,15 @@ const STATUS_COLORS: Record<string, string> = {
   Cancelled: "bg-red-50 text-red-500",
 };
 
+// Status filter buckets (French label → which DB statuses it matches).
+const STATUS_FILTERS: { key: string; label: string; match: (s: string) => boolean }[] = [
+  { key: "all", label: "Toutes", match: () => true },
+  { key: "Draft", label: "Brouillon", match: (s) => s === "Draft" },
+  { key: "Sent", label: "Envoyée", match: (s) => s === "Sent" },
+  { key: "received", label: "Reçue", match: (s) => s === "Received" || s === "Partially received" },
+  { key: "Invoiced", label: "Facturée", match: (s) => s === "Invoiced" },
+];
+
 // DB stores English statuses; display them in French (single source of truth).
 const STATUS_LABELS: Record<string, string> = {
   Draft: "Brouillon",
@@ -75,7 +84,7 @@ function condLabel(a: Article): string {
 }
 type Supplier = { id: string; name: string; email: string | null; min_order_amount?: number | null; customer_reference?: string | null };
 type POLine = { id?: string; ingredient_id: string | null; quantity: number; expected_price: number | null; ingredients?: { name: string; unit: string } | null };
-type PO = { id: string; supplier_id: string | null; status: string; expected_total: number | null; created_at: string; sent_at: string | null; suppliers?: { name: string } | null; purchase_order_lines: POLine[] };
+type PO = { id: string; order_number?: string | null; supplier_id: string | null; status: string; expected_total: number | null; created_at: string; sent_at: string | null; suppliers?: { name: string } | null; purchase_order_lines: POLine[] };
 
 type DraftLine = { ingredient_id: string; quantity: string; expected_price: string };
 
@@ -95,6 +104,7 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
     : params.get("invoiced") ? "Facture validée ✓ — coûts mis à jour"
     : null;
   const [orders, setOrders] = useState<PO[]>(initialOrders);
+  const [statusFilter, setStatusFilter] = useState("all");
   const [showForm, setShowForm] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -463,6 +473,21 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
         </div>
       )}
 
+      {/* Status filter */}
+      {orders.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-4">
+          {STATUS_FILTERS.map((f) => {
+            const count = f.key === "all" ? orders.length : orders.filter((o) => f.match(o.status)).length;
+            return (
+              <button key={f.key} onClick={() => setStatusFilter(f.key)}
+                className={clsx("px-3 py-1.5 text-xs rounded-full border transition", statusFilter === f.key ? "bg-emerald-500 text-white border-emerald-500" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50")}>
+                {f.label} <span className={clsx("ml-0.5", statusFilter === f.key ? "text-emerald-100" : "text-gray-400")}>{count}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* Orders list */}
       {orders.length === 0 ? (
         <div className="bg-white border border-[#E5E7EB] rounded-card p-12 text-center">
@@ -473,14 +498,23 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
         </div>
       ) : (
         <div className="space-y-3">
-          {orders.map((order) => {
+          {(() => {
+            const match = STATUS_FILTERS.find((f) => f.key === statusFilter)?.match ?? (() => true);
+            const visibleOrders = orders.filter((o) => match(o.status));
+            if (visibleOrders.length === 0) {
+              return <p className="text-sm text-gray-400 text-center py-10 border border-dashed border-gray-200 rounded-card">Aucune commande avec ce statut.</p>;
+            }
+            return visibleOrders.map((order) => {
             const isExpanded = expandedId === order.id;
             return (
               <div key={order.id} className="bg-white border border-[#E5E7EB] rounded-card overflow-hidden">
                 <div className="flex items-center gap-4 px-5 py-4 cursor-pointer hover:bg-gray-50 transition"
                   onClick={() => setExpandedId(isExpanded ? null : order.id)}>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {order.order_number && (
+                        <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded font-mono">{order.order_number}</span>
+                      )}
                       <span className="font-medium text-gray-900">{order.suppliers?.name ?? "Fournisseur inconnu"}</span>
                       <span className={clsx("px-2 py-0.5 text-xs rounded-full font-medium", STATUS_COLORS[order.status] ?? "bg-gray-100 text-gray-500")}>
                         {STATUS_LABELS[order.status] ?? order.status}
@@ -577,7 +611,8 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
                 )}
               </div>
             );
-          })}
+            });
+          })()}
         </div>
       )}
     </div>
