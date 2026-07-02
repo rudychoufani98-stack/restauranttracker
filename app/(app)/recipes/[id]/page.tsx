@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
+import { getRecipeUsage } from "@/lib/usage";
 import RecipeClient from "./RecipeClient";
 
 export default async function RecipePage({ params }: { params: { id: string } }) {
@@ -41,6 +42,7 @@ export default async function RecipePage({ params }: { params: { id: string } })
 
   const menuCategories = (cats ?? []).filter((c) => c.type === "menu").map((c) => c.name);
   const prepCategories = (cats ?? []).filter((c) => c.type === "prep").map((c) => c.name);
+  const usedIn = await getRecipeUsage(params.id);
 
   return (
     <RecipeClient
@@ -50,6 +52,7 @@ export default async function RecipePage({ params }: { params: { id: string } })
       allRecipes={(allRecipes ?? []) as any}
       menuCategories={menuCategories.length ? menuCategories : ["Entrée", "Plat", "Accompagnement", "Dessert", "Boisson", "Menu"]}
       prepCategories={prepCategories.length ? prepCategories : ["Sauce", "Fond/Bouillon", "Pâte", "Garniture", "Marinade", "Base"]}
+      usedIn={usedIn}
     />
   );
 }

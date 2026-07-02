@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { notFound, redirect } from "next/navigation";
+import { getRecipeUsage } from "@/lib/usage";
 import RecipeClient from "../../recipes/[id]/RecipeClient";
 
 // Page détail d'une MISE EN PLACE — route séparée des recettes pour rester
@@ -46,6 +47,7 @@ export default async function MiseEnPlaceDetailPage({ params }: { params: { id: 
 
   const menuCategories = (cats ?? []).filter((c) => c.type === "menu").map((c) => c.name);
   const prepCategories = (cats ?? []).filter((c) => c.type === "prep").map((c) => c.name);
+  const usedIn = await getRecipeUsage(params.id);
 
   return (
     <RecipeClient
@@ -55,6 +57,7 @@ export default async function MiseEnPlaceDetailPage({ params }: { params: { id: 
       allRecipes={(allRecipes ?? []) as any}
       menuCategories={menuCategories.length ? menuCategories : ["Entrée", "Plat", "Accompagnement", "Dessert", "Boisson", "Menu"]}
       prepCategories={prepCategories.length ? prepCategories : ["Sauce", "Fond/Bouillon", "Pâte", "Garniture", "Marinade", "Base"]}
+      usedIn={usedIn}
     />
   );
 }

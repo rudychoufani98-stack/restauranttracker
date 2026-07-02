@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
+import { getIngredientUsage } from "@/lib/usage";
 import ProductClient from "./ProductClient";
 
 export default async function ProductPage({ params }: { params: { id: string } }) {
@@ -41,6 +42,7 @@ export default async function ProductPage({ params }: { params: { id: string } }
   if (!ingredient) notFound();
 
   const categories = (cats ?? []).map((c) => c.name);
+  const usedIn = await getIngredientUsage(params.id);
 
   return (
     <ProductClient
@@ -48,6 +50,7 @@ export default async function ProductPage({ params }: { params: { id: string } }
       suppliers={suppliers ?? []}
       categories={categories.length ? categories : ["Légumes/Fruits", "Viande", "Poisson", "Produits laitiers", "Épicerie", "Boissons", "Autre"]}
       allIngredients={(allIngredients ?? []) as any}
+      usedIn={usedIn}
     />
   );
 }

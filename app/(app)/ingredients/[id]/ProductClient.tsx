@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { ArrowLeft, Check, Plus, Trash2, Loader2, Package, Boxes, GitMerge, Pencil } from "lucide-react";
+import { ArrowLeft, Check, Plus, Trash2, Loader2, Package, Boxes, GitMerge, Pencil, ChefHat, Soup, Link2 } from "lucide-react";
 import clsx from "clsx";
 import {
   UNITS, VAT_PRESETS, ALLERGENS, packTotal, calcCostPerBase,
@@ -38,11 +38,13 @@ type Ingredient = {
   ingredient_suppliers?: any[];
 };
 
+type UsageRef = { id: string; name: string; category: string | null; is_prep: boolean };
 interface Props {
   ingredient: Ingredient;
   suppliers: Supplier[];
   categories: string[];
   allIngredients: { id: string; name: string; unit: string }[];
+  usedIn?: UsageRef[];
 }
 
 // Build the initial article list: from ingredient_suppliers if present,
@@ -79,7 +81,7 @@ function initialArticles(ing: Ingredient): Article[] {
   }];
 }
 
-export default function ProductClient({ ingredient, suppliers, categories, allIngredients }: Props) {
+export default function ProductClient({ ingredient, suppliers, categories, allIngredients, usedIn = [] }: Props) {
   const supabase = createClient();
   const router = useRouter();
 
@@ -367,6 +369,42 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
             </div>
           </div>
         </div>
+      </Section>
+
+      {/* Utilisé dans — recettes & mises en place */}
+      <Section icon={<Link2 size={16} />} title="Utilisé dans" subtitle={`${usedIn.length} recette(s) / mise(s) en place utilisent ce produit`}>
+        {usedIn.length === 0 ? (
+          <p className="text-sm text-gray-400">Ce produit n&apos;est utilisé dans aucune recette ni mise en place pour l&apos;instant.</p>
+        ) : (
+          <div className="space-y-4">
+            {usedIn.some((u) => u.is_prep) && (
+              <div>
+                <p className="text-2xs font-semibold text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-1.5"><Soup size={13} /> Mises en place</p>
+                <div className="flex flex-wrap gap-2">
+                  {usedIn.filter((u) => u.is_prep).map((m) => (
+                    <Link key={m.id} href={`/mises-en-place/${m.id}`}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition">
+                      <Soup size={13} /> {m.name}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+            {usedIn.some((u) => !u.is_prep) && (
+              <div>
+                <p className="text-2xs font-semibold text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-1.5"><ChefHat size={13} /> Recettes</p>
+                <div className="flex flex-wrap gap-2">
+                  {usedIn.filter((u) => !u.is_prep).map((r) => (
+                    <Link key={r.id} href={`/recipes/${r.id}`}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition">
+                      <ChefHat size={13} /> {r.name}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </Section>
 
       {/* 5. Fusionner */}

@@ -4,7 +4,7 @@ import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { ArrowLeft, Check, Plus, Trash2, Loader2, Scale, ListChecks } from "lucide-react";
+import { ArrowLeft, Check, Plus, Trash2, Loader2, Scale, ListChecks, ChefHat, Soup, Link2 } from "lucide-react";
 import clsx from "clsx";
 
 type Ingredient = { id: string; name: string; cost_per_base_unit: number; unit: string; yield_pct?: number | null };
@@ -67,6 +67,7 @@ function calcLineCost(line: DraftLine, ingredients: Ingredient[], allRecipes: Re
 
 const EMPTY_LINE: DraftLine = { type: "ingredient", ingredient_id: "", sub_recipe_id: "", quantity: "", unit: "g" };
 
+type UsageRef = { id: string; name: string; category: string | null; is_prep: boolean };
 interface Props {
   recipe: Recipe;
   restaurantId: string;
@@ -74,9 +75,10 @@ interface Props {
   allRecipes: RecipeRef[];
   menuCategories: string[];
   prepCategories: string[];
+  usedIn?: UsageRef[];
 }
 
-export default function RecipeClient({ recipe, restaurantId, ingredients, allRecipes, menuCategories, prepCategories }: Props) {
+export default function RecipeClient({ recipe, restaurantId, ingredients, allRecipes, menuCategories, prepCategories, usedIn = [] }: Props) {
   const supabase = createClient();
   const router = useRouter();
 
@@ -349,6 +351,49 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
           </div>
         ) : (
           <p className="text-xs text-gray-400">Aucun allergène déclaré sur les ingrédients de cette recette.</p>
+        )}
+      </Section>
+
+      {/* Utilisé dans — recettes qui utilisent cette recette / mise en place */}
+      <Section icon={<Link2 size={16} />} title="Utilisé dans"
+        subtitle={isPrep
+          ? `${usedIn.length} recette(s) / mise(s) en place utilisent cette mise en place`
+          : `${usedIn.length} recette(s) / mise(s) en place utilisent cette recette`}>
+        {usedIn.length === 0 ? (
+          <p className="text-sm text-gray-400">
+            {isPrep
+              ? "Cette mise en place n'est utilisée dans aucune recette pour l'instant."
+              : "Cette recette n'est utilisée dans aucune autre recette pour l'instant."}
+          </p>
+        ) : (
+          <div className="space-y-4">
+            {usedIn.some((u) => u.is_prep) && (
+              <div>
+                <p className="text-2xs font-semibold text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-1.5"><Soup size={13} /> Mises en place</p>
+                <div className="flex flex-wrap gap-2">
+                  {usedIn.filter((u) => u.is_prep).map((m) => (
+                    <Link key={m.id} href={`/mises-en-place/${m.id}`}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition">
+                      <Soup size={13} /> {m.name}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+            {usedIn.some((u) => !u.is_prep) && (
+              <div>
+                <p className="text-2xs font-semibold text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-1.5"><ChefHat size={13} /> Recettes</p>
+                <div className="flex flex-wrap gap-2">
+                  {usedIn.filter((u) => !u.is_prep).map((r) => (
+                    <Link key={r.id} href={`/recipes/${r.id}`}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition">
+                      <ChefHat size={13} /> {r.name}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </Section>
     </div>
