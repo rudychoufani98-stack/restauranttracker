@@ -159,7 +159,7 @@ export default function InvoiceClient({ po, deliveryNote, restaurantId, orderCon
           // received quantity (best-effort against current stock). No re-stocking.
           const valueDelta = receivedBaseQty * (newCostPerBase - expectedCostPerBase);
           const adjustedCmup = currentStock > 0 ? currentCmup + valueDelta / currentStock : newCostPerBase;
-          await supabase
+          const { error: upErr } = await supabase
             .from("ingredients")
             .update({
               pack_price: invoicePrice,
@@ -168,13 +168,14 @@ export default function InvoiceClient({ po, deliveryNote, restaurantId, orderCon
               updated_at: new Date().toISOString(),
             })
             .eq("id", line.ingredient_id);
+          if (upErr) throw new Error(`Coût ingrédient : ${upErr.message}`);
         } else {
           // No reception: add the stock here (weighted-average CMUP).
           const newStock = currentStock + receivedBaseQty;
           const newCmup = newStock > 0
             ? (currentStock * currentCmup + receivedBaseQty * newCostPerBase) / newStock
             : newCostPerBase;
-          await supabase
+          const { error: upErr } = await supabase
             .from("ingredients")
             .update({
               pack_price: invoicePrice,
@@ -184,6 +185,7 @@ export default function InvoiceClient({ po, deliveryNote, restaurantId, orderCon
               updated_at: new Date().toISOString(),
             })
             .eq("id", line.ingredient_id);
+          if (upErr) throw new Error(`Stock ingrédient : ${upErr.message}`);
 
           stockMovements.push({
             restaurant_id: restaurantId,
@@ -209,7 +211,8 @@ export default function InvoiceClient({ po, deliveryNote, restaurantId, orderCon
 
       // 4. Insert stock movements (only when stock was added here)
       if (stockMovements.length > 0) {
-        await supabase.from("stock_movements").insert(stockMovements);
+        const { error: movErr } = await supabase.from("stock_movements").insert(stockMovements);
+        if (movErr) throw new Error(`Mouvements de stock : ${movErr.message}`);
       }
 
       // 5. Recalculate recipes that use these ingredients

@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Warehouse, TrendingDown, TrendingUp, AlertTriangle, Check, Loader2, History, ClipboardList, Trash2, Download, Search } from "lucide-react";
 import clsx from "clsx";
@@ -659,10 +661,10 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
             {stockRows.length === 0 ? (
               <div className="p-10 text-center text-gray-400 text-sm">Aucun ingrédient.</div>
             ) : stockRows.map(({ ing, qty, value, moves }) => {
-              const open = expandedIng === ing.id;
+              const open = false; // rows now link to a dedicated history page instead of expanding
               return (
                 <div key={ing.id}>
-                  <button onClick={() => setExpandedIng(open ? null : ing.id)} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition text-left">
+                  <Link href={`/ingredients/${ing.id}/history`} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition text-left">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-900">{ing.name}</p>
                       <p className="text-2xs text-gray-400">{ing.category || "—"} · {moves.length} mouvement{moves.length !== 1 ? "s" : ""}</p>
@@ -671,8 +673,8 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
                       <p className="text-sm font-semibold text-gray-900">{formatQty(qty, ing.unit)}</p>
                       <p className="text-2xs text-gray-400">{value > 0 ? `€${value.toFixed(2)}` : "—"}</p>
                     </div>
-                    {open ? <TrendingUp size={15} className="text-gray-400 rotate-180" /> : <TrendingDown size={15} className="text-gray-400" />}
-                  </button>
+                    <ChevronRight size={16} className="text-gray-300" />
+                  </Link>
 
                   {open && (
                     <div className="bg-gray-50/50 border-t border-gray-100 px-4 py-3">

@@ -197,11 +197,12 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
           ? (currentStock * currentCmup + receivedBaseQty * costPerBase) / newStock
           : costPerBase;
 
-        await supabase.from("ingredients").update({
+        const { error: updErr } = await supabase.from("ingredients").update({
           stock_qty: newStock,
           cmup: newCmup,
           updated_at: new Date().toISOString(),
         }).eq("id", line.ingredient_id);
+        if (updErr) { setError(`Mise à jour du stock impossible : ${updErr.message}`); setValidating(false); return; }
 
         movements.push({
           restaurant_id: restaurantId,
@@ -213,7 +214,10 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
           reference_id: dn.id,
         });
       }
-      if (movements.length > 0) await supabase.from("stock_movements").insert(movements);
+      if (movements.length > 0) {
+        const { error: movErr } = await supabase.from("stock_movements").insert(movements);
+        if (movErr) { setError(`Enregistrement des mouvements impossible : ${movErr.message}`); setValidating(false); return; }
+      }
     }
 
     // 5. Update PO status — partial if any ORDERED line received less than ordered
