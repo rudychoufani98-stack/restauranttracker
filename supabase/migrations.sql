@@ -13,6 +13,10 @@ alter table recipes add column if not exists is_prep boolean not null default fa
 -- Option d'affichage : masquer les prix sur le bon de commande PDF/email
 alter table restaurants add column if not exists hide_po_prices boolean not null default false;
 
+-- Facture : ligne "frais divers" optionnelle (taxes alcool, livraison…)
+alter table invoices add column if not exists misc_fees numeric not null default 0;
+alter table invoices add column if not exists misc_fees_label text;
+
 -- ---------------------------------------------------------------------
 -- 2) Pertes : enregistrement du gaspillage / casse
 -- ---------------------------------------------------------------------

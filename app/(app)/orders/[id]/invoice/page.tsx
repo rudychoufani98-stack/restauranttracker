@@ -37,7 +37,7 @@ export default async function InvoicePage({ params }: { params: { id: string } }
   // when the invoice is edited again later).
   const { data: priorInvoice } = await supabase
     .from("invoices")
-    .select("id, invoice_lines(ingredient_id, quantity, unit_price)")
+    .select("id, misc_fees, misc_fees_label, invoice_lines(ingredient_id, quantity, unit_price)")
     .eq("po_id", params.id)
     .order("created_at", { ascending: false })
     .limit(1)

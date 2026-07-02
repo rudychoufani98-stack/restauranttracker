@@ -11,7 +11,7 @@ type PO = { id: string; order_number?: string | null; suppliers?: { name: string
 type DNLine = { ingredient_id: string | null; quantity_received: number; ingredients?: Ingredient | null };
 type DeliveryNote = { id: string; delivery_note_lines: DNLine[] };
 type PriorInvoiceLine = { ingredient_id: string | null; quantity: number; unit_price: number | null };
-type PriorInvoice = { id: string; invoice_lines: PriorInvoiceLine[] };
+type PriorInvoice = { id: string; misc_fees?: number | null; misc_fees_label?: string | null; invoice_lines: PriorInvoiceLine[] };
 
 type InvoiceLine = {
   ingredient_id: string;
@@ -88,6 +88,8 @@ export default function InvoiceClient({ po, deliveryNote, restaurantId, orderCon
   const [lines, setLines] = useState<InvoiceLine[]>(buildLines);
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().slice(0, 10));
+  const [miscFees, setMiscFees] = useState(priorInvoice?.misc_fees ? String(priorInvoice.misc_fees) : "");
+  const [miscLabel, setMiscLabel] = useState(priorInvoice?.misc_fees_label || "Frais divers");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -98,7 +100,9 @@ export default function InvoiceClient({ po, deliveryNote, restaurantId, orderCon
     setLines((p) => { const n = [...p]; n[i] = { ...n[i], qty: val }; return n; });
   }
 
-  const total = lines.reduce((s, l) => s + (parseFloat(l.invoice_price) || 0) * (parseFloat(l.qty) || 0), 0);
+  const linesTotal = lines.reduce((s, l) => s + (parseFloat(l.invoice_price) || 0) * (parseFloat(l.qty) || 0), 0);
+  const misc = parseFloat(miscFees) || 0;
+  const total = linesTotal + misc;
 
   async function handleValidate() {
     setSaving(true);
@@ -116,6 +120,8 @@ export default function InvoiceClient({ po, deliveryNote, restaurantId, orderCon
           invoice_number: invoiceNumber || null,
           invoice_date: invoiceDate,
           total_ht: total,
+          misc_fees: misc,
+          misc_fees_label: misc > 0 ? (miscLabel.trim() || "Frais divers") : null,
           validated: true,
           validated_at: new Date().toISOString(),
         })
@@ -300,9 +306,37 @@ export default function InvoiceClient({ po, deliveryNote, restaurantId, orderCon
             );
           })}
         </div>
-        <div className="px-5 py-4 border-t border-[#E5E7EB] bg-gray-50 flex justify-between items-center">
-          <span className="text-sm font-medium text-gray-700">Total HT</span>
-          <span className="text-lg font-semibold text-gray-900">€{total.toFixed(2)}</span>
+        {/* Frais divers (optionnel) — taxes alcool, livraison… n'affecte pas le stock */}
+        <div className="px-5 py-4 border-t border-[#E5E7EB]">
+          <label className="block text-xs font-medium text-gray-600 mb-1.5">Frais divers (optionnel)</label>
+          <div className="flex items-center gap-2">
+            <input type="text" value={miscLabel} onChange={(e) => setMiscLabel(e.target.value)}
+              placeholder="ex. Taxe alcool, frais de livraison…"
+              className="flex-1 px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500" />
+            <div className="relative w-28">
+              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">€</span>
+              <input type="number" min="0" step="0.01" value={miscFees} onChange={(e) => setMiscFees(e.target.value)}
+                placeholder="0.00"
+                className="w-full pl-5 pr-2 py-2 text-sm text-right border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500" />
+            </div>
+          </div>
+          <p className="text-2xs text-gray-400 mt-1.5">Ajouté au total, sans effet sur le stock.</p>
+        </div>
+        <div className="px-5 py-4 border-t border-[#E5E7EB] bg-gray-50 space-y-1">
+          <div className="flex justify-between items-center text-sm text-gray-500">
+            <span>Sous-total produits</span>
+            <span>€{linesTotal.toFixed(2)}</span>
+          </div>
+          {misc > 0 && (
+            <div className="flex justify-between items-center text-sm text-gray-500">
+              <span>{miscLabel.trim() || "Frais divers"}</span>
+              <span>€{misc.toFixed(2)}</span>
+            </div>
+          )}
+          <div className="flex justify-between items-center pt-1">
+            <span className="text-sm font-medium text-gray-700">Total HT</span>
+            <span className="text-lg font-semibold text-gray-900">€{total.toFixed(2)}</span>
+          </div>
         </div>
       </div>
 
