@@ -12,14 +12,21 @@ export default async function ReceivePage({ params }: { params: { id: string } }
     .eq("owner_id", user!.id)
     .single();
 
-  const { data: po } = await supabase
-    .from("purchase_orders")
-    .select("*, suppliers(name, email), purchase_order_lines(*, ingredients(id, name, unit, pack_price, cost_per_base_unit))")
-    .eq("id", params.id)
-    .eq("restaurant_id", restaurant!.id)
-    .single();
+  const [{ data: po }, { data: allIngredients }] = await Promise.all([
+    supabase
+      .from("purchase_orders")
+      .select("*, suppliers(name, email), purchase_order_lines(*, ingredients(id, name, unit, pack_price, cost_per_base_unit))")
+      .eq("id", params.id)
+      .eq("restaurant_id", restaurant!.id)
+      .single(),
+    supabase
+      .from("ingredients")
+      .select("id, name, unit, pack_price")
+      .eq("restaurant_id", restaurant!.id)
+      .order("name"),
+  ]);
 
   if (!po) return notFound();
 
-  return <ReceiveClient po={po} restaurantId={restaurant!.id} />;
+  return <ReceiveClient po={po} restaurantId={restaurant!.id} allIngredients={allIngredients ?? []} />;
 }

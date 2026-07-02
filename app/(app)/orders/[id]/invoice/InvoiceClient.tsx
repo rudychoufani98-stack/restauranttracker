@@ -8,7 +8,7 @@ import { Check, Loader2, FileText } from "lucide-react";
 type Ingredient = { id: string; name: string; unit: string; pack_price: number; cost_per_base_unit: number; pack_quantity: number };
 type POLine = { id: string; ingredient_id: string | null; quantity: number; expected_price: number | null; ingredients?: Ingredient | null };
 type PO = { id: string; order_number?: string | null; suppliers?: { name: string; email: string | null } | null; purchase_order_lines: POLine[] };
-type DNLine = { ingredient_id: string | null; quantity_received: number };
+type DNLine = { ingredient_id: string | null; quantity_received: number; ingredients?: Ingredient | null };
 type DeliveryNote = { id: string; delivery_note_lines: DNLine[] };
 
 type InvoiceLine = {
@@ -32,19 +32,39 @@ export default function InvoiceClient({ po, deliveryNote, restaurantId }: Props)
   const router = useRouter();
   const supabase = createClient();
 
-  // Build invoice lines: use delivery note quantities when available, else PO quantities
+  // Build invoice lines. Prefer what was ACTUALLY received (delivery note) so that
+  // substitute / extra products added at reception are invoiced and stocked, and
+  // ordered-but-not-received products (qty 0) drop out. Fall back to PO lines when
+  // there is no delivery note.
   const buildLines = (): InvoiceLine[] => {
+    const dnLines = deliveryNote?.delivery_note_lines ?? [];
+    if (dnLines.length > 0) {
+      return dnLines
+        .filter((d) => d.ingredient_id && d.ingredients && Number(d.quantity_received) > 0)
+        .map((d) => {
+          const poLine = po.purchase_order_lines.find((l) => l.ingredient_id === d.ingredient_id);
+          const expectedPrice = poLine?.expected_price ?? d.ingredients!.pack_price;
+          return {
+            ingredient_id: d.ingredient_id!,
+            ingredient_name: d.ingredients!.name,
+            unit: d.ingredients!.unit,
+            qty_received: Number(d.quantity_received),
+            expected_price: expectedPrice,
+            invoice_price: String(expectedPrice),
+            pack_quantity: d.ingredients!.pack_quantity,
+            cost_per_base_unit: d.ingredients!.cost_per_base_unit,
+          };
+        });
+    }
     return po.purchase_order_lines
       .filter((l) => l.ingredient_id && l.ingredients)
       .map((l) => {
-        const dnLine = deliveryNote?.delivery_note_lines.find((d) => d.ingredient_id === l.ingredient_id);
-        const qty = dnLine ? dnLine.quantity_received : l.quantity;
         const expectedPrice = l.expected_price ?? l.ingredients!.pack_price;
         return {
           ingredient_id: l.ingredient_id!,
           ingredient_name: l.ingredients!.name,
           unit: l.ingredients!.unit,
-          qty_received: qty,
+          qty_received: l.quantity,
           expected_price: expectedPrice,
           invoice_price: String(expectedPrice),
           pack_quantity: l.ingredients!.pack_quantity,
