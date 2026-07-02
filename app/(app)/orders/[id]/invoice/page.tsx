@@ -27,7 +27,7 @@ export default async function InvoicePage({ params }: { params: { id: string } }
   // Load the most recent delivery note for this PO (to get received quantities)
   const { data: deliveryNote } = await supabase
     .from("delivery_notes")
-    .select("*, bl_number, delivery_note_lines(*, ingredients(id, name, unit, pack_price, cost_per_base_unit, pack_quantity))")
+    .select("*, delivery_note_lines(*, ingredients(id, name, unit, pack_price, cost_per_base_unit, pack_quantity))")
     .eq("po_id", params.id)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -37,7 +37,7 @@ export default async function InvoicePage({ params }: { params: { id: string } }
   // when the invoice is edited again later).
   const { data: priorInvoice } = await supabase
     .from("invoices")
-    .select("id, misc_fees, misc_fees_label, invoice_lines(ingredient_id, quantity, unit_price)")
+    .select("*, invoice_lines(ingredient_id, quantity, unit_price)")
     .eq("po_id", params.id)
     .order("created_at", { ascending: false })
     .limit(1)

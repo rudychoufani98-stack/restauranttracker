@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
 
     const { data: restaurant } = await supabase
       .from("restaurants")
-      .select("id, name, address, phone, siret, hide_po_prices")
+      .select("*")
       .eq("owner_id", user.id)
       .single();
 

@@ -13,9 +13,10 @@ export async function GET(
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+    // select("*") so a not-yet-migrated column (e.g. hide_po_prices) never breaks the PDF.
     const { data: restaurant } = await supabase
       .from("restaurants")
-      .select("id, name, address, phone, siret, owner_id, hide_po_prices")
+      .select("*")
       .eq("owner_id", user.id)
       .single();
 
