@@ -48,10 +48,17 @@ const PERIODS: { key: string; label: string }[] = [
   { key: "30d", label: "30 derniers jours" },
   { key: "month", label: "Ce mois-ci" },
   { key: "lastmonth", label: "Mois dernier" },
+  { key: "custom", label: "Plage personnalisée…" },
 ];
-function inPeriod(createdAt: string, period: string): boolean {
+function inPeriod(dateStr: string, period: string, from?: string, to?: string): boolean {
   if (period === "all") return true;
-  const d = new Date(createdAt);
+  if (period === "custom") {
+    const d = (dateStr ?? "").slice(0, 10); // YYYY-MM-DD
+    if (from && d < from) return false;
+    if (to && d > to) return false;
+    return true;
+  }
+  const d = new Date(dateStr);
   const now = new Date();
   const day = 86_400_000;
   if (period === "7d") return d >= new Date(now.getTime() - 7 * day);
@@ -142,6 +149,8 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
   const [orders, setOrders] = useState<PO[]>(initialOrders);
   const [statusFilter, setStatusFilter] = useState("all");
   const [period, setPeriod] = useState("all");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -524,10 +533,22 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
               );
             })}
           </div>
-          <select value={period} onChange={(e) => setPeriod(e.target.value)}
-            className="px-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500 text-gray-600">
-            {PERIODS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
-          </select>
+          <div className="flex items-center gap-2">
+            {period === "custom" && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-2xs text-gray-400">Du</span>
+                <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)}
+                  className="px-2 py-1.5 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500 text-gray-600" />
+                <span className="text-2xs text-gray-400">au</span>
+                <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)}
+                  className="px-2 py-1.5 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500 text-gray-600" />
+              </div>
+            )}
+            <select value={period} onChange={(e) => setPeriod(e.target.value)}
+              className="px-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500 text-gray-600">
+              {PERIODS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+            </select>
+          </div>
         </div>
       )}
 
@@ -543,7 +564,7 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
         <div className="space-y-3">
           {(() => {
             const match = STATUS_FILTERS.find((f) => f.key === statusFilter)?.match ?? (() => true);
-            const visibleOrders = orders.filter((o) => match(o.status) && inPeriod(o.created_at, period));
+            const visibleOrders = orders.filter((o) => match(o.status) && inPeriod(receptionDate(o), period, fromDate, toDate));
             if (visibleOrders.length === 0) {
               return <p className="text-sm text-gray-400 text-center py-10 border border-dashed border-gray-200 rounded-card">Aucune commande pour ce filtre.</p>;
             }
