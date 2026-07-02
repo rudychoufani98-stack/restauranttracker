@@ -21,13 +21,25 @@ export default async function ReceivePage({ params }: { params: { id: string } }
 
   if (!po) return notFound();
 
-  // Products of THIS supplier only (for the "produit reçu" picker): those with an
-  // article for the supplier, plus those whose legacy supplier_id matches.
-  const { data: links } = await supabase
+  // Articles of THIS supplier — used both to filter the "produit reçu" picker and
+  // to label purchase quantities in the order conditionnement (colis, caisse…).
+  const { data: supplierArticles } = await supabase
     .from("ingredient_suppliers")
-    .select("ingredient_id")
+    .select("ingredient_id, pack_type, pack_units, unit_size, pack_label, unit")
     .eq("supplier_id", po.supplier_id);
-  const linkedIds = Array.from(new Set((links ?? []).map((l) => l.ingredient_id)));
+  const linkedIds = Array.from(new Set((supplierArticles ?? []).map((a) => a.ingredient_id)));
+
+  // ingredient_id -> { type: "colis", detail: "2 kg" } for the supplier's conditionnement
+  const orderCond: Record<string, { type: string; detail: string }> = {};
+  for (const a of supplierArticles ?? []) {
+    const units = Number(a.pack_units ?? 1) || 1;
+    const size = Number(a.unit_size ?? 0) || 0;
+    const u = a.unit ?? "";
+    orderCond[a.ingredient_id] = {
+      type: a.pack_type || "colis",
+      detail: a.pack_label || (size > 0 ? (units > 1 ? `${units} × ${size} ${u}` : `${size} ${u}`) : ""),
+    };
+  }
 
   let supplierIngredientsQuery = supabase
     .from("ingredients")
@@ -38,5 +50,5 @@ export default async function ReceivePage({ params }: { params: { id: string } }
     : supplierIngredientsQuery.eq("supplier_id", po.supplier_id);
   const { data: allIngredients } = await supplierIngredientsQuery.order("name");
 
-  return <ReceiveClient po={po} restaurantId={restaurant!.id} allIngredients={allIngredients ?? []} />;
+  return <ReceiveClient po={po} restaurantId={restaurant!.id} allIngredients={allIngredients ?? []} orderCond={orderCond} />;
 }

@@ -22,13 +22,16 @@ type InvoiceLine = {
   cost_per_base_unit: number;
 };
 
+type OrderCond = Record<string, { type: string; detail: string }>;
 interface Props {
   po: PO;
   deliveryNote: DeliveryNote | null;
   restaurantId: string;
+  orderCond?: OrderCond;
 }
 
-export default function InvoiceClient({ po, deliveryNote, restaurantId }: Props) {
+export default function InvoiceClient({ po, deliveryNote, restaurantId, orderCond = {} }: Props) {
+  const condType = (ingredientId: string, fallback: string) => orderCond[ingredientId]?.type || fallback || "colis";
   const router = useRouter();
   const supabase = createClient();
 
@@ -233,7 +236,7 @@ export default function InvoiceClient({ po, deliveryNote, restaurantId }: Props)
     <div className="p-8 max-w-3xl mx-auto">
       <div className="mb-6">
         <a href="/orders" className="text-sm text-gray-400 hover:text-gray-600 mb-2 inline-block">
-          &larr; Back to orders
+          &larr; Bons de commande
         </a>
         <h1 className="text-xl font-medium text-gray-900">Saisie de facture</h1>
         <p className="text-sm text-gray-500 mt-0.5">
@@ -287,13 +290,13 @@ export default function InvoiceClient({ po, deliveryNote, restaurantId }: Props)
                 <div className="flex items-center justify-between mb-2">
                   <span className="font-medium text-gray-900 text-sm">{line.ingredient_name}</span>
                   <span className="text-xs text-gray-400">
-                    Qté reçue: <span className="font-medium text-gray-700">{line.qty_received} {line.unit}</span>
+                    Qté reçue : <span className="font-medium text-gray-700">{line.qty_received} {condType(line.ingredient_id, line.unit)}</span>
                   </span>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="flex-1">
                     <label className="block text-xs text-gray-500 mb-1">
-                      Prix facture (€/{line.unit})
+                      Prix facture (€/{condType(line.ingredient_id, line.unit)})
                       {priceChanged && (
                         <span className="text-amber-500 ml-1">
                           — prévu €{line.expected_price.toFixed(2)}

@@ -24,9 +24,13 @@ type ReceiveLine = {
   added?: boolean; // true when the user added it (not on the original order)
 };
 
-interface Props { po: PO; restaurantId: string; allIngredients: IngredientOption[] }
+type OrderCond = Record<string, { type: string; detail: string }>;
+interface Props { po: PO; restaurantId: string; allIngredients: IngredientOption[]; orderCond: OrderCond }
 
-export default function ReceiveClient({ po, restaurantId, allIngredients }: Props) {
+export default function ReceiveClient({ po, restaurantId, allIngredients, orderCond }: Props) {
+  // Label a purchase quantity in the supplier's order conditionnement (colis…).
+  const condType = (ingredientId: string, fallback: string) => orderCond[ingredientId]?.type || fallback || "colis";
+  const condDetail = (ingredientId: string) => orderCond[ingredientId]?.detail || "";
   const router = useRouter();
   const supabase = createClient();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -98,7 +102,7 @@ export default function ReceiveClient({ po, restaurantId, allIngredients }: Prop
     try {
       const res = await fetch("/api/scan-bl", { method: "POST", body: formData });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Scan failed");
+      if (!res.ok) throw new Error(json.error ?? "Échec de l'analyse");
 
       // Merge scanned values
       const scanned: { name: string; price: number; quantity: number }[] = json.items ?? [];
@@ -116,7 +120,7 @@ export default function ReceiveClient({ po, restaurantId, allIngredients }: Prop
           };
         })
       );
-      setScanMessage(`Scanned ${scanned.length} line${scanned.length !== 1 ? "s" : ""} from the delivery note. Review and confirm below.`);
+      setScanMessage(`${scanned.length} ligne${scanned.length !== 1 ? "s" : ""} lue${scanned.length !== 1 ? "s" : ""} sur le bon de livraison. Vérifie et confirme ci-dessous.`);
     } catch (e: any) {
       setError(e.message);
     }
@@ -225,25 +229,25 @@ export default function ReceiveClient({ po, restaurantId, allIngredients }: Prop
   return (
     <div className="p-8 max-w-3xl mx-auto">
       <div className="mb-6">
-        <a href="/orders" className="text-sm text-gray-400 hover:text-gray-600 mb-2 inline-block">← Back to orders</a>
+        <a href="/orders" className="text-sm text-gray-400 hover:text-gray-600 mb-2 inline-block">← Bons de commande</a>
         <h1 className="text-xl font-medium text-gray-900">Réception de la commande</h1>
         <p className="text-sm text-gray-500 mt-0.5">Fournisseur : {po.suppliers?.name} · Confirme les quantités reçues — le stock est mis à jour immédiatement, les prix seront ajustés à la facture</p>
       </div>
 
       {/* BL upload + scan */}
       <div className="bg-white border border-[#E5E7EB] rounded-card p-5 mb-5">
-        <h2 className="text-sm font-medium text-gray-900 mb-3">Upload delivery note (optional)</h2>
+        <h2 className="text-sm font-medium text-gray-900 mb-3">Bon de livraison (optionnel)</h2>
         <div className="flex items-center gap-3">
           <label className="flex items-center gap-2 px-4 py-2 text-sm border border-[#E5E7EB] rounded-lg cursor-pointer hover:bg-gray-50 transition">
             <Upload size={14} className="text-gray-400" />
-            {blFile ? blFile.name : "Choose PDF or photo"}
+            {blFile ? blFile.name : "Choisir un PDF ou une photo"}
             <input ref={fileRef} type="file" accept="image/*,.pdf" className="hidden"
               onChange={(e) => setBlFile(e.target.files?.[0] ?? null)} />
           </label>
           {blFile && (
             <button onClick={handleScanBL} disabled={scanning}
               className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-blue-500 rounded-lg hover:bg-blue-600 disabled:opacity-50 transition">
-              {scanning ? <><Loader2 size={14} className="animate-spin" /> Scanning…</> : "Scan with AI"}
+              {scanning ? <><Loader2 size={14} className="animate-spin" /> Analyse…</> : "Scanner avec l'IA"}
             </button>
           )}
         </div>
@@ -257,7 +261,7 @@ export default function ReceiveClient({ po, restaurantId, allIngredients }: Prop
       {/* Lines */}
       <div className="bg-white border border-[#E5E7EB] rounded-card overflow-hidden mb-5">
         <div className="px-5 py-3 border-b border-[#E5E7EB] bg-gray-50">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Delivery lines — confirm each item</p>
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Lignes de livraison — confirme chaque produit</p>
         </div>
         <div className="divide-y divide-[#E5E7EB]">
           {lines.map((line, i) => {
@@ -291,18 +295,21 @@ export default function ReceiveClient({ po, restaurantId, allIngredients }: Prop
                     )}
                   </div>
                 </div>
+                {line.ingredient_id && condDetail(line.ingredient_id) && (
+                  <p className="text-2xs text-gray-500 mb-1.5">1 {condType(line.ingredient_id, line.unit)} = <b>{condDetail(line.ingredient_id)}</b></p>
+                )}
                 <div className="flex items-center gap-3">
                   <div className="flex-1">
-                    <label className="block text-xs text-gray-500 mb-1">Quantité reçue{line.unit ? ` (${line.unit})` : ""}</label>
+                    <label className="block text-xs text-gray-500 mb-1">Quantité reçue ({condType(line.ingredient_id, line.unit)})</label>
                     <input type="number" min="0" step="any" value={line.qty_received}
                       onChange={(e) => updateLine(i, "qty_received", e.target.value)}
                       className={clsx("w-full px-3 py-2 text-sm border rounded-lg outline-none focus:ring-1 transition",
                         qtyPartial ? "border-amber-400 focus:border-amber-500 focus:ring-amber-300" : "border-[#E5E7EB] focus:border-emerald-500 focus:ring-emerald-500"
                       )} />
-                    {!line.added && <p className="text-xs text-gray-400 mt-0.5">Commandé : {line.qty_ordered}</p>}
+                    {!line.added && <p className="text-xs text-gray-400 mt-0.5">Commandé : {line.qty_ordered} {condType(line.ingredient_id, line.unit)}</p>}
                   </div>
                   <div className="text-right text-xs text-gray-400 pt-4">
-                    Prix attendu :<br />
+                    Prix attendu / {condType(line.ingredient_id, line.unit)} :<br />
                     <span className="text-gray-600 font-medium">€{line.expected_price.toFixed(2)}</span>
                   </div>
                 </div>
@@ -322,7 +329,7 @@ export default function ReceiveClient({ po, restaurantId, allIngredients }: Prop
       {error && <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2 mb-4">{error}</div>}
 
       <div className="flex gap-3">
-        <a href="/orders" className="flex-1 py-2 text-center text-sm text-gray-600 border border-[#E5E7EB] rounded-lg hover:bg-gray-50 transition">Cancel</a>
+        <a href="/orders" className="flex-1 py-2 text-center text-sm text-gray-600 border border-[#E5E7EB] rounded-lg hover:bg-gray-50 transition">Annuler</a>
         <button onClick={handleValidate} disabled={validating}
           className="flex-1 py-2 text-sm text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 disabled:opacity-50 transition flex items-center justify-center gap-2">
           {validating ? <><Loader2 size={14} className="animate-spin" /> Enregistrement…</> : <><Check size={14} /> Valider la réception</>}

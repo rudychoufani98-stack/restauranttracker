@@ -31,6 +31,16 @@ const STATUS_COLORS: Record<string, string> = {
   Cancelled: "bg-red-50 text-red-500",
 };
 
+// DB stores English statuses; display them in French (single source of truth).
+const STATUS_LABELS: Record<string, string> = {
+  Draft: "Brouillon",
+  Sent: "Envoyée",
+  "Partially received": "Partiellement reçue",
+  Received: "Reçue",
+  Invoiced: "Facturée",
+  Cancelled: "Annulée",
+};
+
 type Article = {
   supplier_id: string | null; supplier_reference: string | null;
   pack_units: number | null; unit_size: number | null; unit: string | null;
@@ -454,9 +464,9 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
                   onClick={() => setExpandedId(isExpanded ? null : order.id)}>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium text-gray-900">{order.suppliers?.name ?? "Unknown supplier"}</span>
+                      <span className="font-medium text-gray-900">{order.suppliers?.name ?? "Fournisseur inconnu"}</span>
                       <span className={clsx("px-2 py-0.5 text-xs rounded-full font-medium", STATUS_COLORS[order.status] ?? "bg-gray-100 text-gray-500")}>
-                        {order.status}
+                        {STATUS_LABELS[order.status] ?? order.status}
                       </span>
                     </div>
                     <p className="text-xs text-gray-400 mt-0.5">{new Date(order.created_at).toLocaleDateString("fr-FR")} · {order.purchase_order_lines.length} ligne{order.purchase_order_lines.length !== 1 ? "s" : ""}</p>

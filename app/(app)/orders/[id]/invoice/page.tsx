@@ -33,11 +33,28 @@ export default async function InvoicePage({ params }: { params: { id: string } }
     .limit(1)
     .single();
 
+  // Supplier conditionnement (colis…) so quantities are shown consistently.
+  const { data: supplierArticles } = await supabase
+    .from("ingredient_suppliers")
+    .select("ingredient_id, pack_type, pack_units, unit_size, pack_label, unit")
+    .eq("supplier_id", (po as any).supplier_id);
+  const orderCond: Record<string, { type: string; detail: string }> = {};
+  for (const a of supplierArticles ?? []) {
+    const units = Number(a.pack_units ?? 1) || 1;
+    const size = Number(a.unit_size ?? 0) || 0;
+    const u = a.unit ?? "";
+    orderCond[a.ingredient_id] = {
+      type: a.pack_type || "colis",
+      detail: a.pack_label || (size > 0 ? (units > 1 ? `${units} × ${size} ${u}` : `${size} ${u}`) : ""),
+    };
+  }
+
   return (
     <InvoiceClient
       po={po}
       deliveryNote={deliveryNote ?? null}
       restaurantId={restaurant.id}
+      orderCond={orderCond}
     />
   );
 }
