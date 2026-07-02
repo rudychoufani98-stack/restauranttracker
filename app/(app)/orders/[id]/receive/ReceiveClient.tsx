@@ -272,11 +272,19 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
               <div key={i} className={clsx("px-5 py-4", line.added && "bg-blue-50/40", isZero && "bg-gray-50/60")}>
                 <div className="flex items-center justify-between mb-2 gap-2">
                   {line.added ? (
-                    <select value={line.ingredient_id} onChange={(e) => pickIngredient(i, e.target.value)}
-                      className="flex-1 px-3 py-2 text-sm border border-blue-200 rounded-lg bg-white outline-none focus:border-blue-500">
-                      <option value="">— Choisir le produit reçu —</option>
-                      {allIngredients.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-                    </select>
+                    (() => {
+                      // Hide products already on the reception (ordered lines + other added lines),
+                      // but keep this line's own current selection.
+                      const usedIds = new Set(lines.filter((_, idx) => idx !== i).map((l) => l.ingredient_id).filter(Boolean));
+                      const options = allIngredients.filter((a) => a.id === line.ingredient_id || !usedIds.has(a.id));
+                      return (
+                        <select value={line.ingredient_id} onChange={(e) => pickIngredient(i, e.target.value)}
+                          className="flex-1 px-3 py-2 text-sm border border-blue-200 rounded-lg bg-white outline-none focus:border-blue-500">
+                          <option value="">— Choisir le produit reçu —</option>
+                          {options.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                        </select>
+                      );
+                    })()
                   ) : (
                     <span className={clsx("font-medium text-sm", isZero ? "text-gray-400 line-through" : "text-gray-900")}>{line.ingredient_name}</span>
                   )}
