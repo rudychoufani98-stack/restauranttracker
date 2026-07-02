@@ -20,6 +20,9 @@ alter table invoices add column if not exists misc_fees_label text;
 -- Réception : numéro du bon de livraison (BL) fourni par le fournisseur
 alter table delivery_notes add column if not exists bl_number text;
 
+-- Ventes : canal (sur place / livraison) — permet deux saisies par mois
+alter table sales_periods add column if not exists channel text not null default 'dine_in';
+
 -- ---------------------------------------------------------------------
 -- 2) Pertes : enregistrement du gaspillage / casse
 -- ---------------------------------------------------------------------

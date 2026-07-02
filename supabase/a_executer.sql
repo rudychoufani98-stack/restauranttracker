@@ -17,6 +17,9 @@ alter table delivery_notes add column if not exists bl_number text;
 -- 4) Inventaire fournitures : type de fiche d'inventaire
 alter table inventory_sessions add column if not exists kind text not null default 'food';
 
+-- 4b) Ventes : canal (sur place / livraison) — permet 2 saisies par mois
+alter table sales_periods add column if not exists channel text not null default 'dine_in';
+
 -- 5) Index de performance (filtres par restaurant + jointures)
 create index if not exists idx_recipes_restaurant        on recipes(restaurant_id);
 create index if not exists idx_ingredients_restaurant     on ingredients(restaurant_id);

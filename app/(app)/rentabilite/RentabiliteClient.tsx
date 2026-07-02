@@ -27,9 +27,20 @@ type SalesLine = { recipe_id?: string; ingredient_id?: string; qty_sold: number 
 type Period = {
   id: string;
   month: string; // "2025-06"
+  channel?: string | null; // "dine_in" | "delivery"
   notes: string | null;
   sales_lines: SalesLine[];
 };
+
+const CHANNELS: { key: string; label: string }[] = [
+  { key: "dine_in", label: "Sur place" },
+  { key: "delivery", label: "Livraison" },
+];
+const channelLabel = (c?: string | null) => CHANNELS.find((x) => x.key === (c ?? "dine_in"))?.label ?? "Sur place";
+
+// Commission plateforme (Deliveroo / Uber Eats…) appliquée au CA des ventes
+// en livraison. Mettre le taux réel ici quand il sera connu (ex. 0.30 = 30 %).
+const DELIVERY_COMMISSION_PCT = 0;
 
 type DraftLine = { recipe_id: string; qty_sold: string };
 
@@ -63,10 +74,12 @@ function calcPeriodStats(period: Period, recipes: Recipe[], simpleProducts: Simp
       coutMatiere += line.qty_sold * prod.pack_price;
     }
   }
-  const margeB = ca - coutMatiere;
+  // Commission plateforme sur le CA des ventes en livraison.
+  const commission = (period.channel === "delivery") ? ca * DELIVERY_COMMISSION_PCT : 0;
+  const margeB = ca - commission - coutMatiere;
   const foodCostPct = ca > 0 ? (coutMatiere / ca) * 100 : null;
   const totalCouverts = period.sales_lines.reduce((s, l) => s + l.qty_sold, 0);
-  return { ca, coutMatiere, margeB, foodCostPct, totalCouverts };
+  return { ca, coutMatiere, commission, margeB, foodCostPct, totalCouverts };
 }
 
 export default function RentabiliteClient({ restaurantId, targetFoodCostPct, recipes, simpleProducts, initialPeriods }: Props) {
@@ -80,6 +93,7 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
   // Form state
   const currentMonth = new Date().toISOString().slice(0, 7); // "2025-06"
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);
+  const [saleChannel, setSaleChannel] = useState("dine_in");
   const [notes, setNotes] = useState("");
   const [draftLines, setDraftLines] = useState<DraftLine[]>([
     ...recipes.map((r) => ({ recipe_id: r.id, qty_sold: "" })),
@@ -148,6 +162,7 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
 
   function openForm() {
     setSelectedMonth(currentMonth);
+    setSaleChannel("dine_in");
     setNotes("");
     setDraftLines([
       ...recipes.map((r) => ({ recipe_id: r.id, qty_sold: "" })),
@@ -163,8 +178,8 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
     setSaving(true);
     setError(null);
 
-    // Check if period already exists for this month
-    const existing = periods.find((p) => p.month === selectedMonth);
+    // Check if a period already exists for this month AND channel
+    const existing = periods.find((p) => p.month === selectedMonth && (p.channel ?? "dine_in") === saleChannel);
 
     let periodId: string;
 
@@ -176,7 +191,7 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
     } else {
       const { data: period, error: pErr } = await supabase
         .from("sales_periods")
-        .insert({ restaurant_id: restaurantId, month: selectedMonth, notes: notes || null })
+        .insert({ restaurant_id: restaurantId, month: selectedMonth, channel: saleChannel, notes: notes || null })
         .select()
         .single();
       if (pErr) { setError(pErr.message); setSaving(false); return; }
@@ -215,6 +230,7 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
     const newPeriod: Period = {
       id: periodId,
       month: selectedMonth,
+      channel: saleChannel,
       notes: notes || null,
       sales_lines: linesToInsert.map((l) => ({ recipe_id: l.recipe_id ?? undefined, ingredient_id: l.ingredient_id ?? undefined, qty_sold: l.qty_sold })),
     };
@@ -272,6 +288,24 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
 
             <div className="p-5 space-y-4">
               {error && <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</div>}
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Canal de vente</label>
+                <div className="flex gap-2">
+                  {CHANNELS.map((c) => (
+                    <button key={c.key} onClick={() => setSaleChannel(c.key)}
+                      className={clsx("flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border transition",
+                        saleChannel === c.key
+                          ? (c.key === "delivery" ? "bg-blue-500 text-white border-blue-500" : "bg-emerald-500 text-white border-emerald-500")
+                          : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50")}>
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+                {saleChannel === "delivery" && (
+                  <p className="text-2xs text-gray-400 mt-1.5">Ventes via plateformes (Deliveroo, Uber Eats…). La commission sera déduite du CA{DELIVERY_COMMISSION_PCT > 0 ? ` (${(DELIVERY_COMMISSION_PCT * 100).toFixed(0)} %)` : ""}.</p>
+                )}
+              </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -462,9 +496,16 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-bold text-gray-900 capitalize text-base">{monthLabel(period.month)}</span>
+                      <span className={clsx("text-2xs font-semibold px-2 py-0.5 rounded-full",
+                        period.channel === "delivery" ? "bg-blue-100 text-blue-700" : "bg-emerald-100 text-emerald-700")}>
+                        {channelLabel(period.channel)}
+                      </span>
                       {period.notes && <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">· {period.notes}</span>}
                     </div>
-                    <p className="text-xs text-gray-400 mt-0.5">{stats.totalCouverts} couvert{stats.totalCouverts !== 1 ? "s" : ""}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {stats.totalCouverts} couvert{stats.totalCouverts !== 1 ? "s" : ""}
+                      {stats.commission > 0 && <span className="text-blue-600"> · commission €{stats.commission.toFixed(0)}</span>}
+                    </p>
                   </div>
 
                   {/* Mini stats */}
