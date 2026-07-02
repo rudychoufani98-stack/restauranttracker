@@ -257,15 +257,15 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
         </div>
       </div>
 
-      {/* 1. Conditionnement de base */}
-      <Section icon={<Package size={16} />} title="Conditionnement de base" subtitle="L'unité dans laquelle tu l'utilises en recette et le comptes en stock — c'est la base de tout.">
+      {/* 1. Conditionnement d'usage */}
+      <Section icon={<Package size={16} />} title="Conditionnement d'usage — recettes & inventaires" subtitle="L'unité dans laquelle tu l'utilises en recette et la comptes en inventaire (kg, L ou pièce). C'est la base de tout. Le conditionnement de commande (colis) se règle plus bas, il ne sert qu'aux commandes.">
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Unité d'usage</label>
             <select value={unit} onChange={(e) => setUnit(e.target.value)} className={inputCls}>
               {UNITS.map((u) => <option key={u}>{u}</option>)}
             </select>
-            <p className="text-2xs text-gray-400 mt-1">les recettes s'expriment dans cette unité</p>
+            <p className="text-2xs text-gray-400 mt-1">recettes & inventaires dans cette unité</p>
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Part utilisable (%)</label>
@@ -284,8 +284,8 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
       </Section>
 
       {/* 2. Articles */}
-      <Section icon={<Boxes size={16} />} title="Articles (références d'achat)"
-        subtitle="Un article par fournisseur : sa référence, son conditionnement de commande (colissage) et son prix. Sert uniquement pour les commandes."
+      <Section icon={<Boxes size={16} />} title="Conditionnement de commande — articles fournisseurs"
+        subtitle="Un article par fournisseur : sa référence, son conditionnement de commande (colis / caisse…) et son prix. Sert uniquement pour passer les commandes et le bon de commande — jamais pour les recettes ni l'inventaire."
         action={<button onClick={addArticle} className="flex items-center gap-1 text-xs font-medium text-emerald-600 hover:text-emerald-700"><Plus size={13} /> Ajouter un article</button>}>
         {articles.length === 0 ? (
           <p className="text-xs text-gray-400">Aucun article. Ajoute la référence d'achat d'au moins un fournisseur.</p>
