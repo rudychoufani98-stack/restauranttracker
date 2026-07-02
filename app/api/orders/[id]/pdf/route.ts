@@ -15,7 +15,7 @@ export async function GET(
 
     const { data: restaurant } = await supabase
       .from("restaurants")
-      .select("id, name, address, phone, siret, owner_id")
+      .select("id, name, address, phone, siret, owner_id, hide_po_prices")
       .eq("owner_id", user.id)
       .single();
 
@@ -100,6 +100,7 @@ export async function GET(
         customer_reference: supplier.customer_reference ?? undefined,
       },
       lines,
+      hidePrices: !!(restaurant as any).hide_po_prices,
     });
 
     const buffer = await renderToBuffer(pdfElement as any);

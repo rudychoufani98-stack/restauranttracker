@@ -25,7 +25,7 @@ const TAG_COLORS = [
 type Restaurant = {
   id: string; name: string; cuisine_type: string;
   target_food_cost_pct: number; digest_enabled?: boolean; digest_day?: string;
-  address?: string; phone?: string; siret?: string;
+  address?: string; phone?: string; siret?: string; hide_po_prices?: boolean;
 };
 type Tag = { id: string; name: string; color: string };
 type Member = { id: string; email: string; role: string; status: string; created_at: string };
@@ -56,6 +56,7 @@ export default function SettingsClient({ restaurant, email, initialTags, initial
     address: restaurant.address ?? "",
     phone: restaurant.phone ?? "",
     siret: restaurant.siret ?? "",
+    hide_po_prices: restaurant.hide_po_prices ?? false,
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -71,6 +72,7 @@ export default function SettingsClient({ restaurant, email, initialTags, initial
       address: form.address || null,
       phone: form.phone || null,
       siret: form.siret || null,
+      hide_po_prices: form.hide_po_prices,
     }).eq("id", restaurant.id);
     setSaving(false); setSaved(true);
     setTimeout(() => setSaved(false), 2500);
@@ -268,6 +270,26 @@ export default function SettingsClient({ restaurant, email, initialTags, initial
                 />
               </div>
             </div>
+          </Card>
+
+          <Card>
+            <h2 className="text-sm font-semibold text-gray-900 mb-1">Bons de commande</h2>
+            <p className="text-xs text-gray-500 mb-4">Personnalise ce qui apparaît sur le PDF envoyé aux fournisseurs.</p>
+            <label className="flex items-start gap-3 cursor-pointer">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={form.hide_po_prices}
+                onClick={() => setForm({ ...form, hide_po_prices: !form.hide_po_prices })}
+                className={clsx("mt-0.5 relative w-10 h-6 rounded-full transition shrink-0", form.hide_po_prices ? "bg-emerald-500" : "bg-gray-300")}
+              >
+                <span className={clsx("absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform", form.hide_po_prices && "translate-x-4")} />
+              </button>
+              <span>
+                <span className="block text-sm font-medium text-gray-800">Masquer les prix sur le bon de commande</span>
+                <span className="block text-xs text-gray-500 mt-0.5">Le PDF n&apos;affiche que les produits et quantités commandés, sans prix unitaires, TVA ni total.</span>
+              </span>
+            </label>
           </Card>
 
           <Card>

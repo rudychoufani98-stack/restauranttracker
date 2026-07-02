@@ -92,13 +92,14 @@ type POPDFProps = {
     customer_reference?: string;
   };
   lines: POLine[];
+  hidePrices?: boolean;
 };
 
 function fmt(n: number) {
   return `€${n.toFixed(2)}`;
 }
 
-export function PurchaseOrderPDF({ orderNumber, orderDate, restaurant, supplier, lines }: POPDFProps) {
+export function PurchaseOrderPDF({ orderNumber, orderDate, restaurant, supplier, lines, hidePrices = false }: POPDFProps) {
   // Totals per VAT bracket
   const vatMap: Record<number, number> = {};
   let totalHT = 0;
@@ -159,31 +160,32 @@ export function PurchaseOrderPDF({ orderNumber, orderDate, restaurant, supplier,
         <View style={S.table}>
           {/* Header row */}
           <View style={S.tableHeader}>
-            <Text style={[S.tableHeaderCell, S.colRef]}>Désignation</Text>
-            <Text style={[S.tableHeaderCell, S.colQty]}>Qté</Text>
-            <Text style={[S.tableHeaderCell, S.colUnit]}>Unité</Text>
-            <Text style={[S.tableHeaderCell, S.colPU]}>P.U. HT</Text>
-            <Text style={[S.tableHeaderCell, S.colVAT]}>TVA</Text>
-            <Text style={[S.tableHeaderCell, S.colTotal]}>Total HT</Text>
+            <Text style={[S.tableHeaderCell, { width: hidePrices ? "55%" : "30%" }]}>Désignation</Text>
+            <Text style={[S.tableHeaderCell, { width: hidePrices ? "20%" : "15%", textAlign: "right" }]}>Qté</Text>
+            <Text style={[S.tableHeaderCell, { width: hidePrices ? "25%" : "10%", textAlign: hidePrices ? "left" : "center", paddingLeft: hidePrices ? 12 : 0 }]}>Unité</Text>
+            {!hidePrices && <Text style={[S.tableHeaderCell, S.colPU]}>P.U. HT</Text>}
+            {!hidePrices && <Text style={[S.tableHeaderCell, S.colVAT]}>TVA</Text>}
+            {!hidePrices && <Text style={[S.tableHeaderCell, S.colTotal]}>Total HT</Text>}
           </View>
 
           {/* Lines */}
           {lines.map((line, i) => (
             <View key={i} style={[S.tableRow, i % 2 === 1 ? S.tableRowAlt : {}]}>
-              <View style={S.colRef}>
+              <View style={{ width: hidePrices ? "55%" : "30%" }}>
                 <Text style={S.tableCell}>{line.name}</Text>
                 {line.pack_detail ? <Text style={S.packDetail}>{line.unit} de {line.pack_detail}</Text> : null}
               </View>
-              <Text style={[S.tableCell, S.colQty]}>{line.quantity}</Text>
-              <Text style={[S.tableCell, S.colUnit]}>{line.unit}</Text>
-              <Text style={[S.tableCell, S.colPU]}>{fmt(line.expected_price)}</Text>
-              <Text style={[S.tableCell, S.colVAT]}>{line.vat_rate}%</Text>
-              <Text style={[S.tableCell, S.colTotal]}>{fmt(line.quantity * line.expected_price)}</Text>
+              <Text style={[S.tableCell, { width: hidePrices ? "20%" : "15%", textAlign: "right" }]}>{line.quantity}</Text>
+              <Text style={[S.tableCell, { width: hidePrices ? "25%" : "10%", textAlign: hidePrices ? "left" : "center", paddingLeft: hidePrices ? 12 : 0 }]}>{line.unit}</Text>
+              {!hidePrices && <Text style={[S.tableCell, S.colPU]}>{fmt(line.expected_price)}</Text>}
+              {!hidePrices && <Text style={[S.tableCell, S.colVAT]}>{line.vat_rate}%</Text>}
+              {!hidePrices && <Text style={[S.tableCell, S.colTotal]}>{fmt(line.quantity * line.expected_price)}</Text>}
             </View>
           ))}
         </View>
 
         {/* ── Totals ── */}
+        {!hidePrices && (
         <View style={S.totalsSection}>
           <View style={S.totalsBox}>
             <View style={S.totalsRow}>
@@ -206,6 +208,7 @@ export function PurchaseOrderPDF({ orderNumber, orderDate, restaurant, supplier,
             </View>
           </View>
         </View>
+        )}
 
         {/* ── Note ── */}
         <View style={S.noteBox}>

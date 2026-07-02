@@ -10,6 +10,9 @@
 -- ---------------------------------------------------------------------
 alter table recipes add column if not exists is_prep boolean not null default false;
 
+-- Option d'affichage : masquer les prix sur le bon de commande PDF/email
+alter table restaurants add column if not exists hide_po_prices boolean not null default false;
+
 -- ---------------------------------------------------------------------
 -- 2) Pertes : enregistrement du gaspillage / casse
 -- ---------------------------------------------------------------------

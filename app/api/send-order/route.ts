@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
 
     const { data: restaurant } = await supabase
       .from("restaurants")
-      .select("id, name, address, phone, siret")
+      .select("id, name, address, phone, siret, hide_po_prices")
       .eq("owner_id", user.id)
       .single();
 
@@ -23,11 +23,12 @@ export async function POST(req: NextRequest) {
     const { data: po } = await supabase
       .from("purchase_orders")
       .select(`
-        id, order_number, created_at, expected_total,
+        id, order_number, created_at, expected_total, supplier_id,
         suppliers(name, email, contact, category),
         purchase_order_lines(
           quantity, expected_price,
-          ingredients(name, unit, vat_rate)
+          ingredients(name, unit, vat_rate, pack_quantity, pack_units, unit_size,
+            ingredient_suppliers(supplier_id, pack_type, pack_units, unit_size, pack_label, unit))
         )
       `)
       .eq("id", poId)
@@ -60,13 +61,25 @@ export async function POST(req: NextRequest) {
       day: "2-digit", month: "long", year: "numeric",
     });
 
-    const lines = (po.purchase_order_lines ?? []).map((l: any) => ({
-      name: l.ingredients?.name ?? "—",
-      quantity: Number(l.quantity),
-      unit: l.ingredients?.unit ?? "",
-      expected_price: Number(l.expected_price ?? 0),
-      vat_rate: Number(l.ingredients?.vat_rate ?? 0),
-    }));
+    const lines = (po.purchase_order_lines ?? []).map((l: any) => {
+      const ing = l.ingredients;
+      const art = (ing?.ingredient_suppliers ?? []).find((a: any) => a.supplier_id === (po as any).supplier_id) ?? null;
+      const packType = art?.pack_type || "colis";
+      const packUnits = Number(art?.pack_units ?? ing?.pack_units ?? 1) || 1;
+      const unitSize = Number(art?.unit_size ?? ing?.unit_size ?? ing?.pack_quantity ?? 0) || 0;
+      const baseUnit = art?.unit ?? ing?.unit ?? "";
+      const packDetail = art?.pack_label
+        ? art.pack_label
+        : unitSize > 0 ? (packUnits > 1 ? `${packUnits} × ${unitSize} ${baseUnit}` : `${unitSize} ${baseUnit}`) : "";
+      return {
+        name: ing?.name ?? "—",
+        quantity: Number(l.quantity),
+        unit: packType,
+        pack_detail: packDetail,
+        expected_price: Number(l.expected_price ?? 0),
+        vat_rate: Number(ing?.vat_rate ?? 0),
+      };
+    });
 
     // Generate PDF
     const pdfElement = React.createElement(PurchaseOrderPDF, {
@@ -86,18 +99,24 @@ export async function POST(req: NextRequest) {
         category: supplier.category ?? undefined,
       },
       lines,
+      hidePrices: !!(restaurant as any).hide_po_prices,
     });
 
     const pdfBuffer = await renderToBuffer(pdfElement as any);
     const pdfBase64 = pdfBuffer.toString("base64");
 
-    // Build plain text summary for email body
+    const hidePrices = !!(restaurant as any).hide_po_prices;
+
+    // Build plain text summary for email body (with or without prices)
     const linesSummary = lines
-      .map((l) => `  • ${l.name} — ${l.quantity} ${l.unit} @ €${l.expected_price.toFixed(2)} HT`)
+      .map((l) => hidePrices
+        ? `  • ${l.name} — ${l.quantity} ${l.unit}`
+        : `  • ${l.name} — ${l.quantity} ${l.unit} @ €${l.expected_price.toFixed(2)} HT`)
       .join("\n");
 
     const totalHT = lines.reduce((s, l) => s + l.quantity * l.expected_price, 0);
     const totalTTC = lines.reduce((s, l) => s + l.quantity * l.expected_price * (1 + l.vat_rate / 100), 0);
+    const totalsBlock = hidePrices ? "" : `\nTotal HT : €${totalHT.toFixed(2)}\nTotal TTC : €${totalTTC.toFixed(2)}\n`;
 
     const emailBody = `Bonjour,
 
@@ -105,10 +124,7 @@ Veuillez trouver ci-joint notre bon de commande N° ${orderNumber} en date du ${
 
 Récapitulatif des articles commandés :
 ${linesSummary}
-
-Total HT : €${totalHT.toFixed(2)}
-Total TTC : €${totalTTC.toFixed(2)}
-
+${totalsBlock}
 Merci de confirmer la réception de cette commande par retour d'email.
 La facture devra mentionner le numéro de commande : ${orderNumber}
 
