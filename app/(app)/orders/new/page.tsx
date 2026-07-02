@@ -23,6 +23,7 @@ export default async function NewOrderPage() {
   return (
     <NewOrderClient
       restaurantId={restaurant!.id}
+      restaurantName={restaurant!.name}
       suppliers={(suppliers ?? []) as any}
       ingredients={(ingredients ?? []) as any}
     />

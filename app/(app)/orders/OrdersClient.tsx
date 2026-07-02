@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Trash2, X, Send, Download, ChevronDown, ChevronUp, Zap } from "lucide-react";
+import { Plus, Trash2, X, Send, Download, ChevronDown, ChevronUp, Zap, Check } from "lucide-react";
 import clsx from "clsx";
 
 const toBase = (qty: number, unit: string) => (unit === "kg" || unit === "l" ? qty * 1000 : qty);
@@ -88,6 +89,11 @@ interface Props {
 
 export default function OrdersClient({ restaurantId, restaurantName, initialOrders, suppliers, ingredients }: Props) {
   const supabase = createClient();
+  const params = useSearchParams();
+  const flash = params.get("sent") ? "Commande envoyée ✓"
+    : params.get("validated") ? "Réception validée ✓ — stock mis à jour"
+    : params.get("invoiced") ? "Facture validée ✓ — coûts mis à jour"
+    : null;
   const [orders, setOrders] = useState<PO[]>(initialOrders);
   const [showForm, setShowForm] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -250,6 +256,11 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
 
   return (
     <div className="p-8 max-w-5xl mx-auto">
+      {flash && (
+        <div className="mb-4 flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5">
+          <Check size={15} /> {flash}
+        </div>
+      )}
       <div className="flex items-end justify-between mb-6 pb-5 border-b border-gray-200">
         <div>
           <p className="text-xs font-semibold text-emerald-600 uppercase tracking-widest mb-1">Opérations</p>

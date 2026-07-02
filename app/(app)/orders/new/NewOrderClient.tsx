@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { ArrowLeft, Plus, Minus, Trash2, Loader2, Check, Search, ShoppingCart, Package } from "lucide-react";
+import { ArrowLeft, Plus, Minus, Trash2, Loader2, Check, Search, ShoppingCart, Package, Send } from "lucide-react";
 import clsx from "clsx";
 
 type Article = {
@@ -37,16 +37,16 @@ function condLabel(a: Article): string {
 
 type CartLine = { quantity: number; price: string };
 
-interface Props { restaurantId: string; suppliers: Supplier[]; ingredients: Ingredient[]; }
+interface Props { restaurantId: string; restaurantName: string; suppliers: Supplier[]; ingredients: Ingredient[]; }
 
-export default function NewOrderClient({ restaurantId, suppliers, ingredients }: Props) {
+export default function NewOrderClient({ restaurantId, restaurantName, suppliers, ingredients }: Props) {
   const supabase = createClient();
   const router = useRouter();
   const [supplierId, setSupplierId] = useState("");
   const [cart, setCart] = useState<Record<string, CartLine>>({});
   const [search, setSearch] = useState("");
   const [filterCat, setFilterCat] = useState("Toutes");
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState<null | "draft" | "send">(null);
   const [error, setError] = useState<string | null>(null);
 
   const sup = suppliers.find((s) => s.id === supplierId);
@@ -100,20 +100,35 @@ export default function NewOrderClient({ restaurantId, suppliers, ingredients }:
   const total = cartEntries.reduce((s, [, l]) => s + l.quantity * (parseFloat(l.price) || 0), 0);
   const itemCount = cartEntries.reduce((s, [, l]) => s + l.quantity, 0);
 
-  async function handleCreate() {
+  async function handleCreate(send: boolean) {
     setError(null);
     if (!supplierId) return setError("Choisis un fournisseur.");
     const valid = cartEntries.filter(([, l]) => l.quantity > 0);
     if (valid.length === 0) return setError("Ajoute au moins un produit.");
-    setSaving(true);
+    setSaving(send ? "send" : "draft");
     const { data: po, error: poErr } = await supabase.from("purchase_orders").insert({
-      restaurant_id: restaurantId, supplier_id: supplierId, status: "Draft", expected_total: total,
+      restaurant_id: restaurantId, supplier_id: supplierId,
+      status: send ? "Sent" : "Draft",
+      sent_at: send ? new Date().toISOString() : null,
+      expected_total: total,
     }).select().single();
-    if (poErr || !po) { setError(poErr?.message ?? "Erreur"); setSaving(false); return; }
+    if (poErr || !po) { setError(poErr?.message ?? "Erreur"); setSaving(null); return; }
     await supabase.from("purchase_order_lines").insert(valid.map(([ingredient_id, l]) => ({
       po_id: po.id, ingredient_id, quantity: l.quantity, expected_price: parseFloat(l.price) || null,
     })));
-    router.push("/orders");
+
+    // Send the order by email to the supplier (if it has an address).
+    if (send && sup?.email) {
+      try {
+        await fetch("/api/send-order", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ poId: po.id, restaurantName }),
+        });
+      } catch { /* email is best-effort; the order is already saved as Sent */ }
+    }
+
+    router.push(send ? "/orders?sent=1" : "/orders");
   }
 
   return (
@@ -279,10 +294,18 @@ export default function NewOrderClient({ restaurantId, suppliers, ingredients }:
                   </>
                 );
               })()}
-              <button onClick={handleCreate} disabled={saving || cartEntries.length === 0}
+              <button onClick={() => handleCreate(true)} disabled={saving !== null || cartEntries.length === 0}
                 className="w-full mt-1 py-2.5 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition flex items-center justify-center gap-1.5">
-                {saving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} Créer la commande
+                {saving === "send" ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+                {sup?.email ? "Envoyer la commande" : "Valider la commande"}
               </button>
+              <button onClick={() => handleCreate(false)} disabled={saving !== null || cartEntries.length === 0}
+                className="w-full py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition flex items-center justify-center gap-1.5">
+                {saving === "draft" ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} Enregistrer en brouillon
+              </button>
+              {sup?.email
+                ? <p className="text-2xs text-gray-400 text-center">La commande sera envoyée à {sup.email} puis tu seras redirigé.</p>
+                : <p className="text-2xs text-gray-400 text-center">Ce fournisseur n&apos;a pas d&apos;email — la commande sera marquée envoyée sans email.</p>}
             </div>
           </div>
         </div>
