@@ -43,10 +43,12 @@ type InventoryLine = {
   theoretical_qty: number | null; counted_qty: number | null; ecart: number | null;
   cmup: number | null; ecart_value: number | null;
 };
+type Kind = "food" | "fournitures";
 type InventorySession = {
   id: string; created_at: string; closing_at: string | null; status: string; finalized_at: string | null;
   items_counted: number;
   manquant_value: number; surplus_value: number; net_value: number; notes: string | null;
+  kind?: string | null;
   inventory_lines: InventoryLine[];
 };
 
@@ -55,6 +57,7 @@ interface Props {
   ingredients: Ingredient[];
   recentMovements: Movement[];
   inventorySessions: InventorySession[];
+  fournitureIds: string[];
 }
 
 const UNIT_LABELS: Record<string, string> = {
@@ -91,9 +94,11 @@ function displayToBase(qty: number, unit: string): number {
   return isWeightVol ? qty * 1000 : qty;
 }
 
-export default function InventaireClient({ restaurantId, ingredients, recentMovements, inventorySessions }: Props) {
+export default function InventaireClient({ restaurantId, ingredients, recentMovements, inventorySessions, fournitureIds }: Props) {
   const supabase = createClient();
-  const [tab, setTab] = useState<"count" | "sessions" | "history">("history");
+  const fournitureSet = useMemo(() => new Set(fournitureIds), [fournitureIds]);
+  const isFourniture = (id: string) => fournitureSet.has(id);
+  const [tab, setTab] = useState<"count" | "sessions" | "history" | "count-f" | "sessions-f">("history");
   const [expandedIng, setExpandedIng] = useState<string | null>(null);
   const [moveSearch, setMoveSearch] = useState("");
   const [sessions, setSessions] = useState<InventorySession[]>(inventorySessions);
@@ -115,18 +120,28 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
   const [filterCat, setFilterCat] = useState("Toutes");
   const [search, setSearch] = useState("");
 
+  // Which kind of stock the count/sessions tabs are working on right now.
+  const countKind: Kind = tab === "count-f" || tab === "sessions-f" ? "fournitures" : "food";
+  const matchKind = (id: string, kind: Kind) => (kind === "fournitures" ? isFourniture(id) : !isFourniture(id));
+
+  // Ingredients belonging to the active kind (fournitures vs alimentaire).
+  const kindIngredients = useMemo(
+    () => localIngredients.filter((i) => matchKind(i.id, countKind)),
+    [localIngredients, countKind, fournitureSet]
+  );
+
   const categories = useMemo(() => {
-    const cats = Array.from(new Set(ingredients.map((i) => i.category).filter(Boolean)));
+    const cats = Array.from(new Set(kindIngredients.map((i) => i.category).filter(Boolean)));
     return ["Toutes", ...cats.sort()];
-  }, [ingredients]);
+  }, [kindIngredients]);
 
   const filtered = useMemo(() => {
-    return localIngredients.filter((i) => {
+    return kindIngredients.filter((i) => {
       const matchCat = filterCat === "Toutes" || i.category === filterCat;
       const matchSearch = !search || i.name.toLowerCase().includes(search.toLowerCase());
       return matchCat && matchSearch;
     });
-  }, [localIngredients, filterCat, search]);
+  }, [kindIngredients, filterCat, search]);
 
   const totalValue = useMemo(() => {
     return localIngredients.reduce((sum, i) => {
@@ -182,7 +197,7 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
     let manque = 0; // valeur des écarts négatifs (stock réel < théorique)
     let surplus = 0;
     let counted = 0;
-    for (const ing of localIngredients) {
+    for (const ing of kindIngredients) {
       const real = countedBase(ing);
       if (real === null) continue;
       counted++;
@@ -193,9 +208,11 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
       else if (diff > 0) surplus += diff * cmup;
     }
     return { manque, surplus, counted, net: surplus - manque };
-  }, [counts, localIngredients]);
+  }, [counts, kindIngredients]);
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
+  const foodSessions = useMemo(() => sessions.filter((s) => (s.kind ?? "food") !== "fournitures"), [sessions]);
+  const fournitureSessions = useMemo(() => sessions.filter((s) => s.kind === "fournitures"), [sessions]);
 
   // Base (g/ml/pièce) → the display value the user typed (kg/L/pièce)
   function baseToDisplay(qty: number, unit: string): number {
@@ -204,9 +221,10 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
   }
 
   async function createDraft() {
+    const kind = countKind;
     setCreatingDraft(true);
     const { data: session } = await supabase.from("inventory_sessions").insert({
-      restaurant_id: restaurantId, status: "draft",
+      restaurant_id: restaurantId, status: "draft", kind,
       closing_at: newClosingAt ? new Date(newClosingAt).toISOString() : new Date().toISOString(),
       items_counted: 0,
     }).select().single();
@@ -216,7 +234,7 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
       setActiveSessionId(session.id);
       setCounts({});
       setCountDone(null);
-      setTab("count");
+      setTab(kind === "fournitures" ? "count-f" : "count");
     }
   }
 
@@ -231,17 +249,18 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
     setCounts(next);
     setActiveSessionId(s.id);
     setCountDone(null);
-    setTab("count");
+    setTab(s.kind === "fournitures" ? "count-f" : "count");
   }
 
   async function saveSession(finalize: boolean) {
     if (!activeSessionId) return;
+    const sessionKind: Kind = (sessions.find((s) => s.id === activeSessionId)?.kind as Kind) ?? countKind;
     setValidatingCount(true);
     const movements: any[] = [];
     const updates: { id: string; qty: number }[] = [];
     const sessionLines: InventoryLine[] = [];
 
-    for (const ing of localIngredients) {
+    for (const ing of localIngredients.filter((i) => matchKind(i.id, sessionKind))) {
       const real = countedBase(ing);
       if (real === null) continue;
       const theo = Number(ing.stock_qty ?? 0);
@@ -286,7 +305,7 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
       setCounts({});
       setActiveSessionId(null);
       setCountDone(`Inventaire finalisé : ${updates.length} ajustement(s) appliqué(s), écart net €${countSummary.net.toFixed(2)}.`);
-      setTab("sessions");
+      setTab(sessionKind === "fournitures" ? "sessions-f" : "sessions");
     } else {
       setCountDone("Brouillon enregistré ✓");
     }
@@ -375,7 +394,9 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
         {[
           { key: "history", label: "Stock & mouvements", icon: Warehouse },
           { key: "count", label: "Prise d'inventaire", icon: Check },
-          { key: "sessions", label: `Mes inventaires${sessions.length ? ` (${sessions.length})` : ""}`, icon: History },
+          { key: "sessions", label: `Mes inventaires${foodSessions.length ? ` (${foodSessions.length})` : ""}`, icon: History },
+          { key: "count-f", label: "Prise d'inventaire fournitures", icon: ClipboardList },
+          { key: "sessions-f", label: `Mes inventaires fournitures${fournitureSessions.length ? ` (${fournitureSessions.length})` : ""}`, icon: History },
         ].map(({ key, label, icon: Icon }) => (
           <button
             key={key}
@@ -391,8 +412,8 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
       </div>
 
 
-      {/* COUNT TAB — prise d'inventaire */}
-      {tab === "count" && (
+      {/* COUNT TAB — prise d'inventaire (alimentaire + fournitures) */}
+      {(tab === "count" || tab === "count-f") && (
         <>
           {countDone && (
             <div className="mb-4 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 flex items-center gap-2">
@@ -403,7 +424,10 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
           {!activeSession ? (
             <div className="bg-white border border-gray-200 rounded-xl p-8 max-w-md mx-auto text-center">
               <ClipboardList size={28} className="text-gray-300 mx-auto mb-3" />
-              <h2 className="text-base font-semibold text-gray-900 mb-1">Nouvelle fiche d&apos;inventaire</h2>
+              <h2 className="text-base font-semibold text-gray-900 mb-1">Nouvelle fiche d&apos;inventaire{countKind === "fournitures" ? " fournitures" : ""}</h2>
+              {countKind === "fournitures" && kindIngredients.length === 0 && (
+                <p className="text-sm text-amber-600 mb-3">Aucun ingrédient n&apos;a le tag « Fournitures ». Assigne ce tag à tes fournitures (couverts, emballages…) depuis la page Ingrédients.</p>
+              )}
               <p className="text-sm text-gray-500 mb-4">Choisis la date et l&apos;heure de l&apos;inventaire (pour savoir si c&apos;est avant ou après service). Tu peux la laisser en brouillon et la finir plus tard.</p>
               <div className="flex flex-wrap items-end gap-2 justify-center">
                 <div className="text-left">
@@ -523,22 +547,22 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
         </>
       )}
 
-      {/* SESSIONS TAB — saved inventories */}
-      {tab === "sessions" && (
+      {/* SESSIONS TAB — saved inventories (alimentaire + fournitures) */}
+      {(tab === "sessions" || tab === "sessions-f") && (
         <div className="space-y-3">
           <div className="flex justify-end">
-            <button onClick={() => { setActiveSessionId(null); setCountDone(null); setTab("count"); }}
+            <button onClick={() => { setActiveSessionId(null); setCountDone(null); setTab(tab === "sessions-f" ? "count-f" : "count"); }}
               className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition">
-              <ClipboardList size={14} /> Nouvel inventaire
+              <ClipboardList size={14} /> Nouvel inventaire{tab === "sessions-f" ? " fournitures" : ""}
             </button>
           </div>
-          {sessions.length === 0 ? (
+          {(tab === "sessions-f" ? fournitureSessions : foodSessions).length === 0 ? (
             <div className="bg-white border border-gray-200 rounded-xl p-10 text-center">
               <ClipboardList size={28} className="text-gray-300 mx-auto mb-3" />
               <p className="text-sm text-gray-500">Aucun inventaire pour l'instant. Crée ta première fiche.</p>
             </div>
           ) : (
-            sessions.map((s) => {
+            (tab === "sessions-f" ? fournitureSessions : foodSessions).map((s) => {
               const open = expandedSession === s.id;
               const draft = s.status === "draft";
               return (

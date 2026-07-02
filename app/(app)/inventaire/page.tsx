@@ -27,12 +27,37 @@ export default async function InventairePage() {
       .order("created_at", { ascending: false }),
   ]);
 
+  // Ensure the "Fournitures" tag exists, then load which ingredients carry it.
+  let { data: fournitureTag } = await supabase
+    .from("tags")
+    .select("id")
+    .eq("restaurant_id", restaurant!.id)
+    .eq("name", "Fournitures")
+    .maybeSingle();
+  if (!fournitureTag) {
+    const { data: created } = await supabase
+      .from("tags")
+      .insert({ restaurant_id: restaurant!.id, name: "Fournitures", color: "#64748b" })
+      .select("id")
+      .single();
+    fournitureTag = created;
+  }
+  let fournitureIds: string[] = [];
+  if (fournitureTag) {
+    const { data: links } = await supabase
+      .from("ingredient_tags")
+      .select("ingredient_id")
+      .eq("tag_id", fournitureTag.id);
+    fournitureIds = (links ?? []).map((l) => l.ingredient_id);
+  }
+
   return (
     <InventaireClient
       restaurantId={restaurant!.id}
       ingredients={(ingredients ?? []) as any}
       recentMovements={recentMovements ?? []}
       inventorySessions={(inventorySessions ?? []) as any}
+      fournitureIds={fournitureIds}
     />
   );
 }

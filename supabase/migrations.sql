@@ -138,12 +138,14 @@ create table if not exists inventory_sessions (
   manquant_value numeric not null default 0,
   surplus_value numeric not null default 0,
   net_value numeric not null default 0,
-  notes text
+  notes text,
+  kind text not null default 'food'          -- 'food' (alimentaire) | 'fournitures'
 );
 -- (si la table existait déjà sans ces colonnes)
 alter table inventory_sessions add column if not exists closing_at timestamptz;
 alter table inventory_sessions add column if not exists status text not null default 'draft';
 alter table inventory_sessions add column if not exists finalized_at timestamptz;
+alter table inventory_sessions add column if not exists kind text not null default 'food';
 create table if not exists inventory_lines (
   id uuid primary key default gen_random_uuid(),
   session_id uuid not null references inventory_sessions(id) on delete cascade,
