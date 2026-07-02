@@ -58,7 +58,7 @@ export default function DashboardClient({ restaurantName, targetFoodCost, recipe
   // Flatten purchases + losses
   const moveEvents = useMemo(() => movements.map((m) => {
     const i = m.ingredient_id ? ingMap.get(m.ingredient_id) : null;
-    return { month: monthKey(m.created_at), category: i?.category || "Autre", type: m.movement_type, value: Number(m.qty) * Number(m.unit_cost || 0) };
+    return { month: monthKey(m.created_at), day: (m.created_at ?? "").slice(0, 10), category: i?.category || "Autre", type: m.movement_type, value: Number(m.qty) * Number(m.unit_cost || 0) };
   }), [movements, ingMap]);
 
   // Month + category options
@@ -78,9 +78,19 @@ export default function DashboardClient({ restaurantName, targetFoodCost, recipe
 
   const [month, setMonth] = useState<string>(months[0] ?? "all");
   const [category, setCategory] = useState<string>("all");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
 
-  const matchM = (m: string) => month === "all" || m === month;
+  // Custom date range takes precedence over the month select when set.
+  const rangeActive = !!(fromDate || toDate);
+  const inRangeMonth = (mk: string) => (!fromDate || mk >= fromDate.slice(0, 7)) && (!toDate || mk <= toDate.slice(0, 7));
+  const inRangeDay = (d: string) => (!fromDate || d >= fromDate) && (!toDate || d <= toDate);
+
   const matchC = (c: string) => category === "all" || c === category;
+  // Sales are monthly → filter by month (range = months intersecting the range).
+  const matchM = (m: string) => rangeActive ? inRangeMonth(m) : (month === "all" || m === month);
+  // Movements are dated → filter by exact day when a range is set.
+  const matchMove = (e: { day: string; month: string }) => rangeActive ? inRangeDay(e.day) : (month === "all" || e.month === month);
 
   // KPIs
   const sales = saleEvents.filter((e) => matchM(e.month) && matchC(e.category));
@@ -90,8 +100,8 @@ export default function DashboardClient({ restaurantName, targetFoodCost, recipe
   const foodCost = ca > 0 ? (coutMatiere / ca) * 100 : 0;
   const platsVendus = sales.reduce((s, e) => s + e.qty, 0);
 
-  const achats = moveEvents.filter((e) => e.type === "in" && matchM(e.month) && matchC(e.category)).reduce((s, e) => s + e.value, 0);
-  const pertes = moveEvents.filter((e) => e.type === "loss" && matchM(e.month) && matchC(e.category)).reduce((s, e) => s + e.value, 0);
+  const achats = moveEvents.filter((e) => e.type === "in" && matchMove(e) && matchC(e.category)).reduce((s, e) => s + e.value, 0);
+  const pertes = moveEvents.filter((e) => e.type === "loss" && matchMove(e) && matchC(e.category)).reduce((s, e) => s + e.value, 0);
 
   const stockValue = ingredients
     .filter((i) => matchC(i.category || "Autre"))
@@ -107,7 +117,7 @@ export default function DashboardClient({ restaurantName, targetFoodCost, recipe
     }
     return Array.from(map.entries()).map(([cat, g]) => ({ cat, ...g, fc: g.revenue > 0 ? (g.cost / g.revenue) * 100 : 0 }))
       .sort((a, b) => b.revenue - a.revenue);
-  }, [saleEvents, month]);
+  }, [saleEvents, month, fromDate, toDate]);
   const maxCatRev = Math.max(1, ...byCat.map((c) => c.revenue));
 
   // Top plats
@@ -134,12 +144,24 @@ export default function DashboardClient({ restaurantName, targetFoodCost, recipe
             <p className="text-emerald-600 text-xs font-semibold uppercase tracking-widest mb-1">Tableau de bord</p>
             <h1 className="text-3xl font-bold text-gray-900 tracking-tight">{restaurantName}</h1>
           </div>
-          <div className="flex items-center gap-2">
-            <select value={month} onChange={(e) => setMonth(e.target.value)}
-              className="px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500">
+          <div className="flex flex-wrap items-center gap-2">
+            <select value={month} onChange={(e) => setMonth(e.target.value)} disabled={rangeActive}
+              className="px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500 disabled:opacity-50">
               <option value="all">Toute la période</option>
               {months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
             </select>
+            {/* Custom date range */}
+            <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-lg px-2 py-1">
+              <span className="text-2xs text-gray-400">Du</span>
+              <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)}
+                className="text-xs outline-none text-gray-600 bg-transparent" />
+              <span className="text-2xs text-gray-400">au</span>
+              <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)}
+                className="text-xs outline-none text-gray-600 bg-transparent" />
+              {rangeActive && (
+                <button onClick={() => { setFromDate(""); setToDate(""); }} className="text-gray-400 hover:text-gray-600 text-sm leading-none ml-0.5" title="Effacer la plage">×</button>
+              )}
+            </div>
             <select value={category} onChange={(e) => setCategory(e.target.value)}
               className="px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500">
               <option value="all">Toutes catégories</option>
