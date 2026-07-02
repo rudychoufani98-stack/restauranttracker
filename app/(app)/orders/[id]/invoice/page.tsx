@@ -33,6 +33,16 @@ export default async function InvoicePage({ params }: { params: { id: string } }
     .limit(1)
     .single();
 
+  // Most recent invoice already applied for this PO (to reconcile stock by delta
+  // when the invoice is edited again later).
+  const { data: priorInvoice } = await supabase
+    .from("invoices")
+    .select("id, invoice_lines(ingredient_id, quantity, unit_price)")
+    .eq("po_id", params.id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   // Supplier conditionnement (colis…) so quantities are shown consistently.
   const { data: supplierArticles } = await supabase
     .from("ingredient_suppliers")
@@ -55,6 +65,7 @@ export default async function InvoicePage({ params }: { params: { id: string } }
       deliveryNote={deliveryNote ?? null}
       restaurantId={restaurant.id}
       orderCond={orderCond}
+      priorInvoice={priorInvoice ?? null}
     />
   );
 }

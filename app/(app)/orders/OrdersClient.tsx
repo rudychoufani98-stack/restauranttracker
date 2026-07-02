@@ -248,6 +248,12 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
 
   async function handleDelete(id: string) {
     const o = orders.find((x) => x.id === id);
+    // Only draft orders may be deleted. Sent/received/invoiced orders have (or
+    // will have) affected stock — they can only be corrected via the invoice.
+    if (o && o.status !== "Draft") {
+      window.alert("Cette commande a déjà été envoyée : elle ne peut pas être supprimée. Pour l'annuler, va dans « Facturer » et mets les quantités à 0 — le stock sera réajusté.");
+      return;
+    }
     const label = o?.suppliers?.name ? `la commande « ${o.suppliers.name} »` : "cette commande";
     if (!window.confirm(`Supprimer ${label} ? Cette action est irréversible.`)) return;
     await supabase.from("purchase_orders").delete().eq("id", id);
@@ -527,8 +533,17 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
                         Facturer
                       </a>
                     )}
-                    <button onClick={(e) => { e.stopPropagation(); handleDelete(order.id); }}
-                      className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition"><Trash2 size={14} /></button>
+                    {order.status === "Invoiced" && (
+                      <a href={`/orders/${order.id}/invoice`}
+                        className="flex items-center gap-1 px-3 py-1.5 text-xs text-purple-600 border border-purple-200 rounded-lg hover:bg-purple-50 transition">
+                        <Pencil size={12} /> Modifier la facture
+                      </a>
+                    )}
+                    {/* Only draft orders can be deleted */}
+                    {order.status === "Draft" && (
+                      <button onClick={(e) => { e.stopPropagation(); handleDelete(order.id); }}
+                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition" title="Supprimer le brouillon"><Trash2 size={14} /></button>
+                    )}
                     {isExpanded ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
                   </div>
                 </div>
