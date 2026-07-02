@@ -28,7 +28,8 @@ export async function GET(
         suppliers(*),
         purchase_order_lines(
           quantity, expected_price,
-          ingredients(name, unit, vat_rate)
+          ingredients(name, unit, vat_rate, pack_quantity, pack_units, unit_size,
+            ingredient_suppliers(supplier_id, pack_type, pack_units, unit_size, pack_label, unit))
         )
       `)
       .eq("id", params.id)
@@ -54,15 +55,32 @@ export async function GET(
       day: "2-digit", month: "long", year: "numeric",
     });
 
-    const lines = (po.purchase_order_lines ?? []).map((l: any) => ({
-      name: l.ingredients?.name ?? "—",
-      quantity: Number(l.quantity),
-      unit: l.ingredients?.unit ?? "",
-      expected_price: Number(l.expected_price ?? 0),
-      vat_rate: Number(l.ingredients?.vat_rate ?? 0),
-    }));
-
     const supplier = po.suppliers as any ?? {};
+
+    // Build the order-conditionnement label for each line (e.g. "colis" + "2 kg"),
+    // read from the supplier's article. Orders are placed in this conditionnement
+    // (qté = nombre de colis, P.U. = prix par colis), not in the base usage unit.
+    const lines = (po.purchase_order_lines ?? []).map((l: any) => {
+      const ing = l.ingredients;
+      const art = (ing?.ingredient_suppliers ?? []).find((a: any) => a.supplier_id === supplier.id) ?? null;
+      const packType = art?.pack_type || "colis";
+      const packUnits = Number(art?.pack_units ?? ing?.pack_units ?? 1) || 1;
+      const unitSize = Number(art?.unit_size ?? ing?.unit_size ?? ing?.pack_quantity ?? 0) || 0;
+      const baseUnit = art?.unit ?? ing?.unit ?? "";
+      const packDetail = art?.pack_label
+        ? art.pack_label
+        : unitSize > 0
+          ? (packUnits > 1 ? `${packUnits} × ${unitSize} ${baseUnit}` : `${unitSize} ${baseUnit}`)
+          : "";
+      return {
+        name: ing?.name ?? "—",
+        quantity: Number(l.quantity),
+        unit: packType,          // conditionnement de commande (colis, caisse…)
+        pack_detail: packDetail, // taille du conditionnement (ex. "2 kg")
+        expected_price: Number(l.expected_price ?? 0),
+        vat_rate: Number(ing?.vat_rate ?? 0),
+      };
+    });
 
     const pdfElement = React.createElement(PurchaseOrderPDF, {
       orderNumber,

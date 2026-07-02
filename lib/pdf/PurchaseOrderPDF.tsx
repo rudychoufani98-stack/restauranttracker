@@ -34,6 +34,7 @@ const S = StyleSheet.create({
   tableRow: { flexDirection: "row", paddingVertical: 9, paddingHorizontal: 10, borderBottom: "0.5 solid #F3F4F6" },
   tableRowAlt: { backgroundColor: "#FAFAFA" },
   tableCell: { fontSize: 8.5, color: "#374151" },
+  packDetail: { fontSize: 7, color: "#9CA3AF", marginTop: 2 },
 
   // Column widths
   colRef: { width: "30%" },
@@ -68,6 +69,7 @@ type POLine = {
   name: string;
   quantity: number;
   unit: string;
+  pack_detail?: string;
   expected_price: number;
   vat_rate: number;
 };
@@ -168,7 +170,10 @@ export function PurchaseOrderPDF({ orderNumber, orderDate, restaurant, supplier,
           {/* Lines */}
           {lines.map((line, i) => (
             <View key={i} style={[S.tableRow, i % 2 === 1 ? S.tableRowAlt : {}]}>
-              <Text style={[S.tableCell, S.colRef]}>{line.name}</Text>
+              <View style={S.colRef}>
+                <Text style={S.tableCell}>{line.name}</Text>
+                {line.pack_detail ? <Text style={S.packDetail}>{line.unit} de {line.pack_detail}</Text> : null}
+              </View>
               <Text style={[S.tableCell, S.colQty]}>{line.quantity}</Text>
               <Text style={[S.tableCell, S.colUnit]}>{line.unit}</Text>
               <Text style={[S.tableCell, S.colPU]}>{fmt(line.expected_price)}</Text>
