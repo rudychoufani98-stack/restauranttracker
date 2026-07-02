@@ -37,13 +37,20 @@ function condLabel(a: Article): string {
 
 type CartLine = { quantity: number; price: string };
 
-interface Props { restaurantId: string; restaurantName: string; suppliers: Supplier[]; ingredients: Ingredient[]; }
+interface Props {
+  restaurantId: string; restaurantName: string; suppliers: Supplier[]; ingredients: Ingredient[];
+  // Edit mode: an existing draft order to modify instead of creating a new one.
+  orderId?: string;
+  initialSupplierId?: string;
+  initialCart?: Record<string, CartLine>;
+}
 
-export default function NewOrderClient({ restaurantId, restaurantName, suppliers, ingredients }: Props) {
+export default function NewOrderClient({ restaurantId, restaurantName, suppliers, ingredients, orderId, initialSupplierId = "", initialCart }: Props) {
   const supabase = createClient();
   const router = useRouter();
-  const [supplierId, setSupplierId] = useState("");
-  const [cart, setCart] = useState<Record<string, CartLine>>({});
+  const isEdit = !!orderId;
+  const [supplierId, setSupplierId] = useState(initialSupplierId);
+  const [cart, setCart] = useState<Record<string, CartLine>>(initialCart ?? {});
   const [search, setSearch] = useState("");
   const [filterCat, setFilterCat] = useState("Toutes");
   const [saving, setSaving] = useState<null | "draft" | "send">(null);
@@ -106,15 +113,31 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
     const valid = cartEntries.filter(([, l]) => l.quantity > 0);
     if (valid.length === 0) return setError("Ajoute au moins un produit.");
     setSaving(send ? "send" : "draft");
-    const { data: po, error: poErr } = await supabase.from("purchase_orders").insert({
-      restaurant_id: restaurantId, supplier_id: supplierId,
-      status: send ? "Sent" : "Draft",
-      sent_at: send ? new Date().toISOString() : null,
-      expected_total: total,
-    }).select().single();
-    if (poErr || !po) { setError(poErr?.message ?? "Erreur"); setSaving(null); return; }
+
+    let poId = orderId;
+    if (isEdit) {
+      const { error: upErr } = await supabase.from("purchase_orders").update({
+        supplier_id: supplierId,
+        status: send ? "Sent" : "Draft",
+        sent_at: send ? new Date().toISOString() : null,
+        expected_total: total,
+      }).eq("id", orderId);
+      if (upErr) { setError(upErr.message); setSaving(null); return; }
+      // Replace the draft's lines with the current cart.
+      await supabase.from("purchase_order_lines").delete().eq("po_id", orderId);
+    } else {
+      const { data: po, error: poErr } = await supabase.from("purchase_orders").insert({
+        restaurant_id: restaurantId, supplier_id: supplierId,
+        status: send ? "Sent" : "Draft",
+        sent_at: send ? new Date().toISOString() : null,
+        expected_total: total,
+      }).select().single();
+      if (poErr || !po) { setError(poErr?.message ?? "Erreur"); setSaving(null); return; }
+      poId = po.id;
+    }
+
     await supabase.from("purchase_order_lines").insert(valid.map(([ingredient_id, l]) => ({
-      po_id: po.id, ingredient_id, quantity: l.quantity, expected_price: parseFloat(l.price) || null,
+      po_id: poId, ingredient_id, quantity: l.quantity, expected_price: parseFloat(l.price) || null,
     })));
 
     // Send the order by email to the supplier (if it has an address).
@@ -123,7 +146,7 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
         await fetch("/api/send-order", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ poId: po.id, restaurantName }),
+          body: JSON.stringify({ poId, restaurantName }),
         });
       } catch { /* email is best-effort; the order is already saved as Sent */ }
     }
@@ -141,7 +164,7 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
 
       <div className="mb-5">
         <p className="text-xs font-semibold text-emerald-600 uppercase tracking-widest mb-1">Opérations</p>
-        <h1 className="text-2xl font-bold text-gray-900">Nouvelle commande</h1>
+        <h1 className="text-2xl font-bold text-gray-900">{isEdit ? "Modifier la commande" : "Nouvelle commande"}</h1>
       </div>
 
       {error && <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</div>}
@@ -301,7 +324,7 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
               </button>
               <button onClick={() => handleCreate(false)} disabled={saving !== null || cartEntries.length === 0}
                 className="w-full py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition flex items-center justify-center gap-1.5">
-                {saving === "draft" ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} Enregistrer en brouillon
+                {saving === "draft" ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} {isEdit ? "Enregistrer le brouillon" : "Enregistrer en brouillon"}
               </button>
               {sup?.email
                 ? <p className="text-2xs text-gray-400 text-center">La commande sera envoyée à {sup.email} puis tu seras redirigé.</p>

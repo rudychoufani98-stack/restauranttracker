@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Trash2, X, Send, Download, ChevronDown, ChevronUp, Zap, Check } from "lucide-react";
+import { Plus, Trash2, X, Send, Download, ChevronDown, ChevronUp, Zap, Check, Pencil } from "lucide-react";
 import clsx from "clsx";
 
 const toBase = (qty: number, unit: string) => (unit === "kg" || unit === "l" ? qty * 1000 : qty);
@@ -496,6 +496,12 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
                     </a>
 
                     {order.status === "Draft" && (<>
+                      <a
+                        href={`/orders/${order.id}/edit`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex items-center gap-1 px-3 py-1.5 text-xs text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition">
+                        <Pencil size={12} /> Modifier
+                      </a>
                       <button
                         onClick={(e) => { e.stopPropagation(); handleMarkSent(order.id); }}
                         disabled={sending === order.id}
