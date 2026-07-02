@@ -1,15 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
+import { getRestaurant } from "@/lib/auth";
 import SuppliersClient from "./SuppliersClient";
 
 export default async function SuppliersPage() {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  const { data: restaurant } = await supabase
-    .from("restaurants")
-    .select("id")
-    .eq("owner_id", user!.id)
-    .single();
+  const restaurant = await getRestaurant();
 
   const { data: suppliers } = await supabase
     .from("suppliers")

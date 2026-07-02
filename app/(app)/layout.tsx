@@ -1,19 +1,14 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser, getRestaurant } from "@/lib/auth";
 import Sidebar from "@/components/Sidebar";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
   if (!user) redirect("/login");
 
-  // Load the restaurant for this user
-  const { data: restaurant } = await supabase
-    .from("restaurants")
-    .select("id, name, target_food_cost_pct")
-    .eq("owner_id", user.id)
-    .single();
+  // Load the restaurant for this user (cached — shared with the page below)
+  const restaurant = await getRestaurant();
 
   // If no restaurant yet, send to onboarding
   if (!restaurant) redirect("/onboarding");

@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getRestaurant } from "@/lib/auth";
 import CategoriesClient from "./CategoriesClient";
 
 const DEFAULTS: Record<string, string[]> = {
@@ -9,13 +10,7 @@ const DEFAULTS: Record<string, string[]> = {
 
 export default async function CategoriesPage() {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  const { data: restaurant } = await supabase
-    .from("restaurants")
-    .select("id")
-    .eq("owner_id", user!.id)
-    .single();
+  const restaurant = await getRestaurant();
 
   let { data: cats } = await supabase
     .from("categories")

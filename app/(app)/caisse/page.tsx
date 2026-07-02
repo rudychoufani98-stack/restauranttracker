@@ -1,15 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
+import { getRestaurant } from "@/lib/auth";
 import CaisseClient from "./CaisseClient";
 
 export default async function CaissePage() {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  const { data: restaurant } = await supabase
-    .from("restaurants")
-    .select("id, target_food_cost_pct")
-    .eq("owner_id", user!.id)
-    .single();
+  const restaurant = await getRestaurant();
 
   const [{ data: recipes }, { data: products }, { data: cats }] = await Promise.all([
     supabase

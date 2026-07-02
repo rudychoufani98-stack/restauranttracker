@@ -1,15 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
+import { getRestaurant } from "@/lib/auth";
 import InventaireClient from "./InventaireClient";
 
 export default async function InventairePage() {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  const { data: restaurant } = await supabase
-    .from("restaurants")
-    .select("id")
-    .eq("owner_id", user!.id)
-    .single();
+  const restaurant = await getRestaurant();
 
   const { data: ingredients } = await supabase
     .from("ingredients")

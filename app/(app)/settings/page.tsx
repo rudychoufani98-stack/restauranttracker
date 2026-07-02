@@ -1,15 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser, getRestaurant } from "@/lib/auth";
 import SettingsClient from "./SettingsClient";
 
 export default async function SettingsPage() {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  const { data: restaurant } = await supabase
-    .from("restaurants")
-    .select("*")
-    .eq("owner_id", user!.id)
-    .single();
+  const user = await getCurrentUser();
+  const restaurant = await getRestaurant();
 
   const { data: tags } = await supabase
     .from("tags")

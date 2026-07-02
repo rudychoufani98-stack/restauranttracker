@@ -1,15 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
+import { getRestaurant } from "@/lib/auth";
 import RentabiliteClient from "./RentabiliteClient";
 
 export default async function RentabilitePage() {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  const { data: restaurant } = await supabase
-    .from("restaurants")
-    .select("id, target_food_cost_pct")
-    .eq("owner_id", user!.id)
-    .single();
+  const restaurant = await getRestaurant();
 
   // Load all priced recipes with their cost
   const [{ data: recipes }, { data: simpleProducts }] = await Promise.all([
