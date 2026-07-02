@@ -160,14 +160,42 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
     return { ca, cout, margeB: ca - cout, foodCostPct: ca > 0 ? (cout / ca) * 100 : null, couverts };
   }, [draftLines, recipes, simpleProducts]);
 
+  // Build the draft quantities for a given month + channel, pre-filled from the
+  // existing saved period if any (so each channel keeps its own numbers).
+  function draftFor(month: string, channel: string): DraftLine[] {
+    const existing = periods.find((p) => p.month === month && (p.channel ?? "dine_in") === channel);
+    const base: DraftLine[] = [
+      ...recipes.map((r) => ({ recipe_id: r.id, qty_sold: "" })),
+      ...simpleProducts.map((p) => ({ recipe_id: `__sp__${p.id}`, qty_sold: "" })),
+    ];
+    if (!existing) return base;
+    return base.map((dl) => {
+      let qty = 0;
+      if (dl.recipe_id.startsWith("__sp__")) {
+        const pid = dl.recipe_id.replace("__sp__", "");
+        qty = existing.sales_lines.find((l) => l.ingredient_id === pid)?.qty_sold ?? 0;
+      } else {
+        qty = existing.sales_lines.find((l) => l.recipe_id === dl.recipe_id)?.qty_sold ?? 0;
+      }
+      return { ...dl, qty_sold: qty ? String(qty) : "" };
+    });
+  }
+
+  // Switch channel / month → reload that channel's own quantities.
+  function switchChannel(c: string) {
+    setSaleChannel(c);
+    setDraftLines(draftFor(selectedMonth, c));
+  }
+  function changeMonth(m: string) {
+    setSelectedMonth(m);
+    setDraftLines(draftFor(m, saleChannel));
+  }
+
   function openForm() {
     setSelectedMonth(currentMonth);
     setSaleChannel("dine_in");
     setNotes("");
-    setDraftLines([
-      ...recipes.map((r) => ({ recipe_id: r.id, qty_sold: "" })),
-      ...simpleProducts.map((p) => ({ recipe_id: `__sp__${p.id}`, qty_sold: "" })),
-    ]);
+    setDraftLines(draftFor(currentMonth, "dine_in"));
     setError(null);
     setShowForm(true);
   }
@@ -293,7 +321,7 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
                 <label className="block text-xs font-medium text-gray-600 mb-1.5">Canal de vente</label>
                 <div className="flex gap-2">
                   {CHANNELS.map((c) => (
-                    <button key={c.key} onClick={() => setSaleChannel(c.key)}
+                    <button key={c.key} onClick={() => switchChannel(c.key)}
                       className={clsx("flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border transition",
                         saleChannel === c.key
                           ? (c.key === "delivery" ? "bg-blue-500 text-white border-blue-500" : "bg-emerald-500 text-white border-emerald-500")
@@ -313,7 +341,7 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
                   <input
                     type="month"
                     value={selectedMonth}
-                    onChange={(e) => setSelectedMonth(e.target.value)}
+                    onChange={(e) => changeMonth(e.target.value)}
                     className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 transition"
                   />
                 </div>
@@ -376,12 +404,12 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
                               className={clsx(
                                 "relative cursor-pointer select-none rounded-xl border p-3 transition text-left",
                                 active
-                                  ? (it.resale ? "border-blue-400 bg-blue-50 ring-1 ring-blue-300" : "border-emerald-400 bg-emerald-50 ring-1 ring-emerald-300")
+                                  ? (saleChannel === "delivery" ? "border-blue-400 bg-blue-50 ring-1 ring-blue-300" : "border-emerald-400 bg-emerald-50 ring-1 ring-emerald-300")
                                   : "border-[#E5E7EB] bg-white hover:border-gray-300 hover:shadow-sm"
                               )}
                             >
                               {active && (
-                                <span className={clsx("absolute -top-2 -right-2 min-w-[22px] h-[22px] px-1 flex items-center justify-center rounded-full text-xs font-bold text-white shadow", it.resale ? "bg-blue-500" : "bg-emerald-500")}>
+                                <span className={clsx("absolute -top-2 -right-2 min-w-[22px] h-[22px] px-1 flex items-center justify-center rounded-full text-xs font-bold text-white shadow", saleChannel === "delivery" ? "bg-blue-500" : "bg-emerald-500")}>
                                   {qty}
                                 </span>
                               )}
