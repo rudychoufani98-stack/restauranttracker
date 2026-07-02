@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getRestaurant } from "@/lib/auth";
+import { getFournitureIds } from "@/lib/fournitures";
 import DashboardClient from "./DashboardClient";
 
 export const dynamic = "force-dynamic";
@@ -34,6 +35,8 @@ export default async function DashboardPage() {
       .limit(5000),
   ]);
 
+  const fournitureIds = await getFournitureIds(rid);
+
   return (
     <DashboardClient
       restaurantName={restaurant.name}
@@ -42,6 +45,7 @@ export default async function DashboardPage() {
       ingredients={(ingredients ?? []) as any}
       periods={(periods ?? []) as any}
       movements={(movements ?? []) as any}
+      fournitureIds={fournitureIds}
     />
   );
 }

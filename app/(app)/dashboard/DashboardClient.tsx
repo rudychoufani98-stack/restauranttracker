@@ -17,6 +17,7 @@ interface Props {
   ingredients: Ingredient[];
   periods: Period[];
   movements: Movement[];
+  fournitureIds: string[];
 }
 
 const MONTHS_FR = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
@@ -29,9 +30,10 @@ const monthLabel = (key: string) => {
 const eur = (n: number) => `€${n.toLocaleString("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 const eur2 = (n: number) => `€${n.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-export default function DashboardClient({ restaurantName, targetFoodCost, recipes, ingredients, periods, movements }: Props) {
+export default function DashboardClient({ restaurantName, targetFoodCost, recipes, ingredients, periods, movements, fournitureIds }: Props) {
   const recipeMap = useMemo(() => new Map(recipes.map((r) => [r.id, r])), [recipes]);
   const ingMap = useMemo(() => new Map(ingredients.map((i) => [i.id, i])), [ingredients]);
+  const fournitureSet = useMemo(() => new Set(fournitureIds), [fournitureIds]);
 
   // Flatten sales into events
   const saleEvents = useMemo(() => {
@@ -58,8 +60,8 @@ export default function DashboardClient({ restaurantName, targetFoodCost, recipe
   // Flatten purchases + losses
   const moveEvents = useMemo(() => movements.map((m) => {
     const i = m.ingredient_id ? ingMap.get(m.ingredient_id) : null;
-    return { month: monthKey(m.created_at), day: (m.created_at ?? "").slice(0, 10), category: i?.category || "Autre", type: m.movement_type, value: Number(m.qty) * Number(m.unit_cost || 0) };
-  }), [movements, ingMap]);
+    return { month: monthKey(m.created_at), day: (m.created_at ?? "").slice(0, 10), category: i?.category || "Autre", type: m.movement_type, value: Number(m.qty) * Number(m.unit_cost || 0), isFourniture: m.ingredient_id ? fournitureSet.has(m.ingredient_id) : false };
+  }), [movements, ingMap, fournitureSet]);
 
   // Month + category options
   const months = useMemo(() => {
@@ -100,7 +102,10 @@ export default function DashboardClient({ restaurantName, targetFoodCost, recipe
   const foodCost = ca > 0 ? (coutMatiere / ca) * 100 : 0;
   const platsVendus = sales.reduce((s, e) => s + e.qty, 0);
 
-  const achats = moveEvents.filter((e) => e.type === "in" && matchMove(e) && matchC(e.category)).reduce((s, e) => s + e.value, 0);
+  // Achats séparés : nourriture (food) vs fournitures (couverts, emballages…).
+  const achatsFood = moveEvents.filter((e) => e.type === "in" && !e.isFourniture && matchMove(e) && matchC(e.category)).reduce((s, e) => s + e.value, 0);
+  const achatsFournitures = moveEvents.filter((e) => e.type === "in" && e.isFourniture && matchMove(e) && matchC(e.category)).reduce((s, e) => s + e.value, 0);
+  const achatsTotal = achatsFood + achatsFournitures;
   const pertes = moveEvents.filter((e) => e.type === "loss" && matchMove(e) && matchC(e.category)).reduce((s, e) => s + e.value, 0);
 
   const stockValue = ingredients
@@ -176,7 +181,9 @@ export default function DashboardClient({ restaurantName, targetFoodCost, recipe
           <Kpi label="Marge brute" value={eur(marge)} icon={<TrendingUp size={15} />} accent="emerald" sub={ca > 0 ? `${(100 - foodCost).toFixed(0)}% du CA` : "—"} />
           <Kpi label="Food cost" value={hasSales && ca > 0 ? `${foodCost.toFixed(1)}%` : "—"} icon={<Percent size={15} />} valueClass={fcColor} sub={`objectif ${targetFoodCost}%`} />
           <Kpi label="Coût matière" value={eur(coutMatiere)} icon={<Utensils size={15} />} sub="des ventes" />
-          <Kpi label="Achats" value={eur(achats)} icon={<ShoppingCart size={15} />} accent="blue" sub="réceptions" />
+          <Kpi label="Achats food" value={eur(achatsFood)} icon={<ShoppingCart size={15} />} accent="blue" sub="hors fournitures" />
+          <Kpi label="Fournitures" value={eur(achatsFournitures)} icon={<ShoppingCart size={15} />} accent="default" sub="couverts, emballages…" />
+          <Kpi label="Coût total achats" value={eur(achatsTotal)} icon={<Receipt size={15} />} accent="blue" sub="food + fournitures" />
           <Kpi label="Pertes" value={eur(pertes)} icon={<Trash2 size={15} />} accent={pertes > 0 ? "amber" : "default"} sub="gaspillage/casse" />
           <Kpi label="Valeur du stock" value={eur(stockValue)} icon={<Warehouse size={15} />} sub="au CMUP" />
           <Kpi label="Marge nette est." value={eur(marge - pertes)} icon={<TrendingUp size={15} />} accent="emerald" sub="marge − pertes" />
