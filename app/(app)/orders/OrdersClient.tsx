@@ -41,6 +41,29 @@ const STATUS_FILTERS: { key: string; label: string; match: (s: string) => boolea
   { key: "Invoiced", label: "Facturée", match: (s) => s === "Invoiced" },
 ];
 
+// Date period presets for the orders filter.
+const PERIODS: { key: string; label: string }[] = [
+  { key: "all", label: "Toutes les dates" },
+  { key: "7d", label: "7 derniers jours" },
+  { key: "30d", label: "30 derniers jours" },
+  { key: "month", label: "Ce mois-ci" },
+  { key: "lastmonth", label: "Mois dernier" },
+];
+function inPeriod(createdAt: string, period: string): boolean {
+  if (period === "all") return true;
+  const d = new Date(createdAt);
+  const now = new Date();
+  const day = 86_400_000;
+  if (period === "7d") return d >= new Date(now.getTime() - 7 * day);
+  if (period === "30d") return d >= new Date(now.getTime() - 30 * day);
+  if (period === "month") return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+  if (period === "lastmonth") {
+    const lm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    return d.getFullYear() === lm.getFullYear() && d.getMonth() === lm.getMonth();
+  }
+  return true;
+}
+
 // DB stores English statuses; display them in French (single source of truth).
 const STATUS_LABELS: Record<string, string> = {
   Draft: "Brouillon",
@@ -105,6 +128,7 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
     : null;
   const [orders, setOrders] = useState<PO[]>(initialOrders);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [period, setPeriod] = useState("all");
   const [showForm, setShowForm] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -473,18 +497,24 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
         </div>
       )}
 
-      {/* Status filter */}
+      {/* Filters — statut + date */}
       {orders.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mb-4">
-          {STATUS_FILTERS.map((f) => {
-            const count = f.key === "all" ? orders.length : orders.filter((o) => f.match(o.status)).length;
-            return (
-              <button key={f.key} onClick={() => setStatusFilter(f.key)}
-                className={clsx("px-3 py-1.5 text-xs rounded-full border transition", statusFilter === f.key ? "bg-emerald-500 text-white border-emerald-500" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50")}>
-                {f.label} <span className={clsx("ml-0.5", statusFilter === f.key ? "text-emerald-100" : "text-gray-400")}>{count}</span>
-              </button>
-            );
-          })}
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div className="flex flex-wrap gap-1.5">
+            {STATUS_FILTERS.map((f) => {
+              const count = f.key === "all" ? orders.length : orders.filter((o) => f.match(o.status)).length;
+              return (
+                <button key={f.key} onClick={() => setStatusFilter(f.key)}
+                  className={clsx("px-3 py-1.5 text-xs rounded-full border transition", statusFilter === f.key ? "bg-emerald-500 text-white border-emerald-500" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50")}>
+                  {f.label} <span className={clsx("ml-0.5", statusFilter === f.key ? "text-emerald-100" : "text-gray-400")}>{count}</span>
+                </button>
+              );
+            })}
+          </div>
+          <select value={period} onChange={(e) => setPeriod(e.target.value)}
+            className="px-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500 text-gray-600">
+            {PERIODS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+          </select>
         </div>
       )}
 
@@ -500,9 +530,9 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
         <div className="space-y-3">
           {(() => {
             const match = STATUS_FILTERS.find((f) => f.key === statusFilter)?.match ?? (() => true);
-            const visibleOrders = orders.filter((o) => match(o.status));
+            const visibleOrders = orders.filter((o) => match(o.status) && inPeriod(o.created_at, period));
             if (visibleOrders.length === 0) {
-              return <p className="text-sm text-gray-400 text-center py-10 border border-dashed border-gray-200 rounded-card">Aucune commande avec ce statut.</p>;
+              return <p className="text-sm text-gray-400 text-center py-10 border border-dashed border-gray-200 rounded-card">Aucune commande pour ce filtre.</p>;
             }
             return visibleOrders.map((order) => {
             const isExpanded = expandedId === order.id;
@@ -512,15 +542,16 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
                   onClick={() => setExpandedId(isExpanded ? null : order.id)}>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      {order.order_number && (
-                        <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded font-mono">{order.order_number}</span>
-                      )}
-                      <span className="font-medium text-gray-900">{order.suppliers?.name ?? "Fournisseur inconnu"}</span>
+                      <span className="font-semibold text-gray-900">{order.suppliers?.name ?? "Fournisseur inconnu"}</span>
                       <span className={clsx("px-2 py-0.5 text-xs rounded-full font-medium", STATUS_COLORS[order.status] ?? "bg-gray-100 text-gray-500")}>
                         {STATUS_LABELS[order.status] ?? order.status}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-400 mt-0.5">{new Date(order.created_at).toLocaleDateString("fr-FR")} · {order.purchase_order_lines.length} ligne{order.purchase_order_lines.length !== 1 ? "s" : ""}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {order.order_number && <span className="font-semibold text-emerald-700">{order.order_number}</span>}
+                      {order.order_number && " · "}
+                      {new Date(order.created_at).toLocaleDateString("fr-FR")} · {order.purchase_order_lines.length} ligne{order.purchase_order_lines.length !== 1 ? "s" : ""}
+                    </p>
                   </div>
                   <span className="text-sm font-medium text-gray-900">€{Number(order.expected_total ?? 0).toFixed(2)}</span>
                   <div className="flex items-center gap-1">
