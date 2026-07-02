@@ -51,6 +51,7 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
       }))
   );
 
+  const [blNumber, setBlNumber] = useState("");
   const [blFile, setBlFile] = useState<File | null>(null);
   const [scanning, setScanning] = useState(false);
   const [validating, setValidating] = useState(false);
@@ -147,6 +148,7 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
     const { data: dn, error: dnErr } = await supabase.from("delivery_notes").insert({
       po_id: po.id,
       restaurant_id: restaurantId,
+      bl_number: blNumber.trim() || null,
       bl_pdf_url: blPdfUrl,
       validated: true,
       validated_at: new Date().toISOString(),
@@ -238,9 +240,16 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
         <p className="text-sm text-gray-500 mt-0.5">Fournisseur : {po.suppliers?.name} · Confirme les quantités reçues — le stock est mis à jour immédiatement, les prix seront ajustés à la facture</p>
       </div>
 
-      {/* BL upload + scan */}
+      {/* BL number + upload + scan */}
       <div className="bg-white border border-[#E5E7EB] rounded-card p-5 mb-5">
-        <h2 className="text-sm font-medium text-gray-900 mb-3">Bon de livraison (optionnel)</h2>
+        <h2 className="text-sm font-medium text-gray-900 mb-3">Bon de livraison</h2>
+        <div className="mb-3 max-w-xs">
+          <label className="block text-xs text-gray-500 mb-1">Numéro de bon de livraison (BL)</label>
+          <input type="text" value={blNumber} onChange={(e) => setBlNumber(e.target.value)}
+            placeholder="ex. BL-2026-0453"
+            className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500" />
+        </div>
+        <p className="text-xs text-gray-400 mb-2">Pièce jointe (optionnel)</p>
         <div className="flex items-center gap-3">
           <label className="flex items-center gap-2 px-4 py-2 text-sm border border-[#E5E7EB] rounded-lg cursor-pointer hover:bg-gray-50 transition">
             <Upload size={14} className="text-gray-400" />

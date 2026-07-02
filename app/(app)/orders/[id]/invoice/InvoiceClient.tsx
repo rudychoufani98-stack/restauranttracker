@@ -9,7 +9,7 @@ type Ingredient = { id: string; name: string; unit: string; pack_price: number; 
 type POLine = { id: string; ingredient_id: string | null; quantity: number; expected_price: number | null; ingredients?: Ingredient | null };
 type PO = { id: string; order_number?: string | null; suppliers?: { name: string; email: string | null } | null; purchase_order_lines: POLine[] };
 type DNLine = { ingredient_id: string | null; quantity_received: number; ingredients?: Ingredient | null };
-type DeliveryNote = { id: string; delivery_note_lines: DNLine[] };
+type DeliveryNote = { id: string; bl_number?: string | null; delivery_note_lines: DNLine[] };
 type PriorInvoiceLine = { ingredient_id: string | null; quantity: number; unit_price: number | null };
 type PriorInvoice = { id: string; misc_fees?: number | null; misc_fees_label?: string | null; invoice_lines: PriorInvoiceLine[] };
 
@@ -241,9 +241,19 @@ export default function InvoiceClient({ po, deliveryNote, restaurantId, orderCon
 
       {/* Invoice header */}
       <div className="bg-white border border-[#E5E7EB] rounded-card p-5 mb-5">
-        <h2 className="text-sm font-medium text-gray-900 mb-4 flex items-center gap-2">
+        <h2 className="text-sm font-medium text-gray-900 mb-3 flex items-center gap-2">
           <FileText size={15} className="text-gray-400" /> Informations facture
         </h2>
+        <div className="flex flex-wrap gap-2 mb-4">
+          <span className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg px-2.5 py-1">
+            Bon de commande : <b>{po.order_number ?? po.id.slice(0, 8)}</b>
+          </span>
+          {deliveryNote?.bl_number && (
+            <span className="text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded-lg px-2.5 py-1">
+              Bon de livraison : <b>{deliveryNote.bl_number}</b>
+            </span>
+          )}
+        </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-xs text-gray-500 mb-1">Numéro de facture</label>

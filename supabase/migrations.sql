@@ -17,6 +17,9 @@ alter table restaurants add column if not exists hide_po_prices boolean not null
 alter table invoices add column if not exists misc_fees numeric not null default 0;
 alter table invoices add column if not exists misc_fees_label text;
 
+-- Réception : numéro du bon de livraison (BL) fourni par le fournisseur
+alter table delivery_notes add column if not exists bl_number text;
+
 -- ---------------------------------------------------------------------
 -- 2) Pertes : enregistrement du gaspillage / casse
 -- ---------------------------------------------------------------------
