@@ -107,7 +107,20 @@ function condLabel(a: Article): string {
 }
 type Supplier = { id: string; name: string; email: string | null; min_order_amount?: number | null; customer_reference?: string | null };
 type POLine = { id?: string; ingredient_id: string | null; quantity: number; expected_price: number | null; ingredients?: { name: string; unit: string } | null };
-type PO = { id: string; order_number?: string | null; supplier_id: string | null; status: string; expected_total: number | null; created_at: string; sent_at: string | null; suppliers?: { name: string } | null; purchase_order_lines: POLine[] };
+type DeliveryNoteRef = { validated_at: string | null; created_at: string };
+type PO = { id: string; order_number?: string | null; supplier_id: string | null; status: string; expected_total: number | null; created_at: string; sent_at: string | null; suppliers?: { name: string } | null; delivery_notes?: DeliveryNoteRef[]; purchase_order_lines: POLine[] };
+
+// Reception month for grouping: latest delivery note date, else the order date.
+function receptionDate(o: PO): string {
+  const dates = (o.delivery_notes ?? []).map((d) => d.validated_at || d.created_at).filter(Boolean) as string[];
+  dates.sort();
+  return dates.length ? dates[dates.length - 1] : o.created_at;
+}
+const MONTHS_FR = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+function monthLabelFr(monthKey: string) {
+  const [y, m] = monthKey.split("-");
+  return `${MONTHS_FR[parseInt(m, 10) - 1] ?? m} ${y}`;
+}
 
 type DraftLine = { ingredient_id: string; quantity: string; expected_price: string };
 
@@ -534,7 +547,19 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
             if (visibleOrders.length === 0) {
               return <p className="text-sm text-gray-400 text-center py-10 border border-dashed border-gray-200 rounded-card">Aucune commande pour ce filtre.</p>;
             }
-            return visibleOrders.map((order) => {
+            // Group by reception month (latest delivery note, else order date).
+            const groups = new Map<string, PO[]>();
+            for (const o of visibleOrders) {
+              const key = receptionDate(o).slice(0, 7);
+              if (!groups.has(key)) groups.set(key, []);
+              groups.get(key)!.push(o);
+            }
+            const months = Array.from(groups.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+            return months.map(([month, list]) => (
+              <div key={month}>
+                <h3 className="text-sm font-bold text-gray-800 capitalize mt-5 first:mt-0 mb-2">{monthLabelFr(month)}</h3>
+                <div className="space-y-3">
+                {list.map((order) => {
             const isExpanded = expandedId === order.id;
             return (
               <div key={order.id} className="bg-white border border-[#E5E7EB] rounded-card overflow-hidden">
@@ -642,7 +667,10 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
                 )}
               </div>
             );
-            });
+            })}
+                </div>
+              </div>
+            ));
           })()}
         </div>
       )}

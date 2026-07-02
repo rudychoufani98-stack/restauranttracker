@@ -283,6 +283,26 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
 
   const pricedRecipes = recipes.filter((r) => r.menu_price && r.menu_price > 0);
 
+  // Group periods by month, with a combined total per month (all channels).
+  const monthsGrouped = useMemo(() => {
+    const map = new Map<string, Period[]>();
+    for (const p of periods) {
+      if (!map.has(p.month)) map.set(p.month, []);
+      map.get(p.month)!.push(p);
+    }
+    return Array.from(map.entries())
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([month, list]) => {
+        list.sort((a, b) => (a.channel === "delivery" ? 1 : 0) - (b.channel === "delivery" ? 1 : 0));
+        const combined = list.reduce((acc, p) => {
+          const s = calcPeriodStats(p, recipes, simpleProducts);
+          acc.ca += s.ca; acc.marge += s.margeB; acc.couverts += s.totalCouverts;
+          return acc;
+        }, { ca: 0, marge: 0, couverts: 0 });
+        return { month, list, combined };
+      });
+  }, [periods, recipes, simpleProducts]);
+
   return (
     <div className="p-8 max-w-5xl mx-auto">
       <div className="flex items-end justify-between mb-6 pb-5 border-b border-gray-200">
@@ -505,7 +525,19 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
             </div>
           )}
 
-          {periods.map((period) => {
+          {monthsGrouped.map(({ month, list, combined }) => (
+            <div key={month}>
+              {/* Month separator */}
+              <div className="flex items-center justify-between mb-2 mt-5 first:mt-0">
+                <h3 className="text-sm font-bold text-gray-800 capitalize">{monthLabel(month)}</h3>
+                <div className="flex items-center gap-4 text-xs text-gray-500">
+                  <span>CA <b className="text-gray-900">€{combined.ca.toFixed(0)}</b></span>
+                  <span>Marge <b className={combined.marge >= 0 ? "text-emerald-600" : "text-red-500"}>€{combined.marge.toFixed(0)}</b></span>
+                  <span className="text-gray-400">{combined.couverts} couv.</span>
+                </div>
+              </div>
+              <div className="space-y-2">
+          {list.map((period) => {
             const stats = calcPeriodStats(period, recipes, simpleProducts);
             const isExpanded = expandedId === period.id;
             const fcStatus = stats.foodCostPct === null ? null :
@@ -523,8 +555,7 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-gray-900 capitalize text-base">{monthLabel(period.month)}</span>
-                      <span className={clsx("text-2xs font-semibold px-2 py-0.5 rounded-full",
+                      <span className={clsx("text-xs font-semibold px-2.5 py-1 rounded-full",
                         period.channel === "delivery" ? "bg-blue-100 text-blue-700" : "bg-emerald-100 text-emerald-700")}>
                         {channelLabel(period.channel)}
                       </span>
@@ -677,6 +708,9 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
               </div>
             );
           })}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

@@ -9,7 +9,7 @@ export default async function OrdersPage() {
   const [{ data: orders }, { data: suppliers }, { data: ingredients }] = await Promise.all([
     supabase
       .from("purchase_orders")
-      .select("*, suppliers(name), purchase_order_lines(*, ingredients(name, unit, cost_per_base_unit))")
+      .select("*, suppliers(name), delivery_notes(validated_at, created_at), purchase_order_lines(*, ingredients(name, unit, cost_per_base_unit))")
       .eq("restaurant_id", restaurant!.id)
       .order("created_at", { ascending: false }),
     supabase.from("suppliers").select("*").eq("restaurant_id", restaurant!.id).order("name"),
