@@ -15,13 +15,13 @@ export default async function ReceivePage({ params }: { params: { id: string } }
   const [{ data: po }, { data: allIngredients }] = await Promise.all([
     supabase
       .from("purchase_orders")
-      .select("*, suppliers(name, email), purchase_order_lines(*, ingredients(id, name, unit, pack_price, cost_per_base_unit))")
+      .select("*, suppliers(name, email), purchase_order_lines(*, ingredients(id, name, unit, pack_price, cost_per_base_unit, pack_quantity))")
       .eq("id", params.id)
       .eq("restaurant_id", restaurant!.id)
       .single(),
     supabase
       .from("ingredients")
-      .select("id, name, unit, pack_price")
+      .select("id, name, unit, pack_price, pack_quantity")
       .eq("restaurant_id", restaurant!.id)
       .order("name"),
   ]);

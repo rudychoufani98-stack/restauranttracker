@@ -116,7 +116,13 @@ export default function InvoiceClient({ po, deliveryNote, restaurantId }: Props)
         .in("id", ingredientIds);
       const ingStockMap = new Map((currentIngData ?? []).map((i) => [i.id, i]));
 
-      // 3. Insert invoice lines + update ingredient costs + stock + CMUP
+      // Option B: when a delivery note exists, the stock QUANTITY was already
+      // added at reception. The invoice only ADJUSTS prices/CMUP — it must NOT
+      // re-add the quantities. Without a delivery note (invoice without
+      // reception), we fall back to adding the stock here.
+      const stockAlreadyReceived = !!deliveryNote && (deliveryNote.delivery_note_lines?.length ?? 0) > 0;
+
+      // 3. Insert invoice lines + update ingredient costs (+ stock/CMUP)
       const stockMovements: any[] = [];
 
       for (const line of lines) {
@@ -139,26 +145,53 @@ export default function InvoiceClient({ po, deliveryNote, restaurantId }: Props)
         const receivedBaseQty = line.qty_received * baseQtyPerPack;
 
         const newCostPerBase = invoicePrice / (baseQtyPerPack || 1);
+        const expectedCostPerBase = line.expected_price / (baseQtyPerPack || 1);
 
-        // CMUP = (stock_actuel × cmup_actuel + qté_reçue × nouveau_coût) / (stock_actuel + qté_reçue)
         const current = ingStockMap.get(line.ingredient_id);
         const currentStock = Number(current?.stock_qty ?? 0);
         const currentCmup = Number(current?.cmup ?? newCostPerBase);
-        const newStock = currentStock + receivedBaseQty;
-        const newCmup = newStock > 0
-          ? (currentStock * currentCmup + receivedBaseQty * newCostPerBase) / newStock
-          : newCostPerBase;
 
-        await supabase
-          .from("ingredients")
-          .update({
-            pack_price: invoicePrice,
-            cost_per_base_unit: newCostPerBase,
-            stock_qty: newStock,
-            cmup: newCmup,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", line.ingredient_id);
+        if (stockAlreadyReceived) {
+          // Adjust forward cost, and correct CMUP for the price delta on the
+          // received quantity (best-effort against current stock). No re-stocking.
+          const valueDelta = receivedBaseQty * (newCostPerBase - expectedCostPerBase);
+          const adjustedCmup = currentStock > 0 ? currentCmup + valueDelta / currentStock : newCostPerBase;
+          await supabase
+            .from("ingredients")
+            .update({
+              pack_price: invoicePrice,
+              cost_per_base_unit: newCostPerBase,
+              cmup: adjustedCmup,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", line.ingredient_id);
+        } else {
+          // No reception: add the stock here (weighted-average CMUP).
+          const newStock = currentStock + receivedBaseQty;
+          const newCmup = newStock > 0
+            ? (currentStock * currentCmup + receivedBaseQty * newCostPerBase) / newStock
+            : newCostPerBase;
+          await supabase
+            .from("ingredients")
+            .update({
+              pack_price: invoicePrice,
+              cost_per_base_unit: newCostPerBase,
+              stock_qty: newStock,
+              cmup: newCmup,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", line.ingredient_id);
+
+          stockMovements.push({
+            restaurant_id: restaurantId,
+            ingredient_id: line.ingredient_id,
+            movement_type: "in",
+            qty: receivedBaseQty,
+            unit_cost: newCmup,
+            reference_type: "invoice",
+            reference_id: invoice.id,
+          });
+        }
 
         if (priceChanged) {
           await supabase.from("ingredient_price_history").insert({
@@ -169,19 +202,9 @@ export default function InvoiceClient({ po, deliveryNote, restaurantId }: Props)
             delivery_note_id: deliveryNote?.id ?? null,
           });
         }
-
-        stockMovements.push({
-          restaurant_id: restaurantId,
-          ingredient_id: line.ingredient_id,
-          movement_type: "in",
-          qty: receivedBaseQty,
-          unit_cost: newCmup,
-          reference_type: "invoice",
-          reference_id: invoice.id,
-        });
       }
 
-      // 4. Insert stock movements
+      // 4. Insert stock movements (only when stock was added here)
       if (stockMovements.length > 0) {
         await supabase.from("stock_movements").insert(stockMovements);
       }
@@ -314,7 +337,7 @@ export default function InvoiceClient({ po, deliveryNote, restaurantId }: Props)
       )}
 
       <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 mb-5 text-xs text-blue-700">
-        En validant cette facture, les coûts des ingrédients seront mis à jour et les recettes recalculées automatiquement.
+        Le stock a déjà été ajouté à la réception. En validant la facture, seuls les <b>prix</b> (coût et CMUP) sont ajustés au réel — les quantités ne sont pas recomptées. Les recettes sont recalculées automatiquement.
       </div>
 
       <div className="flex gap-3">

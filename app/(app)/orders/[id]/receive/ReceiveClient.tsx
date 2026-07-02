@@ -6,10 +6,10 @@ import { createClient } from "@/lib/supabase/client";
 import { Upload, AlertTriangle, Check, Loader2, Plus, Trash2, PackagePlus } from "lucide-react";
 import clsx from "clsx";
 
-type IngredientInfo = { id: string; name: string; unit: string; pack_price: number; cost_per_base_unit: number };
+type IngredientInfo = { id: string; name: string; unit: string; pack_price: number; cost_per_base_unit: number; pack_quantity: number | null };
 type POLine = { id: string; ingredient_id: string | null; quantity: number; expected_price: number | null; ingredients?: IngredientInfo | null };
 type PO = { id: string; supplier_id: string | null; suppliers?: { name: string; email: string | null } | null; purchase_order_lines: POLine[] };
-type IngredientOption = { id: string; name: string; unit: string; pack_price: number };
+type IngredientOption = { id: string; name: string; unit: string; pack_price: number; pack_quantity: number | null };
 
 type ReceiveLine = {
   po_line_id: string | null; // null for a line added at reception (substitute / extra)
@@ -20,6 +20,7 @@ type ReceiveLine = {
   qty_received: string;
   actual_price: string;
   unit: string;
+  pack_quantity: number; // units per pack, in the ingredient's unit
   added?: boolean; // true when the user added it (not on the original order)
 };
 
@@ -42,6 +43,7 @@ export default function ReceiveClient({ po, restaurantId, allIngredients }: Prop
         qty_received: String(l.quantity), // pre-fill with ordered qty; user corrects if partial
         actual_price: String(l.expected_price ?? l.ingredients!.pack_price),
         unit: l.ingredients!.unit,
+        pack_quantity: Number(l.ingredients!.pack_quantity ?? 1) || 1,
       }))
   );
 
@@ -59,7 +61,7 @@ export default function ReceiveClient({ po, restaurantId, allIngredients }: Prop
   function addLine() {
     setLines((p) => [...p, {
       po_line_id: null, ingredient_id: "", ingredient_name: "", expected_price: 0,
-      qty_ordered: 0, qty_received: "", actual_price: "0", unit: "", added: true,
+      qty_ordered: 0, qty_received: "", actual_price: "0", unit: "", pack_quantity: 1, added: true,
     }]);
   }
 
@@ -79,6 +81,7 @@ export default function ReceiveClient({ po, restaurantId, allIngredients }: Prop
         unit: ing?.unit ?? "",
         expected_price: ing?.pack_price ?? 0,
         actual_price: String(ing?.pack_price ?? 0),
+        pack_quantity: Number(ing?.pack_quantity ?? 1) || 1,
       };
       return n;
     });
@@ -147,8 +150,8 @@ export default function ReceiveClient({ po, restaurantId, allIngredients }: Prop
 
     if (dnErr) { setError(dnErr.message); setValidating(false); return; }
 
-    // 3. Insert delivery note lines (quantities only — prices updated at invoice step).
-    //    Includes lines added at reception (substitutes / extras). Skip un-chosen adds.
+    // 3. Insert delivery note lines. Includes lines added at reception
+    //    (substitutes / extras). Skip un-chosen adds.
     for (const line of lines) {
       if (!line.ingredient_id) continue;
       const qtyReceived = parseFloat(line.qty_received) || 0;
@@ -156,12 +159,60 @@ export default function ReceiveClient({ po, restaurantId, allIngredients }: Prop
         delivery_note_id: dn.id,
         ingredient_id: line.ingredient_id,
         quantity_received: qtyReceived,
-        actual_price: line.expected_price, // store expected price for now; invoice will override
+        actual_price: line.expected_price, // expected price for now; invoice will adjust
         price_changed: false,
       });
     }
 
-    // 4. Update PO status — partial if any ORDERED line received less than ordered
+    // 4. Update stock + CMUP right away (Option B). The invoice step later only
+    //    ADJUSTS prices, it does not re-add these quantities. Uses the expected
+    //    price; base qty = qté reçue × conditionnement (×1000 for kg/L).
+    const stockedLines = lines.filter((l) => l.ingredient_id && (parseFloat(l.qty_received) || 0) > 0);
+    const ingredientIds = stockedLines.map((l) => l.ingredient_id);
+    if (ingredientIds.length > 0) {
+      const { data: currentIngData } = await supabase
+        .from("ingredients")
+        .select("id, stock_qty, cmup")
+        .in("id", ingredientIds);
+      const ingStockMap = new Map((currentIngData ?? []).map((i) => [i.id, i]));
+
+      const movements: any[] = [];
+      for (const line of stockedLines) {
+        const qtyReceived = parseFloat(line.qty_received) || 0;
+        const packQty = line.pack_quantity || 1;
+        let baseQtyPerPack = packQty;
+        if (line.unit === "kg" || line.unit === "l") baseQtyPerPack = packQty * 1000;
+        const receivedBaseQty = qtyReceived * baseQtyPerPack;
+        const costPerBase = line.expected_price / (baseQtyPerPack || 1);
+
+        const current = ingStockMap.get(line.ingredient_id);
+        const currentStock = Number(current?.stock_qty ?? 0);
+        const currentCmup = Number(current?.cmup ?? costPerBase);
+        const newStock = currentStock + receivedBaseQty;
+        const newCmup = newStock > 0
+          ? (currentStock * currentCmup + receivedBaseQty * costPerBase) / newStock
+          : costPerBase;
+
+        await supabase.from("ingredients").update({
+          stock_qty: newStock,
+          cmup: newCmup,
+          updated_at: new Date().toISOString(),
+        }).eq("id", line.ingredient_id);
+
+        movements.push({
+          restaurant_id: restaurantId,
+          ingredient_id: line.ingredient_id,
+          movement_type: "in",
+          qty: receivedBaseQty,
+          unit_cost: costPerBase,
+          reference_type: "delivery",
+          reference_id: dn.id,
+        });
+      }
+      if (movements.length > 0) await supabase.from("stock_movements").insert(movements);
+    }
+
+    // 5. Update PO status — partial if any ORDERED line received less than ordered
     const isPartial = lines.some((l) => l.po_line_id && parseFloat(l.qty_received) < l.qty_ordered);
     await supabase.from("purchase_orders").update({
       status: isPartial ? "Partially received" : "Received",
@@ -175,8 +226,8 @@ export default function ReceiveClient({ po, restaurantId, allIngredients }: Prop
     <div className="p-8 max-w-3xl mx-auto">
       <div className="mb-6">
         <a href="/orders" className="text-sm text-gray-400 hover:text-gray-600 mb-2 inline-block">← Back to orders</a>
-        <h1 className="text-xl font-medium text-gray-900">Receive delivery</h1>
-        <p className="text-sm text-gray-500 mt-0.5">From: {po.suppliers?.name} · Confirm quantities received — prices are confirmed at the invoice step</p>
+        <h1 className="text-xl font-medium text-gray-900">Réception de la commande</h1>
+        <p className="text-sm text-gray-500 mt-0.5">Fournisseur : {po.suppliers?.name} · Confirme les quantités reçues — le stock est mis à jour immédiatement, les prix seront ajustés à la facture</p>
       </div>
 
       {/* BL upload + scan */}
