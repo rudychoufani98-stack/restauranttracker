@@ -114,16 +114,13 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
     if (valid.length === 0) return setError("Ajoute au moins un produit.");
     setSaving(send ? "send" : "draft");
 
+    // Always save as Draft first; we only mark "Sent" once the email really goes out.
     let poId = orderId;
     if (isEdit) {
       const { error: upErr } = await supabase.from("purchase_orders").update({
-        supplier_id: supplierId,
-        status: send ? "Sent" : "Draft",
-        sent_at: send ? new Date().toISOString() : null,
-        expected_total: total,
+        supplier_id: supplierId, status: "Draft", sent_at: null, expected_total: total,
       }).eq("id", orderId);
       if (upErr) { setError(upErr.message); setSaving(null); return; }
-      // Replace the draft's lines with the current cart.
       await supabase.from("purchase_order_lines").delete().eq("po_id", orderId);
     } else {
       // Sequential order number BDC-YEAR-NNNN so it's visible from creation.
@@ -135,10 +132,7 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
       const orderNumber = `BDC-${year}-${String((count ?? 0) + 1).padStart(4, "0")}`;
       const { data: po, error: poErr } = await supabase.from("purchase_orders").insert({
         restaurant_id: restaurantId, supplier_id: supplierId,
-        order_number: orderNumber,
-        status: send ? "Sent" : "Draft",
-        sent_at: send ? new Date().toISOString() : null,
-        expected_total: total,
+        order_number: orderNumber, status: "Draft", expected_total: total,
       }).select().single();
       if (poErr || !po) { setError(poErr?.message ?? "Erreur"); setSaving(null); return; }
       poId = po.id;
@@ -148,18 +142,31 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
       po_id: poId, ingredient_id, quantity: l.quantity, expected_price: parseFloat(l.price) || null,
     })));
 
-    // Send the order by email to the supplier (if it has an address).
-    if (send && sup?.email) {
-      try {
-        await fetch("/api/send-order", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ poId, restaurantName }),
-        });
-      } catch { /* email is best-effort; the order is already saved as Sent */ }
+    if (!send) { router.push("/orders"); return; }
+
+    // Sending: the email must succeed before the order is marked "Sent".
+    if (!sup?.email) {
+      setSaving(null);
+      setError("Ce fournisseur n'a pas d'email — la commande est enregistrée en brouillon. Ajoute son email dans sa fiche pour l'envoyer.");
+      return;
+    }
+    let emailErr = "";
+    try {
+      const res = await fetch("/api/send-order", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ poId, restaurantName }),
+      });
+      if (!res.ok) { const j = await res.json().catch(() => ({})); emailErr = j?.error ?? `Erreur ${res.status}`; }
+    } catch (e: any) { emailErr = e?.message ?? "Réseau"; }
+
+    if (emailErr) {
+      setSaving(null);
+      setError(`Commande enregistrée en brouillon, mais l'email n'a pas pu être envoyé : ${emailErr}. Vérifie la configuration d'envoi (Resend).`);
+      return;
     }
 
-    router.push(send ? "/orders?sent=1" : "/orders");
+    await supabase.from("purchase_orders").update({ status: "Sent", sent_at: new Date().toISOString() }).eq("id", poId);
+    router.push("/orders?sent=1");
   }
 
   return (

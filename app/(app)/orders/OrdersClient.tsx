@@ -280,18 +280,37 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
 
   async function handleSend(po: PO) {
     setSending(po.id);
-    // Update status to Sent
-    await supabase.from("purchase_orders").update({ status: "Sent", sent_at: new Date().toISOString() }).eq("id", po.id);
-
-    // Send email via API route
     const supplier = suppliers.find((s) => s.id === po.supplier_id);
-    if (supplier?.email) {
-      await fetch("/api/send-order", {
+
+    if (!supplier?.email) {
+      setSending(null);
+      window.alert("Ce fournisseur n'a pas d'adresse email. Ajoute-la dans sa fiche (Fournisseurs) pour lui envoyer la commande par email.");
+      return;
+    }
+
+    // Send the email first; only mark as Sent if it actually goes out.
+    let emailOk = false;
+    let emailErr = "";
+    try {
+      const res = await fetch("/api/send-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ poId: po.id, restaurantName }),
       });
+      const json = await res.json().catch(() => ({}));
+      emailOk = res.ok;
+      if (!res.ok) emailErr = json?.error ?? `Erreur ${res.status}`;
+    } catch (e: any) {
+      emailErr = e?.message ?? "Réseau";
     }
+
+    if (!emailOk) {
+      setSending(null);
+      window.alert(`L'email n'a pas pu être envoyé : ${emailErr}\n\nLa commande reste en brouillon. Vérifie la configuration d'envoi (Resend) ou l'email du fournisseur.`);
+      return;
+    }
+
+    await supabase.from("purchase_orders").update({ status: "Sent", sent_at: new Date().toISOString() }).eq("id", po.id);
 
     const { data: updated } = await supabase
       .from("purchase_orders")
