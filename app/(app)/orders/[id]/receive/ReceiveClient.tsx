@@ -319,18 +319,25 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
                 {line.ingredient_id && condDetail(line.ingredient_id) && (
                   <p className="text-2xs text-gray-500 mb-1.5">1 {condType(line.ingredient_id, line.unit)} = <b>{condDetail(line.ingredient_id)}</b></p>
                 )}
-                <div className="flex items-center gap-3">
-                  <div className="flex-1">
+                <div className="flex items-end gap-3 flex-wrap">
+                  {/* Quantité commandée (lecture seule) */}
+                  <div className="w-32">
+                    <label className="block text-xs text-gray-500 mb-1">Commandé</label>
+                    <div className="px-3 py-2 text-sm bg-gray-50 border border-[#E5E7EB] rounded-lg text-gray-600">
+                      {line.added ? "—" : `${line.qty_ordered} ${condType(line.ingredient_id, line.unit)}`}
+                    </div>
+                  </div>
+                  {/* Quantité réceptionnée (modifiable) */}
+                  <div className="flex-1 min-w-[140px]">
                     <label className="block text-xs text-gray-500 mb-1">Quantité reçue ({condType(line.ingredient_id, line.unit)})</label>
                     <input type="number" min="0" step="any" value={line.qty_received}
                       onChange={(e) => updateLine(i, "qty_received", e.target.value)}
                       className={clsx("w-full px-3 py-2 text-sm border rounded-lg outline-none focus:ring-1 transition",
                         qtyPartial ? "border-amber-400 focus:border-amber-500 focus:ring-amber-300" : "border-[#E5E7EB] focus:border-emerald-500 focus:ring-emerald-500"
                       )} />
-                    {!line.added && <p className="text-xs text-gray-400 mt-0.5">Commandé : {line.qty_ordered} {condType(line.ingredient_id, line.unit)}</p>}
                   </div>
-                  <div className="text-right text-xs text-gray-400 pt-4">
-                    Prix attendu / {condType(line.ingredient_id, line.unit)} :<br />
+                  <div className="text-right text-xs text-gray-400 pb-2">
+                    Prix attendu / {condType(line.ingredient_id, line.unit)}<br />
                     <span className="text-gray-600 font-medium">€{line.expected_price.toFixed(2)}</span>
                   </div>
                 </div>
