@@ -276,70 +276,69 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
         <div className="px-5 py-3 border-b border-[#E5E7EB] bg-gray-50">
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Lignes de livraison — confirme chaque produit</p>
         </div>
-        <div className="divide-y divide-[#E5E7EB]">
+        {/* Column header */}
+        <div className="hidden sm:grid grid-cols-12 gap-3 px-5 py-2 border-b border-gray-100 text-2xs font-semibold text-gray-400 uppercase tracking-wide">
+          <div className="col-span-5">Produit</div>
+          <div className="col-span-2 text-right">Commandé</div>
+          <div className="col-span-3 text-right">Reçu</div>
+          <div className="col-span-2 text-right">Prix</div>
+        </div>
+        <div className="divide-y divide-gray-100">
           {lines.map((line, i) => {
             const qtyReceived = parseFloat(line.qty_received);
             const qtyPartial = !line.added && qtyReceived < line.qty_ordered;
             const isZero = !line.added && qtyReceived === 0;
+            const type = condType(line.ingredient_id, line.unit);
             return (
-              <div key={i} className={clsx("px-5 py-4", line.added && "bg-blue-50/40", isZero && "bg-gray-50/60")}>
-                <div className="flex items-center justify-between mb-2 gap-2">
+              <div key={i} className={clsx("grid grid-cols-2 sm:grid-cols-12 gap-x-3 gap-y-2 items-center px-5 py-3", line.added && "border-l-2 border-l-blue-300")}>
+                {/* Produit */}
+                <div className="col-span-2 sm:col-span-5 min-w-0">
                   {line.added ? (
                     (() => {
-                      // Hide products already on the reception (ordered lines + other added lines),
-                      // but keep this line's own current selection.
                       const usedIds = new Set(lines.filter((_, idx) => idx !== i).map((l) => l.ingredient_id).filter(Boolean));
                       const options = allIngredients.filter((a) => a.id === line.ingredient_id || !usedIds.has(a.id));
                       return (
                         <select value={line.ingredient_id} onChange={(e) => pickIngredient(i, e.target.value)}
-                          className="flex-1 px-3 py-2 text-sm border border-blue-200 rounded-lg bg-white outline-none focus:border-blue-500">
+                          className="w-full px-2.5 py-1.5 text-sm border border-blue-200 rounded-lg bg-white outline-none focus:border-blue-500">
                           <option value="">— Choisir le produit reçu —</option>
                           {options.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                         </select>
                       );
                     })()
                   ) : (
-                    <span className={clsx("font-medium text-sm", isZero ? "text-gray-400 line-through" : "text-gray-900")}>{line.ingredient_name}</span>
+                    <p className={clsx("text-sm font-medium truncate", isZero ? "text-gray-400 line-through" : "text-gray-900")}>{line.ingredient_name}</p>
                   )}
-                  <div className="flex items-center gap-2 shrink-0">
-                    {line.added && <span className="flex items-center gap-1 text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full"><PackagePlus size={11} /> Ajouté</span>}
-                    {qtyPartial && !isZero && (
-                      <span className="flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
-                        <AlertTriangle size={11} /> Partiel
-                      </span>
+                  <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                    {line.ingredient_id && condDetail(line.ingredient_id) && (
+                      <span className="text-2xs text-gray-400">1 {type} = {condDetail(line.ingredient_id)}</span>
                     )}
-                    {isZero && <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">Non reçu</span>}
+                    {line.added && <span className="text-2xs text-blue-600">· ajouté</span>}
+                    {qtyPartial && !isZero && <span className="text-2xs text-amber-600">· partiel</span>}
+                    {isZero && <span className="text-2xs text-gray-400">· non reçu</span>}
                     {line.added && (
-                      <button onClick={() => removeLine(i)} className="text-gray-300 hover:text-red-400 transition" title="Retirer cette ligne">
-                        <Trash2 size={14} />
+                      <button onClick={() => removeLine(i)} className="text-gray-300 hover:text-red-400 transition" title="Retirer">
+                        <Trash2 size={12} />
                       </button>
                     )}
                   </div>
                 </div>
-                {line.ingredient_id && condDetail(line.ingredient_id) && (
-                  <p className="text-2xs text-gray-500 mb-1.5">1 {condType(line.ingredient_id, line.unit)} = <b>{condDetail(line.ingredient_id)}</b></p>
-                )}
-                <div className="flex items-end gap-3 flex-wrap">
-                  {/* Quantité commandée (lecture seule) */}
-                  <div className="w-32">
-                    <label className="block text-xs text-gray-500 mb-1">Commandé</label>
-                    <div className="px-3 py-2 text-sm bg-gray-50 border border-[#E5E7EB] rounded-lg text-gray-600">
-                      {line.added ? "—" : `${line.qty_ordered} ${condType(line.ingredient_id, line.unit)}`}
-                    </div>
-                  </div>
-                  {/* Quantité réceptionnée (modifiable) */}
-                  <div className="flex-1 min-w-[140px]">
-                    <label className="block text-xs text-gray-500 mb-1">Quantité reçue ({condType(line.ingredient_id, line.unit)})</label>
-                    <input type="number" min="0" step="any" value={line.qty_received}
-                      onChange={(e) => updateLine(i, "qty_received", e.target.value)}
-                      className={clsx("w-full px-3 py-2 text-sm border rounded-lg outline-none focus:ring-1 transition",
-                        qtyPartial ? "border-amber-400 focus:border-amber-500 focus:ring-amber-300" : "border-[#E5E7EB] focus:border-emerald-500 focus:ring-emerald-500"
-                      )} />
-                  </div>
-                  <div className="text-right text-xs text-gray-400 pb-2">
-                    Prix attendu / {condType(line.ingredient_id, line.unit)}<br />
-                    <span className="text-gray-600 font-medium">€{line.expected_price.toFixed(2)}</span>
-                  </div>
+                {/* Commandé */}
+                <div className="sm:col-span-2 text-left sm:text-right text-sm text-gray-500">
+                  <span className="sm:hidden text-2xs text-gray-400 uppercase mr-1">Cmd</span>
+                  {line.added ? "—" : `${line.qty_ordered} ${type}`}
+                </div>
+                {/* Reçu */}
+                <div className="sm:col-span-3 flex items-center sm:justify-end gap-1">
+                  <input type="number" min="0" step="any" value={line.qty_received}
+                    onChange={(e) => updateLine(i, "qty_received", e.target.value)}
+                    className={clsx("w-20 px-2 py-1.5 text-sm text-right border rounded-lg outline-none focus:ring-1 transition",
+                      qtyPartial ? "border-amber-400 focus:border-amber-500 focus:ring-amber-300" : "border-[#E5E7EB] focus:border-emerald-500 focus:ring-emerald-500"
+                    )} />
+                  <span className="text-2xs text-gray-400">{type}</span>
+                </div>
+                {/* Prix */}
+                <div className="sm:col-span-2 text-right text-sm text-gray-600">
+                  €{line.expected_price.toFixed(2)}
                 </div>
               </div>
             );
