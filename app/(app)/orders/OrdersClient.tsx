@@ -114,8 +114,10 @@ function condLabel(a: Article): string {
 }
 type Supplier = { id: string; name: string; email: string | null; min_order_amount?: number | null; customer_reference?: string | null };
 type POLine = { id?: string; ingredient_id: string | null; quantity: number; expected_price: number | null; ingredients?: { name: string; unit: string } | null };
-type DeliveryNoteRef = { validated_at: string | null; created_at: string };
-type PO = { id: string; order_number?: string | null; supplier_id: string | null; status: string; expected_total: number | null; created_at: string; sent_at: string | null; suppliers?: { name: string } | null; delivery_notes?: DeliveryNoteRef[]; purchase_order_lines: POLine[] };
+type DeliveryNoteRef = { validated_at: string | null; created_at: string; bl_number?: string | null };
+type InvoiceRef = { created_at: string; invoice_number: string | null };
+type OrderEvent = { po_id: string; type: string; detail: string | null; created_at: string };
+type PO = { id: string; order_number?: string | null; supplier_id: string | null; status: string; expected_total: number | null; created_at: string; sent_at: string | null; suppliers?: { name: string } | null; delivery_notes?: DeliveryNoteRef[]; invoices?: InvoiceRef[]; purchase_order_lines: POLine[] };
 
 // Reception month for grouping: latest delivery note date, else the order date.
 function receptionDate(o: PO): string {
@@ -128,6 +130,30 @@ function monthLabelFr(monthKey: string) {
   const [y, m] = monthKey.split("-");
   return `${MONTHS_FR[parseInt(m, 10) - 1] ?? m} ${y}`;
 }
+const dateTimeFr = (s: string) => new Date(s).toLocaleString("fr-FR", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+type TimelineItem = { label: string; detail?: string | null; date: string; color: string };
+// Build the full history of an order from its timestamps + edit events.
+function buildTimeline(o: PO, events: OrderEvent[]): TimelineItem[] {
+  const items: TimelineItem[] = [
+    { label: "Commande créée", date: o.created_at, color: "bg-gray-400" },
+  ];
+  if (o.sent_at) items.push({ label: "Envoyée au fournisseur", date: o.sent_at, color: "bg-blue-500" });
+  for (const dn of o.delivery_notes ?? []) {
+    const d = dn.validated_at || dn.created_at;
+    if (d) items.push({ label: "Réceptionnée", detail: dn.bl_number ? `BL ${dn.bl_number}` : null, date: d, color: "bg-emerald-500" });
+  }
+  const invs = (o.invoices ?? []).slice().sort((a, b) => a.created_at.localeCompare(b.created_at));
+  invs.forEach((inv, i) => items.push({
+    label: i === 0 ? "Facturée" : "Facture modifiée",
+    detail: inv.invoice_number, date: inv.created_at, color: "bg-purple-500",
+  }));
+  for (const ev of events) {
+    if (ev.po_id !== o.id) continue;
+    items.push({ label: ev.type === "edited" ? "Commande modifiée" : ev.type, detail: ev.detail, date: ev.created_at, color: "bg-amber-500" });
+  }
+  return items.sort((a, b) => a.date.localeCompare(b.date));
+}
 
 type DraftLine = { ingredient_id: string; quantity: string; expected_price: string };
 
@@ -137,9 +163,10 @@ interface Props {
   initialOrders: PO[];
   suppliers: Supplier[];
   ingredients: Ingredient[];
+  orderEvents?: OrderEvent[];
 }
 
-export default function OrdersClient({ restaurantId, restaurantName, initialOrders, suppliers, ingredients }: Props) {
+export default function OrdersClient({ restaurantId, restaurantName, initialOrders, suppliers, ingredients, orderEvents = [] }: Props) {
   const supabase = createClient();
   const params = useSearchParams();
   const flash = params.get("sent") ? "Commande envoyée ✓"
@@ -700,9 +727,25 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
                         ))}
                       </tbody>
                     </table>
-                    {order.sent_at && (
-                      <p className="text-xs text-gray-400 mt-3">Envoyé le {new Date(order.sent_at).toLocaleString("fr-FR")}</p>
-                    )}
+
+                    {/* Historique de la commande */}
+                    <div className="mt-5 pt-4 border-t border-gray-100">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Historique</p>
+                      <ol className="space-y-2.5">
+                        {buildTimeline(order, orderEvents).map((it, i) => (
+                          <li key={i} className="flex items-start gap-3">
+                            <span className={clsx("mt-1 w-2 h-2 rounded-full shrink-0", it.color)} />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm text-gray-800">
+                                {it.label}
+                                {it.detail && <span className="text-gray-400"> · {it.detail}</span>}
+                              </p>
+                              <p className="text-2xs text-gray-400">{dateTimeFr(it.date)}</p>
+                            </div>
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
                   </div>
                 )}
               </div>

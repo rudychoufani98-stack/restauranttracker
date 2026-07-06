@@ -142,6 +142,14 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
       po_id: poId, ingredient_id, quantity: l.quantity, expected_price: parseFloat(l.price) || null,
     })));
 
+    // Journal: log a "modified" event when editing an existing order (best-effort).
+    if (isEdit) {
+      supabase.from("order_events").insert({
+        restaurant_id: restaurantId, po_id: poId, type: "edited",
+        detail: `${valid.length} produit(s) · €${total.toFixed(2)}`,
+      }).then(() => {}, () => {});
+    }
+
     if (!send) { router.push("/orders"); return; }
 
     // Sending: the email must succeed before the order is marked "Sent".

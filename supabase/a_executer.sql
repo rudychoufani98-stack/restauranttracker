@@ -20,6 +20,21 @@ alter table inventory_sessions add column if not exists kind text not null defau
 -- 4b) Ventes : canal (sur place / livraison) — permet 2 saisies par mois
 alter table sales_periods add column if not exists channel text not null default 'dine_in';
 
+-- 4c) Historique des commandes : journal des modifications de brouillon
+create table if not exists order_events (
+  id uuid primary key default gen_random_uuid(),
+  po_id uuid not null references purchase_orders(id) on delete cascade,
+  restaurant_id uuid not null references restaurants(id) on delete cascade,
+  type text not null,           -- 'edited' | 'invoice_edited' | ...
+  detail text,
+  created_at timestamptz not null default now()
+);
+alter table order_events enable row level security;
+drop policy if exists rls_order_events on order_events;
+create policy rls_order_events on order_events for all
+  using (owns_restaurant(restaurant_id)) with check (owns_restaurant(restaurant_id));
+create index if not exists idx_order_events_po on order_events(po_id);
+
 -- 5) Index de performance (filtres par restaurant + jointures)
 create index if not exists idx_recipes_restaurant        on recipes(restaurant_id);
 create index if not exists idx_ingredients_restaurant     on ingredients(restaurant_id);
