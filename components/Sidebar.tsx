@@ -35,7 +35,7 @@ const NAV_GROUPS = [
       { href: "/mises-en-place", label: "Mises en place", icon: Soup },
       { href: "/recipes",        label: "Recettes",       icon: ChefHat },
       { href: "/menu",        label: "Ma carte",    icon: UtensilsCrossed },
-      { href: "/categories",  label: "Catégories",  icon: Tags },
+      { href: "/categories",  label: "Catégories & tags",  icon: Tags },
       { href: "/pertes",      label: "Pertes",      icon: Trash2 },
     ],
   },

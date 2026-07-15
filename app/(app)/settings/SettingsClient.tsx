@@ -178,11 +178,11 @@ export default function SettingsClient({ restaurant, email, initialTags, initial
     setDeletingMemberId(null);
   }
 
+  // Tags moved next to Categories (both classify products) — see /categories.
   const tabs: { key: Tab; label: string }[] = [
     { key: "restaurant",   label: "Restaurant" },
     { key: "compte",       label: "Compte" },
     { key: "utilisateurs", label: "Utilisateurs" },
-    { key: "tags",         label: "Tags" },
     { key: "digest",       label: "Récap hebdo" },
   ];
 
@@ -435,90 +435,6 @@ export default function SettingsClient({ restaurant, email, initialTags, initial
                 </div>
               )}
             </div>
-          </Card>
-        </div>
-      )}
-
-      {/* ── Tags tab ── */}
-      {tab === "tags" && (
-        <div className="space-y-5">
-          <Card>
-            <h2 className="text-sm font-semibold text-gray-900 mb-1">Tags ingrédients</h2>
-            <p className="text-xs text-gray-500 mb-5">
-              Créez des tags pour organiser vos ingrédients — ex. &ldquo;Local&rdquo;, &ldquo;Saisonnier&rdquo;, &ldquo;Allergène&rdquo;, &ldquo;Premium&rdquo;. Vous pouvez en affecter plusieurs par ingrédient.
-            </p>
-
-            {/* Add new tag */}
-            <div className="flex gap-2 items-end mb-5">
-              <div className="flex-1">
-                <label className="block text-xs font-medium text-gray-600 mb-1.5">Nom du tag</label>
-                <input
-                  value={newTagName}
-                  onChange={(e) => setNewTagName(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleAddTag()}
-                  placeholder="ex. Saisonnier, Local, Allergène…"
-                  className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1.5">Couleur</label>
-                <div className="flex gap-1.5 flex-wrap">
-                  {TAG_COLORS.map((c) => (
-                    <button
-                      key={c.value}
-                      title={c.label}
-                      onClick={() => setNewTagColor(c.value)}
-                      className={clsx(
-                        "w-6 h-6 rounded-full border-2 transition",
-                        newTagColor === c.value ? "border-gray-900 scale-110" : "border-transparent"
-                      )}
-                      style={{ backgroundColor: c.value }}
-                    />
-                  ))}
-                </div>
-              </div>
-              <Button variant="primary" onClick={handleAddTag} disabled={addingTag}>
-                <Plus size={13} /> Ajouter
-              </Button>
-            </div>
-
-            {tagError && <Alert variant="error">{tagError}</Alert>}
-
-            {/* Tag list */}
-            {tags.length === 0 ? (
-              <div className="py-8 text-center">
-                <Tag size={28} className="mx-auto text-gray-200 mb-3" />
-                <p className="text-sm text-gray-500">Aucun tag. Ajoutez-en un ci-dessus.</p>
-              </div>
-            ) : (
-              <div className="space-y-1">
-                {tags.map((tag) => (
-                  <div
-                    key={tag.id}
-                    className="flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-gray-50 transition group"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: tag.color }} />
-                      <span className="text-sm text-gray-800">{tag.name}</span>
-                      {/* Preview pill */}
-                      <span
-                        className="px-2 py-0.5 rounded-full text-xs font-medium text-white opacity-80"
-                        style={{ backgroundColor: tag.color }}
-                      >
-                        {tag.name}
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => handleDeleteTag(tag.id)}
-                      disabled={deletingTagId === tag.id}
-                      className="p-1.5 rounded-md text-gray-300 hover:text-red-500 hover:bg-red-50 transition opacity-0 group-hover:opacity-100"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
           </Card>
         </div>
       )}

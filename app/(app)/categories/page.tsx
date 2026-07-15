@@ -32,5 +32,18 @@ export default async function CategoriesPage() {
     cats = res.data ?? [];
   }
 
-  return <CategoriesClient restaurantId={restaurant!.id} initialCategories={cats ?? []} />;
+  // Tags live alongside categories: both are ways of classifying products.
+  const { data: tags } = await supabase
+    .from("tags")
+    .select("id, name, color")
+    .eq("restaurant_id", restaurant!.id)
+    .order("name");
+
+  return (
+    <CategoriesClient
+      restaurantId={restaurant!.id}
+      initialCategories={cats ?? []}
+      initialTags={tags ?? []}
+    />
+  );
 }
