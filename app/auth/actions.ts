@@ -14,6 +14,15 @@ export async function login(formData: FormData) {
 
   if (error) {
     console.error("[login] auth error:", error.message);
+    // Surface the real reason — mapping everything to "wrong password" sends
+    // people hunting for a password problem that isn't there.
+    const m = (error.message || "").toLowerCase();
+    if (m.includes("not confirmed") || m.includes("confirm")) {
+      return { error: "Ton email n'est pas encore confirmé. Ouvre le lien de confirmation reçu par email (vérifie les spams)." };
+    }
+    if (m.includes("too many") || m.includes("rate limit")) {
+      return { error: "Trop de tentatives de connexion. Attends quelques minutes puis réessaie." };
+    }
     return { error: "Email ou mot de passe incorrect." };
   }
 
