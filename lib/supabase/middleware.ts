@@ -47,7 +47,12 @@ export async function updateSession(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
   const isAuthPage = pathname.startsWith("/login") || pathname.startsWith("/signup");
-  const isPublic = isAuthPage || pathname === "/";
+  // Password-reset flow must stay reachable while logged out.
+  const isRecovery =
+    pathname.startsWith("/reset-password") ||
+    pathname.startsWith("/update-password") ||
+    pathname.startsWith("/auth/callback");
+  const isPublic = isAuthPage || isRecovery || pathname === "/";
 
   // Couldn't reach the auth server: let the request through rather than 504 or
   // wrongly logging the user out. The page's own auth + RLS remain in force.
