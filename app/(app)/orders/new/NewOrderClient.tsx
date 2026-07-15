@@ -152,12 +152,15 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
 
     if (!send) { router.push("/orders"); return; }
 
-    // Sending: the email must succeed before the order is marked "Sent".
+    // No supplier email: nothing to send — just validate the order as "Sent"
+    // (that's what the button promises in this case).
     if (!sup?.email) {
-      setSaving(null);
-      setError("Ce fournisseur n'a pas d'email — la commande est enregistrée en brouillon. Ajoute son email dans sa fiche pour l'envoyer.");
+      await supabase.from("purchase_orders").update({ status: "Sent", sent_at: new Date().toISOString() }).eq("id", poId);
+      router.push("/orders?sent=1");
       return;
     }
+
+    // With an email: it must actually go out before we mark the order "Sent".
     let emailErr = "";
     try {
       const res = await fetch("/api/send-order", {

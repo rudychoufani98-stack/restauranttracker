@@ -4,6 +4,28 @@
 --  danger). NE contient PAS la remise à zéro des stocks (voir reset_stock.sql).
 -- =====================================================================
 
+-- 0) *** CRITIQUE *** Mouvements de stock : la contrainte sur reference_type
+-- rejetait les valeurs utilisées par l'app ('delivery', 'invoice', 'sale'…),
+-- donc AUCUN mouvement de stock n'était enregistré (échec silencieux).
+do $$
+begin
+  alter table stock_movements drop constraint if exists stock_movements_reference_type_check;
+exception when others then null;
+end $$;
+
+alter table stock_movements
+  add constraint stock_movements_reference_type_check
+  check (reference_type in (
+    'delivery',    -- réception d'une commande
+    'invoice',     -- ajustement à la facturation
+    'sale',        -- déstockage des ventes
+    'loss',        -- perte / casse
+    'inventory',   -- écart d'inventaire
+    'adjustment',  -- ajustement manuel
+    'purchase',    -- (héritage)
+    'manual'       -- (héritage)
+  ));
+
 -- 1) Masquer les prix sur le bon de commande (option Paramètres)
 alter table restaurants add column if not exists hide_po_prices boolean not null default false;
 

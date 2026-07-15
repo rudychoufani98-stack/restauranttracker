@@ -56,6 +56,20 @@ alter table stock_movements
   add constraint stock_movements_movement_type_check
   check (movement_type in ('in', 'out', 'adjustment', 'loss'));
 
+-- *** CRITIQUE *** La contrainte d'origine sur reference_type rejetait les
+-- valeurs utilisées par l'app -> aucun mouvement de stock n'était enregistré.
+do $$
+begin
+  alter table stock_movements drop constraint if exists stock_movements_reference_type_check;
+exception when others then null;
+end $$;
+
+alter table stock_movements
+  add constraint stock_movements_reference_type_check
+  check (reference_type in (
+    'delivery', 'invoice', 'sale', 'loss', 'inventory', 'adjustment', 'purchase', 'manual'
+  ));
+
 -- ---------------------------------------------------------------------
 -- 3) Conditionnement / rendement des recettes & mises en place
 --    yield_portions = quantité produite ; yield_unit = unité de cette

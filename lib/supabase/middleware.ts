@@ -52,7 +52,9 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/reset-password") ||
     pathname.startsWith("/update-password") ||
     pathname.startsWith("/auth/callback");
-  const isPublic = isAuthPage || isRecovery || pathname === "/";
+  // Health/keep-alive must answer JSON to an uptime monitor, never a login redirect.
+  const isHealth = pathname === "/api/health";
+  const isPublic = isAuthPage || isRecovery || isHealth || pathname === "/";
 
   // Couldn't reach the auth server: let the request through rather than 504 or
   // wrongly logging the user out. The page's own auth + RLS remain in force.
