@@ -447,6 +447,44 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
         </div>
       </div>
 
+      {/* Summary stats — all derived from live ingredients */}
+      {ingredients.length > 0 && (
+        <section className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
+          <div className="glass-card rounded-2xl p-5 flex flex-col gap-3">
+            <div className="flex justify-between items-center">
+              <span className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Ingrédients</span>
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary"><Package size={18} /></div>
+            </div>
+            <div>
+              <h3 className="text-2xl font-extrabold text-primary tabular-nums">{ingredients.length}</h3>
+              <p className="text-2xs text-on-surface-variant/60 mt-1">dans votre bibliothèque</p>
+            </div>
+          </div>
+
+          <div className="glass-card rounded-2xl p-5 flex flex-col gap-3">
+            <div className="flex justify-between items-center">
+              <span className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Catégories</span>
+              <div className="w-10 h-10 rounded-full bg-secondary/10 flex items-center justify-center text-secondary"><Layers size={18} /></div>
+            </div>
+            <div>
+              <h3 className="text-2xl font-extrabold text-on-surface tabular-nums">{categoriesUsed}</h3>
+              <p className="text-2xs text-on-surface-variant/60 mt-1">catégorie{categoriesUsed !== 1 ? "s" : ""} utilisée{categoriesUsed !== 1 ? "s" : ""}</p>
+            </div>
+          </div>
+
+          <div className="glass-card rounded-2xl p-5 flex flex-col gap-3">
+            <div className="flex justify-between items-center">
+              <span className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Revente directe</span>
+              <div className="w-10 h-10 rounded-full bg-primary-container/20 flex items-center justify-center text-primary-container"><TrendingUp size={18} /></div>
+            </div>
+            <div>
+              <h3 className="text-2xl font-extrabold text-on-surface tabular-nums">{resaleCount}</h3>
+              <p className="text-2xs text-on-surface-variant/60 mt-1">produit{resaleCount !== 1 ? "s" : ""} avec prix de vente</p>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Filters — glass bar */}
       <div className="glass-card rounded-2xl p-4 mb-5 flex flex-wrap items-center gap-4">
         <div className="relative flex-1 min-w-[200px]">
@@ -951,41 +989,6 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
             </div>
           </div>
 
-          {/* Summary stats — all derived from live ingredients */}
-          <section className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-            <div className="glass-card rounded-2xl p-5 flex flex-col gap-3">
-              <div className="flex justify-between items-center">
-                <span className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Ingrédients</span>
-                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary"><Package size={18} /></div>
-              </div>
-              <div>
-                <h3 className="text-2xl font-extrabold text-primary tabular-nums">{ingredients.length}</h3>
-                <p className="text-2xs text-on-surface-variant/60 mt-1">dans votre bibliothèque</p>
-              </div>
-            </div>
-
-            <div className="glass-card rounded-2xl p-5 flex flex-col gap-3">
-              <div className="flex justify-between items-center">
-                <span className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Catégories</span>
-                <div className="w-10 h-10 rounded-full bg-secondary/10 flex items-center justify-center text-secondary"><Layers size={18} /></div>
-              </div>
-              <div>
-                <h3 className="text-2xl font-extrabold text-on-surface tabular-nums">{categoriesUsed}</h3>
-                <p className="text-2xs text-on-surface-variant/60 mt-1">catégorie{categoriesUsed !== 1 ? "s" : ""} utilisée{categoriesUsed !== 1 ? "s" : ""}</p>
-              </div>
-            </div>
-
-            <div className="glass-card rounded-2xl p-5 flex flex-col gap-3">
-              <div className="flex justify-between items-center">
-                <span className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Revente directe</span>
-                <div className="w-10 h-10 rounded-full bg-primary-container/20 flex items-center justify-center text-primary-container"><TrendingUp size={18} /></div>
-              </div>
-              <div>
-                <h3 className="text-2xl font-extrabold text-on-surface tabular-nums">{resaleCount}</h3>
-                <p className="text-2xs text-on-surface-variant/60 mt-1">produit{resaleCount !== 1 ? "s" : ""} avec prix de vente</p>
-              </div>
-            </div>
-          </section>
         </>
       )}
     </div>

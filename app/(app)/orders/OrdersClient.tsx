@@ -594,6 +594,62 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
         </div>
       )}
 
+      {/* Stats row — all derived from live orders */}
+      {orders.length > 0 && (
+        <section className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+          <div className="glass-card rounded-2xl p-5 flex flex-col gap-3">
+            <div className="flex justify-between items-center">
+              <span className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Dépenses ce mois</span>
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary"><TrendingUp size={18} /></div>
+            </div>
+            <div>
+              <h3 className="text-2xl font-extrabold text-primary tabular-nums">€{spendThis.toFixed(2)}</h3>
+              <p className="text-2xs text-on-surface-variant/60 mt-1">
+                {spendDelta === null ? "Pas d'historique le mois dernier" : `${spendDelta >= 0 ? "+" : ""}${spendDelta}% par rapport au mois dernier`}
+              </p>
+            </div>
+            <div className="w-full bg-surface-container-highest rounded-full h-2">
+              <div className="bg-primary h-full rounded-full transition-all" style={{ width: `${spendBarPct}%` }} />
+            </div>
+          </div>
+
+          <div className="glass-card rounded-2xl p-5 flex flex-col gap-3">
+            <div className="flex justify-between items-center">
+              <span className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Commandes en attente</span>
+              <div className="w-10 h-10 rounded-full bg-secondary/10 flex items-center justify-center text-secondary"><Hourglass size={18} /></div>
+            </div>
+            <div>
+              <h3 className="text-2xl font-extrabold text-on-surface tabular-nums">{pendingCount}</h3>
+              <p className="text-2xs text-on-surface-variant/60 mt-1">Brouillons, envoyées ou partiellement reçues</p>
+            </div>
+            <div className="w-full bg-surface-container-highest rounded-full h-2">
+              <div className="bg-secondary h-full rounded-full transition-all" style={{ width: `${pendingBarPct}%` }} />
+            </div>
+          </div>
+
+          <div className="glass-card rounded-2xl p-5 flex flex-col gap-3">
+            <div className="flex justify-between items-center">
+              <span className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Fournisseur top</span>
+              <div className="w-10 h-10 rounded-full bg-primary-container/20 flex items-center justify-center text-primary-container"><Star size={18} /></div>
+            </div>
+            {topSupplier ? (
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-tertiary-fixed flex items-center justify-center text-primary shrink-0"><Truck size={22} /></div>
+                <div className="min-w-0">
+                  <h3 className="font-semibold text-on-surface truncate">{topSupplier.name}</h3>
+                  <p className="text-2xs text-on-surface-variant/60">{topSupplier.count} commande{topSupplier.count !== 1 ? "s" : ""}</p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-on-surface-variant/50">Aucune commande</p>
+            )}
+            <Link href="/suppliers" className="mt-auto text-primary font-bold text-2xs uppercase tracking-wide flex items-center gap-1 hover:gap-2 transition-all w-fit">
+              Voir les fournisseurs <ArrowRight size={14} />
+            </Link>
+          </div>
+        </section>
+      )}
+
       {/* Filters — glass card: status pills · search · period */}
       {orders.length > 0 && (
         <div className="glass-card rounded-2xl p-2 mb-4 flex flex-wrap items-center gap-2">
@@ -814,59 +870,6 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
             </div>
           </div>
 
-          {/* Stats row — all derived from live orders */}
-          <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="glass-card rounded-2xl p-5 flex flex-col gap-3">
-              <div className="flex justify-between items-center">
-                <span className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Dépenses ce mois</span>
-                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary"><TrendingUp size={18} /></div>
-              </div>
-              <div>
-                <h3 className="text-2xl font-extrabold text-primary tabular-nums">€{spendThis.toFixed(2)}</h3>
-                <p className="text-2xs text-on-surface-variant/60 mt-1">
-                  {spendDelta === null ? "Pas d'historique le mois dernier" : `${spendDelta >= 0 ? "+" : ""}${spendDelta}% par rapport au mois dernier`}
-                </p>
-              </div>
-              <div className="w-full bg-surface-container-highest rounded-full h-2">
-                <div className="bg-primary h-full rounded-full transition-all" style={{ width: `${spendBarPct}%` }} />
-              </div>
-            </div>
-
-            <div className="glass-card rounded-2xl p-5 flex flex-col gap-3">
-              <div className="flex justify-between items-center">
-                <span className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Commandes en attente</span>
-                <div className="w-10 h-10 rounded-full bg-secondary/10 flex items-center justify-center text-secondary"><Hourglass size={18} /></div>
-              </div>
-              <div>
-                <h3 className="text-2xl font-extrabold text-on-surface tabular-nums">{pendingCount}</h3>
-                <p className="text-2xs text-on-surface-variant/60 mt-1">Brouillons, envoyées ou partiellement reçues</p>
-              </div>
-              <div className="w-full bg-surface-container-highest rounded-full h-2">
-                <div className="bg-secondary h-full rounded-full transition-all" style={{ width: `${pendingBarPct}%` }} />
-              </div>
-            </div>
-
-            <div className="glass-card rounded-2xl p-5 flex flex-col gap-3">
-              <div className="flex justify-between items-center">
-                <span className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Fournisseur top</span>
-                <div className="w-10 h-10 rounded-full bg-primary-container/20 flex items-center justify-center text-primary-container"><Star size={18} /></div>
-              </div>
-              {topSupplier ? (
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-xl bg-tertiary-fixed flex items-center justify-center text-primary shrink-0"><Truck size={22} /></div>
-                  <div className="min-w-0">
-                    <h3 className="font-semibold text-on-surface truncate">{topSupplier.name}</h3>
-                    <p className="text-2xs text-on-surface-variant/60">{topSupplier.count} commande{topSupplier.count !== 1 ? "s" : ""}</p>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-sm text-on-surface-variant/50">Aucune commande</p>
-              )}
-              <Link href="/suppliers" className="mt-auto text-primary font-bold text-2xs uppercase tracking-wide flex items-center gap-1 hover:gap-2 transition-all w-fit">
-                Voir les fournisseurs <ArrowRight size={14} />
-              </Link>
-            </div>
-          </section>
         </>
       )}
     </div>
