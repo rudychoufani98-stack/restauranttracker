@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { logout } from "@/app/auth/actions";
 import {
   LayoutDashboard,
@@ -13,6 +13,7 @@ import {
   Truck,
   TrendingUp,
   Warehouse,
+  ClipboardList,
   Trash2,
   Tags,
   CreditCard,
@@ -44,6 +45,7 @@ const NAV_GROUPS = [
     items: [
       { href: "/orders",      label: "Commandes",    icon: ShoppingCart },
       { href: "/suppliers",   label: "Fournisseurs", icon: Truck },
+      { href: "/inventaire?vue=inventaire", label: "Inventaire", icon: ClipboardList },
       { href: "/inventaire",  label: "Stock",        icon: Warehouse },
     ],
   },
@@ -58,6 +60,18 @@ const NAV_GROUPS = [
 
 export default function Sidebar({ restaurantName }: { restaurantName: string }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const vue = searchParams.get("vue");
+
+  // The two /inventaire entries (Stock vs Inventaire) share one route and are
+  // distinguished by the ?vue=inventaire param; everything else matches by path.
+  function isActive(href: string) {
+    if (href.startsWith("/inventaire")) {
+      if (pathname !== "/inventaire") return false;
+      return href.includes("vue=inventaire") ? vue === "inventaire" : vue !== "inventaire";
+    }
+    return pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
+  }
 
   return (
     <aside className="w-64 shrink-0 flex flex-col h-screen sticky top-0 bg-surface-container-lowest border-r border-outline-variant">
@@ -81,7 +95,7 @@ export default function Sidebar({ restaurantName }: { restaurantName: string }) 
             )}
             <div className="space-y-1">
               {group.items.map(({ href, label, icon: Icon }) => {
-                const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
+                const active = isActive(href);
                 return (
                   <Link
                     key={href}

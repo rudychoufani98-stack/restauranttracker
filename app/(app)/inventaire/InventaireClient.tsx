@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Warehouse, TrendingDown, TrendingUp, AlertTriangle, Check, Loader2, History, ClipboardList, Trash2, Download, Search, Package } from "lucide-react";
@@ -100,7 +101,11 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
   const supabase = createClient();
   const fournitureSet = useMemo(() => new Set(fournitureIds), [fournitureIds]);
   const isFourniture = (id: string) => fournitureSet.has(id);
-  const [tab, setTab] = useState<"count" | "sessions" | "history" | "count-f" | "sessions-f">("history");
+  // Two sidebar entries share this page: /inventaire (état des stocks) and
+  // /inventaire?vue=inventaire (prises d'inventaire). The active view follows the URL.
+  const searchParams = useSearchParams();
+  const isInventaire = searchParams.get("vue") === "inventaire";
+  const [tab, setTab] = useState<"count" | "sessions" | "history" | "count-f" | "sessions-f">("count");
   const [expandedIng, setExpandedIng] = useState<string | null>(null);
   const [moveSearch, setMoveSearch] = useState("");
   const [sessions, setSessions] = useState<InventorySession[]>(inventorySessions);
@@ -365,8 +370,12 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
           <p className="text-xs font-semibold text-primary uppercase tracking-widest mb-1">Opérations</p>
-          <h1 className="text-3xl font-extrabold text-primary tracking-tight">Inventaire</h1>
-          <p className="text-sm text-on-surface-variant/70 mt-1">Stock théorique mis à jour automatiquement via les réceptions et les ventes.</p>
+          <h1 className="text-3xl font-extrabold text-primary tracking-tight">{isInventaire ? "Inventaire" : "État des stocks"}</h1>
+          <p className="text-sm text-on-surface-variant/70 mt-1">
+            {isInventaire
+              ? "Comptez votre stock physique et suivez les écarts avec le théorique."
+              : "Stock théorique mis à jour automatiquement via les réceptions et les ventes."}
+          </p>
         </div>
         <a href="/api/export/inventaire"
           className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-on-surface-variant border border-outline-variant/40 rounded-xl hover:bg-surface-container-low transition w-fit">
@@ -374,7 +383,8 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
         </a>
       </div>
 
-      {/* KPI glass cards — derived from live data */}
+      {/* KPI glass cards — derived from live data (stock view only) */}
+      {!isInventaire && (
       <section className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
         <div className="glass-card rounded-2xl p-5 flex flex-col gap-3 border-l-4 border-primary">
           <div className="flex justify-between items-center">
@@ -391,32 +401,11 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
           <h3 className={clsx("text-2xl font-extrabold tabular-nums", lowStockCount > 0 ? "text-red" : "text-on-surface")}>{lowStockCount}</h3>
         </div>
       </section>
+      )}
 
-      {/* Primary tabs — État des stocks vs Inventaire */}
-      <div className={clsx("glass-card rounded-2xl p-2 flex flex-wrap gap-1", tab === "history" ? "mb-6" : "mb-3")}>
-        {[
-          { key: "stock", label: "État des stocks", icon: Warehouse },
-          { key: "inventory", label: "Inventaire", icon: ClipboardList },
-        ].map(({ key, label, icon: Icon }) => {
-          const active = key === "stock" ? tab === "history" : tab !== "history";
-          return (
-            <button
-              key={key}
-              onClick={() => { if (key === "stock") setTab("history"); else if (tab === "history") setTab("count"); }}
-              className={clsx(
-                "flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-2xs font-bold uppercase tracking-wider transition-all duration-300",
-                active ? "bg-primary-container text-on-primary-container nav-active-glow" : "text-on-surface-variant/60 hover:bg-surface-container-low"
-              )}
-            >
-              <Icon size={14} /> {label}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Secondary tabs — the different inventories (only under « Inventaire ») */}
-      {tab !== "history" && (
-        <div className="flex flex-wrap gap-1.5 mb-6">
+      {/* Sub-tabs for the different inventories (Inventaire view only) */}
+      {isInventaire && (
+        <div className="glass-card rounded-2xl p-2 mb-6 flex flex-wrap gap-1">
           {[
             { key: "count", label: "Prise d'inventaire", icon: Check },
             { key: "sessions", label: `Mes inventaires${foodSessions.length ? ` (${foodSessions.length})` : ""}`, icon: History },
@@ -427,11 +416,11 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
               key={key}
               onClick={() => setTab(key as any)}
               className={clsx(
-                "flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-2xs font-bold uppercase tracking-wide transition-all",
-                tab === key ? "bg-primary text-on-primary" : "text-on-surface-variant/60 border border-outline-variant/30 hover:bg-surface-container-low"
+                "flex items-center gap-1.5 px-4 py-2 rounded-xl text-2xs font-bold uppercase tracking-wider transition-all duration-300",
+                tab === key ? "bg-primary-container text-on-primary-container nav-active-glow" : "text-on-surface-variant/60 hover:bg-surface-container-low"
               )}
             >
-              <Icon size={13} /> {label}
+              <Icon size={14} /> {label}
             </button>
           ))}
         </div>
@@ -439,7 +428,7 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
 
 
       {/* COUNT TAB — prise d'inventaire (alimentaire + fournitures) */}
-      {(tab === "count" || tab === "count-f") && (
+      {isInventaire && (tab === "count" || tab === "count-f") && (
         <>
           {countDone && (
             <div className="mb-4 text-sm text-primary bg-emerald-50 border border-primary/20 rounded-xl px-4 py-2.5 flex items-center gap-2">
@@ -576,7 +565,7 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
       )}
 
       {/* SESSIONS TAB — saved inventories (alimentaire + fournitures) */}
-      {(tab === "sessions" || tab === "sessions-f") && (
+      {isInventaire && (tab === "sessions" || tab === "sessions-f") && (
         <div className="space-y-3">
           <div className="flex justify-end">
             <button onClick={() => { setActiveSessionId(null); setCountDone(null); setTab(tab === "sessions-f" ? "count-f" : "count"); }}
@@ -674,8 +663,8 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
         </div>
       )}
 
-      {/* HISTORY TAB */}
-      {tab === "history" && (
+      {/* STOCK VIEW — état des stocks & mouvements */}
+      {!isInventaire && (
         <div className="space-y-4">
           <div className="relative max-w-sm">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/40" />
