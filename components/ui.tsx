@@ -40,7 +40,7 @@ export function Card({
   return (
     <div
       className={clsx(
-        "bg-white border border-gray-100 rounded-card shadow-card",
+        "glass-card rounded-xl",
         padding && "p-5",
         className
       )}
@@ -257,15 +257,17 @@ export function EmptyState({
 // ── Table primitives ─────────────────────────────────────────────────
 export function Table({ children }: { children: ReactNode }) {
   return (
-    <div className="overflow-hidden rounded-card border border-gray-200 shadow-card bg-white">
-      <table className="w-full text-sm">{children}</table>
+    <div className="glass-card overflow-hidden rounded-xl">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">{children}</table>
+      </div>
     </div>
   );
 }
 
 export function Th({ children, right }: { children: ReactNode; right?: boolean }) {
   return (
-    <th className={clsx("px-4 py-3 text-2xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50 border-b border-gray-100", right ? "text-right" : "text-left")}>
+    <th className={clsx("px-4 py-3.5 text-2xs font-bold text-outline uppercase tracking-wider bg-surface-container-low/50 border-b border-outline-variant/20", right ? "text-right" : "text-left")}>
       {children}
     </th>
   );
@@ -273,7 +275,7 @@ export function Th({ children, right }: { children: ReactNode; right?: boolean }
 
 export function Td({ children, right, muted, className }: { children: ReactNode; right?: boolean; muted?: boolean; className?: string }) {
   return (
-    <td className={clsx("px-4 py-3", right && "text-right", muted && "text-gray-400", className)}>
+    <td className={clsx("px-4 py-3.5", right && "text-right", muted && "text-on-surface-variant/70", className)}>
       {children}
     </td>
   );

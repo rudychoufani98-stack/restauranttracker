@@ -438,24 +438,26 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
       />
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-2.5 mb-5">
-        <div className="relative">
-          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher…"
-            className="pl-8 pr-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition w-52" />
+      <div className="glass-card rounded-xl p-3 mb-5 flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-outline" />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher un ingrédient…"
+            className="w-full pl-9 pr-3 py-2 text-sm bg-transparent border-none outline-none focus:ring-0 text-on-surface" />
         </div>
-        <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}
-          className="px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green transition">
-          <option value="All">Toutes les catégories</option>
-          {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
-        </select>
-        {allTags.length > 0 && (
-          <select value={filterTagId} onChange={(e) => setFilterTagId(e.target.value)}
-            className="px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green transition">
-            <option value="All">Tous les tags</option>
-            {allTags.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+        <div className="flex items-center gap-2 border-l border-outline-variant/30 pl-3">
+          <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}
+            className="px-3 py-2 text-sm bg-surface-container-low border-none rounded-full outline-none focus:ring-2 focus:ring-primary/20 text-on-surface-variant cursor-pointer">
+            <option value="All">Toutes les catégories</option>
+            {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
           </select>
-        )}
+          {allTags.length > 0 && (
+            <select value={filterTagId} onChange={(e) => setFilterTagId(e.target.value)}
+              className="px-3 py-2 text-sm bg-surface-container-low border-none rounded-full outline-none focus:ring-2 focus:ring-primary/20 text-on-surface-variant cursor-pointer">
+              <option value="All">Tous les tags</option>
+              {allTags.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          )}
+        </div>
       </div>
 
       {/* Modal */}

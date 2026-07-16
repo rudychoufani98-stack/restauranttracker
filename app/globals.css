@@ -57,4 +57,4 @@ h1, h2, h3 { letter-spacing: -0.021em; }
 ::-webkit-scrollbar-thumb:hover { background: #A1A1AA; }
 
 /* Table row hover */
-tr.row-hover:hover td { background-color: #FAFAFA; }
+tr.row-hover:hover td { background-color: rgba(0, 105, 75, 0.04); }
