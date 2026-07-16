@@ -4,6 +4,7 @@ import { useState, Fragment } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { buildOrderMailto } from "@/lib/order-email";
 import { Plus, Trash2, X, Send, Download, ChevronDown, ChevronUp, Zap, Check, Pencil, Truck, Search, TrendingUp, Hourglass, Star, ArrowRight } from "lucide-react";
 import clsx from "clsx";
 
@@ -307,47 +308,29 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
     setSending(null);
   }
 
-  async function handleSend(po: PO) {
-    setSending(po.id);
+  // Opens the user's own email client (Gmail, Outlook…) with the order
+  // pre-filled — no email service or domain needed, the email is sent from
+  // the user's real address. Then offers to mark the order as "Sent".
+  function handleSend(po: PO) {
     const supplier = suppliers.find((s) => s.id === po.supplier_id);
 
     if (!supplier?.email) {
-      setSending(null);
-      window.alert("Ce fournisseur n'a pas d'adresse email. Ajoute-la dans sa fiche (Fournisseurs) pour lui envoyer la commande par email.");
+      window.alert("Ce fournisseur n'a pas d'adresse email. Ajoute-la dans sa fiche (Fournisseurs), ou télécharge le PDF, envoie-le toi-même (WhatsApp, SMS…) puis clique « Marquer envoyé ».");
       return;
     }
 
-    // Send the email first; only mark as Sent if it actually goes out.
-    let emailOk = false;
-    let emailErr = "";
-    try {
-      const res = await fetch("/api/send-order", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ poId: po.id, restaurantName }),
-      });
-      const json = await res.json().catch(() => ({}));
-      emailOk = res.ok;
-      if (!res.ok) emailErr = json?.error ?? `Erreur ${res.status}`;
-    } catch (e: any) {
-      emailErr = e?.message ?? "Réseau";
+    window.location.href = buildOrderMailto({
+      to: supplier.email,
+      restaurantName,
+      orderNumber: po.order_number,
+      customerReference: supplier.customer_reference,
+      lines: po.purchase_order_lines.map((l) => ({ name: l.ingredients?.name ?? "Produit", qty: l.quantity })),
+      total: Number(po.expected_total ?? 0),
+    });
+
+    if (window.confirm("Ton logiciel email vient de s'ouvrir avec la commande pré-remplie (tu peux y joindre le PDF téléchargé si besoin).\n\nMarquer la commande comme envoyée ?")) {
+      handleMarkSent(po.id);
     }
-
-    if (!emailOk) {
-      setSending(null);
-      window.alert(`L'email n'a pas pu être envoyé : ${emailErr}\n\nLa commande reste en brouillon. Vérifie la configuration d'envoi (Resend) ou l'email du fournisseur.`);
-      return;
-    }
-
-    await supabase.from("purchase_orders").update({ status: "Sent", sent_at: new Date().toISOString() }).eq("id", po.id);
-
-    const { data: updated } = await supabase
-      .from("purchase_orders")
-      .select("*, suppliers(name), purchase_order_lines(*, ingredients(name, unit))")
-      .eq("restaurant_id", restaurantId)
-      .order("created_at", { ascending: false });
-    setOrders(updated ?? []);
-    setSending(null);
   }
 
   async function handleDelete(id: string) {

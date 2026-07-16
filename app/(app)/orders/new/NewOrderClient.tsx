@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { buildOrderMailto } from "@/lib/order-email";
 import { ArrowLeft, Plus, Minus, Trash2, Loader2, Check, Search, ShoppingCart, Package, Send } from "lucide-react";
 import clsx from "clsx";
 
@@ -114,8 +115,9 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
     if (valid.length === 0) return setError("Ajoute au moins un produit.");
     setSaving(send ? "send" : "draft");
 
-    // Always save as Draft first; we only mark "Sent" once the email really goes out.
+    // Always save as Draft first; we only mark "Sent" after the send step.
     let poId = orderId;
+    let orderNumber: string | null = null;
     if (isEdit) {
       const { error: upErr } = await supabase.from("purchase_orders").update({
         supplier_id: supplierId, status: "Draft", sent_at: null, expected_total: total,
@@ -129,7 +131,7 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
         .from("purchase_orders")
         .select("*", { count: "exact", head: true })
         .eq("restaurant_id", restaurantId);
-      const orderNumber = `BDC-${year}-${String((count ?? 0) + 1).padStart(4, "0")}`;
+      orderNumber = `BDC-${year}-${String((count ?? 0) + 1).padStart(4, "0")}`;
       const { data: po, error: poErr } = await supabase.from("purchase_orders").insert({
         restaurant_id: restaurantId, supplier_id: supplierId,
         order_number: orderNumber, status: "Draft", expected_total: total,
@@ -152,28 +154,22 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
 
     if (!send) { router.push("/orders"); return; }
 
-    // No supplier email: nothing to send — just validate the order as "Sent"
-    // (that's what the button promises in this case).
-    if (!sup?.email) {
-      await supabase.from("purchase_orders").update({ status: "Sent", sent_at: new Date().toISOString() }).eq("id", poId);
-      router.push("/orders?sent=1");
-      return;
-    }
-
-    // With an email: it must actually go out before we mark the order "Sent".
-    let emailErr = "";
-    try {
-      const res = await fetch("/api/send-order", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ poId, restaurantName }),
+    // Send step: open the user's own email client pre-filled (mailto) — the
+    // email is sent from their real address, no email service or domain needed.
+    // Without a supplier email we just mark the order "Sent" (PDF/WhatsApp flow).
+    if (sup?.email) {
+      window.location.href = buildOrderMailto({
+        to: sup.email,
+        restaurantName,
+        orderNumber,
+        customerReference: sup.customer_reference,
+        lines: valid.map(([ingredient_id, l]) => {
+          const ing = ingredients.find((i) => i.id === ingredient_id);
+          const art = ing ? articleFor(ing, supplierId) : null;
+          return { name: ing?.name ?? "Produit", qty: l.quantity, packType: packTypeOf(art), ref: art?.supplier_reference };
+        }),
+        total,
       });
-      if (!res.ok) { const j = await res.json().catch(() => ({})); emailErr = j?.error ?? `Erreur ${res.status}`; }
-    } catch (e: any) { emailErr = e?.message ?? "Réseau"; }
-
-    if (emailErr) {
-      setSaving(null);
-      setError(`Commande enregistrée en brouillon, mais l'email n'a pas pu être envoyé : ${emailErr}. Vérifie la configuration d'envoi (Resend).`);
-      return;
     }
 
     await supabase.from("purchase_orders").update({ status: "Sent", sent_at: new Date().toISOString() }).eq("id", poId);
