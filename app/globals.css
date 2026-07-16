@@ -7,18 +7,37 @@
 html { font-size: 14px; }
 
 body {
-  background-color: #F7F8FA;
-  color: #18181B;
-  font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
+  background-color: #F7FAFC;
+  color: #181C1E;
+  font-family: var(--font-hanken), system-ui, -apple-system, sans-serif;
   font-weight: 400;
   letter-spacing: -0.011em;
-  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Tighter, crisper headings (Linear/Notion feel) */
+/* Tighter, crisper headings */
 h1, h2, h3 { letter-spacing: -0.021em; }
+
+/* ── Design system: frosted-glass surface used across the app ── */
+.glass-card {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.03);
+}
+.metric-gradient {
+  background: linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%);
+}
+.nav-active-glow {
+  box-shadow: 0 0 15px rgba(0, 150, 109, 0.3);
+}
+@keyframes chart-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .7; }
+}
+.chart-pulse { animation: chart-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
 
 /* Skeleton pulse */
 @keyframes skeleton-pulse {

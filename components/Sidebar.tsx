@@ -60,29 +60,26 @@ export default function Sidebar({ restaurantName }: { restaurantName: string }) 
   const pathname = usePathname();
 
   return (
-    <aside className="w-56 shrink-0 flex flex-col h-screen sticky top-0 bg-white border-r border-gray-100">
+    <aside className="w-64 shrink-0 flex flex-col h-screen sticky top-0 bg-surface-container-lowest border-r border-outline-variant">
       {/* Brand — Amaly wordmark (clic → accueil) */}
-      <div className="px-4 pt-5 pb-4 border-b border-gray-100">
+      <div className="px-5 pt-6 pb-5">
         <Link href="/dashboard" aria-label="Accueil">
-          <p
-            className="text-3xl font-bold text-gray-900 leading-none hover:opacity-80 transition"
-            style={{ fontFamily: 'Georgia, "Times New Roman", "Playfair Display", serif', letterSpacing: "-0.01em" }}
-          >
+          <p className="text-[32px] leading-none font-extrabold text-primary tracking-tight hover:opacity-80 transition">
             Amaly
           </p>
         </Link>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-2 py-3 overflow-y-auto space-y-3">
+      <nav className="flex-1 px-3 pb-3 overflow-y-auto space-y-4">
         {NAV_GROUPS.map((group, gi) => (
           <div key={gi}>
             {group.label && (
-              <p className="px-3 mb-1 text-2xs font-semibold text-gray-400 uppercase tracking-widest">
+              <p className="px-3 mb-2 text-2xs font-bold text-on-surface-variant/50 uppercase tracking-widest">
                 {group.label}
               </p>
             )}
-            <div className="space-y-0.5">
+            <div className="space-y-1">
               {group.items.map(({ href, label, icon: Icon }) => {
                 const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
                 return (
@@ -90,17 +87,13 @@ export default function Sidebar({ restaurantName }: { restaurantName: string }) 
                     key={href}
                     href={href}
                     className={clsx(
-                      "flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-all",
+                      "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-200",
                       active
-                        ? "bg-emerald-50 text-emerald-700 font-semibold"
-                        : "text-gray-500 hover:bg-gray-50 hover:text-gray-800"
+                        ? "bg-primary-container text-on-primary-container font-bold nav-active-glow"
+                        : "text-on-surface-variant hover:bg-surface-variant/40"
                     )}
                   >
-                    <Icon
-                      size={15}
-                      className={active ? "text-emerald-600" : "text-gray-400"}
-                      strokeWidth={active ? 2.5 : 2}
-                    />
+                    <Icon size={18} strokeWidth={active ? 2.5 : 2} />
                     {label}
                   </Link>
                 );
@@ -111,25 +104,25 @@ export default function Sidebar({ restaurantName }: { restaurantName: string }) 
       </nav>
 
       {/* Bottom */}
-      <div className="px-2 pb-3 pt-2 border-t border-gray-100 space-y-0.5">
+      <div className="px-3 pb-4 pt-3 border-t border-outline-variant space-y-1">
         <Link
           href="/settings"
           className={clsx(
-            "flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-all",
+            "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-200",
             pathname === "/settings"
-              ? "bg-emerald-50 text-emerald-700 font-semibold"
-              : "text-gray-500 hover:bg-gray-50 hover:text-gray-800"
+              ? "bg-primary-container text-on-primary-container font-bold nav-active-glow"
+              : "text-on-surface-variant hover:bg-surface-variant/40"
           )}
         >
-          <Settings size={15} className={pathname === "/settings" ? "text-emerald-600" : "text-gray-400"} strokeWidth={2} />
+          <Settings size={18} strokeWidth={2} />
           Paramètres
         </Link>
         <form action={logout}>
           <button
             type="submit"
-            className="flex w-full items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-gray-500 hover:bg-red-50 hover:text-red-600 transition-all"
+            className="flex w-full items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-on-surface-variant hover:bg-red-light hover:text-red transition-all"
           >
-            <LogOut size={15} className="text-gray-400" strokeWidth={2} />
+            <LogOut size={18} strokeWidth={2} />
             Se déconnecter
           </button>
         </form>

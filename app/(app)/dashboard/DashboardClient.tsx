@@ -141,42 +141,43 @@ export default function DashboardClient({ restaurantName, targetFoodCost, recipe
   const fcColor = foodCost === 0 ? "text-gray-400" : foodCost <= targetFoodCost ? "text-emerald-600" : foodCost <= targetFoodCost * 1.2 ? "text-amber-600" : "text-red-600";
 
   return (
-    <div className="min-h-screen bg-[#F7F8FA] p-6 lg:p-8">
-      {/* Header + filters */}
-      <div className="max-w-6xl mx-auto">
-        <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
-          <div>
-            <p className="text-emerald-600 text-xs font-semibold uppercase tracking-widest mb-1">Tableau de bord</p>
-            <h1 className="text-3xl font-bold text-gray-900 tracking-tight">{restaurantName}</h1>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <select value={month} onChange={(e) => setMonth(e.target.value)} disabled={rangeActive}
-              className="px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500 disabled:opacity-50">
-              <option value="all">Toute la période</option>
-              {months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
-            </select>
-            {/* Custom date range */}
-            <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-lg px-2 py-1">
-              <span className="text-2xs text-gray-400">Du</span>
-              <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)}
-                className="text-xs outline-none text-gray-600 bg-transparent" />
-              <span className="text-2xs text-gray-400">au</span>
-              <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)}
-                className="text-xs outline-none text-gray-600 bg-transparent" />
-              {rangeActive && (
-                <button onClick={() => { setFromDate(""); setToDate(""); }} className="text-gray-400 hover:text-gray-600 text-sm leading-none ml-0.5" title="Effacer la plage">×</button>
-              )}
-            </div>
-            <select value={category} onChange={(e) => setCategory(e.target.value)}
-              className="px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500">
-              <option value="all">Toutes catégories</option>
-              {categories.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
+    <div className="min-h-screen bg-surface">
+      {/* Top app bar */}
+      <header className="flex flex-wrap justify-between items-center gap-4 px-6 lg:px-8 py-4 border-b border-outline-variant bg-surface/80 backdrop-blur-md sticky top-0 z-30">
+        <div className="flex flex-col">
+          <span className="text-2xs font-bold text-primary tracking-widest uppercase">Tableau de bord</span>
+          <h1 className="text-2xl font-semibold text-on-surface tracking-tight">{restaurantName}</h1>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <select value={month} onChange={(e) => setMonth(e.target.value)} disabled={rangeActive}
+            className="px-3 py-2 text-sm bg-surface-container-lowest border border-outline-variant rounded-full outline-none focus:border-primary disabled:opacity-50">
+            <option value="all">Toute la période</option>
+            {months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
+          </select>
+          {/* Custom date range */}
+          <div className="flex items-center gap-1.5 bg-surface-container-lowest border border-outline-variant rounded-full px-3 py-1.5">
+            <span className="text-2xs text-on-surface-variant/60">Du</span>
+            <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)}
+              className="text-xs outline-none text-on-surface-variant bg-transparent" />
+            <span className="text-2xs text-on-surface-variant/60">au</span>
+            <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)}
+              className="text-xs outline-none text-on-surface-variant bg-transparent" />
+            {rangeActive && (
+              <button onClick={() => { setFromDate(""); setToDate(""); }} className="text-on-surface-variant/50 hover:text-on-surface text-sm leading-none ml-0.5" title="Effacer la plage">×</button>
+            )}
+          </div>
+          <select value={category} onChange={(e) => setCategory(e.target.value)}
+            className="px-3 py-2 text-sm bg-surface-container-lowest border border-outline-variant rounded-full outline-none focus:border-primary">
+            <option value="all">Toutes catégories</option>
+            {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+      </header>
 
+      <div className="p-6 lg:p-8">
+      <div className="max-w-6xl mx-auto">
         {/* KPI grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <Kpi label="Chiffre d'affaires" value={eur(ca)} icon={<Receipt size={15} />} accent="emerald" sub={`${platsVendus} vente${platsVendus !== 1 ? "s" : ""}`} big />
           <Kpi label="Marge brute" value={eur(marge)} icon={<TrendingUp size={15} />} accent="emerald" sub={ca > 0 ? `${(100 - foodCost).toFixed(0)}% du CA` : "—"} />
           <Kpi label="Food cost" value={hasSales && ca > 0 ? `${foodCost.toFixed(1)}%` : "—"} icon={<Percent size={15} />} valueClass={fcColor} sub={`objectif ${targetFoodCost}%`} />
@@ -200,24 +201,24 @@ export default function DashboardClient({ restaurantName, targetFoodCost, recipe
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           {/* Ventes par catégorie */}
-          <div className="bg-white border border-gray-100 rounded-card shadow-card p-5">
-            <h2 className="text-sm font-semibold text-gray-900 mb-4">Ventes par catégorie</h2>
+          <div className="glass-card rounded-xl p-6">
+            <h2 className="text-lg font-semibold text-on-surface mb-5">Ventes par catégorie</h2>
             {byCat.length === 0 ? (
-              <p className="text-sm text-gray-400 py-6 text-center">Pas encore de ventes sur la période.</p>
+              <p className="text-sm text-on-surface-variant/60 py-6 text-center">Pas encore de ventes sur la période.</p>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-5">
                 {byCat.map((c) => (
-                  <div key={c.cat}>
-                    <div className="flex items-center justify-between text-sm mb-1">
-                      <span className="text-gray-700 font-medium">{c.cat}</span>
-                      <span className="text-gray-900 font-semibold">{eur(c.revenue)}</span>
+                  <div key={c.cat} className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-on-surface font-bold">{c.cat}</span>
+                      <span className="text-on-surface font-semibold">{eur(c.revenue)}</span>
                     </div>
-                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${(c.revenue / maxCatRev) * 100}%` }} />
+                    <div className="h-3 bg-surface-container rounded-full overflow-hidden">
+                      <div className="h-full bg-primary rounded-full" style={{ width: `${(c.revenue / maxCatRev) * 100}%`, boxShadow: "0 0 10px rgba(0, 150, 109, 0.4)" }} />
                     </div>
-                    <div className="flex justify-between text-2xs text-gray-400 mt-0.5">
+                    <div className="flex justify-between text-[11px] text-on-surface-variant/70">
                       <span>{c.qty} vendu{c.qty !== 1 ? "s" : ""}</span>
-                      <span className={c.fc > 0 && c.fc <= targetFoodCost ? "text-emerald-600" : c.fc > targetFoodCost ? "text-amber-600" : ""}>
+                      <span className={c.fc > 0 && c.fc <= targetFoodCost ? "text-primary" : c.fc > targetFoodCost ? "text-amber-dark" : ""}>
                         {c.fc > 0 ? `food cost ${c.fc.toFixed(0)}%` : "coût à définir"}
                       </span>
                     </div>
@@ -228,41 +229,52 @@ export default function DashboardClient({ restaurantName, targetFoodCost, recipe
           </div>
 
           {/* Top plats */}
-          <div className="bg-white border border-gray-100 rounded-card shadow-card p-5">
-            <h2 className="text-sm font-semibold text-gray-900 mb-4">Meilleures ventes</h2>
+          <div className="glass-card rounded-xl overflow-hidden flex flex-col">
+            <div className="p-6 pb-4 border-b border-outline-variant/40">
+              <h2 className="text-lg font-semibold text-on-surface">Meilleures ventes</h2>
+            </div>
             {topDishes.length === 0 ? (
-              <p className="text-sm text-gray-400 py-6 text-center">Aucune vente sur la sélection.</p>
+              <p className="text-sm text-on-surface-variant/60 py-10 text-center">Aucune vente sur la sélection.</p>
             ) : (
-              <table className="w-full text-sm">
-                <tbody className="divide-y divide-gray-50">
-                  {topDishes.map((d, i) => (
-                    <tr key={d.name}>
-                      <td className="py-2 text-gray-400 w-6">{i + 1}</td>
-                      <td className="py-2 text-gray-800 font-medium">{d.name}</td>
-                      <td className="py-2 text-right text-gray-400 text-xs">×{d.qty}</td>
-                      <td className="py-2 text-right font-semibold text-gray-900">{eur(d.revenue)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="divide-y divide-outline-variant/30">
+                {topDishes.map((d, i) => (
+                  <div key={d.name} className="px-6 py-4 flex items-center justify-between hover:bg-surface-container-low/50 transition-colors group">
+                    <div className="flex items-center gap-4 min-w-0">
+                      <div className="w-10 h-10 rounded-lg bg-surface-container-high flex items-center justify-center font-bold text-on-surface-variant group-hover:bg-primary group-hover:text-white transition-all shrink-0">
+                        {i + 1}
+                      </div>
+                      <p className="text-sm font-bold text-on-surface truncate">{d.name}</p>
+                    </div>
+                    <div className="text-right shrink-0 ml-3">
+                      <p className="text-sm font-bold text-on-surface">{eur(d.revenue)}</p>
+                      <p className="text-xs text-on-surface-variant/70">×{d.qty} unités</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>
 
-        {/* Raccourcis */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5">
+        {/* Raccourcis / barre d'actions */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 pb-4">
           {[
-            { href: "/rentabilite", label: "Saisir les ventes", icon: <Receipt size={15} /> },
-            { href: "/orders", label: "Commandes", icon: <ShoppingCart size={15} /> },
-            { href: "/inventaire", label: "Inventaire", icon: <Warehouse size={15} /> },
-            { href: "/pertes", label: "Pertes", icon: <Trash2 size={15} /> },
+            { href: "/rentabilite", label: "Saisir les ventes", icon: <Receipt size={28} />, danger: false },
+            { href: "/orders", label: "Commandes", icon: <ShoppingCart size={28} />, danger: false },
+            { href: "/inventaire", label: "Inventaire", icon: <Warehouse size={28} />, danger: false },
+            { href: "/pertes", label: "Pertes", icon: <Trash2 size={28} />, danger: true },
           ].map((s) => (
-            <Link key={s.href} href={s.href} className="bg-white border border-gray-100 rounded-card shadow-card p-3.5 flex items-center gap-2.5 hover:shadow-card-hover transition group">
-              <span className="text-gray-400 group-hover:text-emerald-600 transition">{s.icon}</span>
-              <span className="text-sm font-medium text-gray-700">{s.label}</span>
+            <Link
+              key={s.href}
+              href={s.href}
+              className={`glass-card rounded-xl p-5 flex flex-col items-center gap-2 transition-all group ${s.danger ? "hover:bg-red hover:text-white" : "hover:bg-primary hover:text-white"}`}
+            >
+              <span className="group-hover:scale-110 transition-transform">{s.icon}</span>
+              <span className="text-2xs font-bold uppercase tracking-widest">{s.label}</span>
             </Link>
           ))}
         </div>
+      </div>
       </div>
     </div>
   );
@@ -272,15 +284,23 @@ function Kpi({ label, value, icon, sub, accent = "default", valueClass, big }: {
   label: string; value: string; icon: React.ReactNode; sub?: string;
   accent?: "default" | "emerald" | "blue" | "amber"; valueClass?: string; big?: boolean;
 }) {
-  const bg = { default: "bg-gray-100 text-gray-500", emerald: "bg-emerald-50 text-emerald-600", blue: "bg-blue-50 text-blue-600", amber: "bg-amber-50 text-amber-600" }[accent];
+  const bg = {
+    default: "bg-surface-container-high text-on-surface-variant",
+    emerald: "bg-primary/10 text-primary",
+    blue: "bg-secondary-container text-secondary",
+    amber: "bg-amber-light text-amber-dark",
+  }[accent];
   return (
-    <div className={`bg-white border border-gray-100 rounded-card shadow-card p-4 ${big ? "lg:col-span-1" : ""}`}>
-      <div className="flex items-start justify-between mb-2">
-        <p className="text-2xs font-medium text-gray-500 uppercase tracking-wide">{label}</p>
-        <span className={`w-7 h-7 rounded-lg flex items-center justify-center ${bg}`}>{icon}</span>
+    <div className={`glass-card ${accent === "emerald" ? "metric-gradient" : ""} rounded-xl p-5 relative overflow-hidden group hover:-translate-y-1 transition-all duration-300 ${big ? "lg:col-span-1" : ""}`}>
+      {accent === "emerald" && (
+        <div className="absolute -top-4 -right-4 w-24 h-24 bg-primary/5 rounded-full blur-2xl group-hover:bg-primary/10 transition-colors" />
+      )}
+      <div className="relative flex items-start justify-between mb-3">
+        <p className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">{label}</p>
+        <span className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${bg}`}>{icon}</span>
       </div>
-      <p className={`text-xl font-bold tracking-tight ${valueClass ?? "text-gray-900"}`}>{value}</p>
-      {sub && <p className="text-2xs text-gray-400 mt-0.5">{sub}</p>}
+      <p className={`relative text-[26px] leading-none font-bold tracking-tight ${valueClass ?? "text-on-surface"}`}>{value}</p>
+      {sub && <p className="relative text-2xs text-on-surface-variant/70 mt-2">{sub}</p>}
     </div>
   );
 }
