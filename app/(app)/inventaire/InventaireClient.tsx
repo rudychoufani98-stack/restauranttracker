@@ -392,27 +392,50 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
         </div>
       </section>
 
-      {/* Tabs — glass segmented control */}
-      <div className="glass-card rounded-2xl p-2 mb-6 flex flex-wrap gap-1">
+      {/* Primary tabs — État des stocks vs Inventaire */}
+      <div className={clsx("glass-card rounded-2xl p-2 flex flex-wrap gap-1", tab === "history" ? "mb-6" : "mb-3")}>
         {[
-          { key: "history", label: "Stock & mouvements", icon: Warehouse },
-          { key: "count", label: "Prise d'inventaire", icon: Check },
-          { key: "sessions", label: `Mes inventaires${foodSessions.length ? ` (${foodSessions.length})` : ""}`, icon: History },
-          { key: "count-f", label: "Prise d'inventaire fournitures", icon: ClipboardList },
-          { key: "sessions-f", label: `Mes inventaires fournitures${fournitureSessions.length ? ` (${fournitureSessions.length})` : ""}`, icon: History },
-        ].map(({ key, label, icon: Icon }) => (
-          <button
-            key={key}
-            onClick={() => setTab(key as any)}
-            className={clsx(
-              "flex items-center gap-1.5 px-4 py-2 rounded-xl text-2xs font-bold uppercase tracking-wider transition-all duration-300",
-              tab === key ? "bg-primary-container text-on-primary-container nav-active-glow" : "text-on-surface-variant/60 hover:bg-surface-container-low"
-            )}
-          >
-            <Icon size={14} /> {label}
-          </button>
-        ))}
+          { key: "stock", label: "État des stocks", icon: Warehouse },
+          { key: "inventory", label: "Inventaire", icon: ClipboardList },
+        ].map(({ key, label, icon: Icon }) => {
+          const active = key === "stock" ? tab === "history" : tab !== "history";
+          return (
+            <button
+              key={key}
+              onClick={() => { if (key === "stock") setTab("history"); else if (tab === "history") setTab("count"); }}
+              className={clsx(
+                "flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-2xs font-bold uppercase tracking-wider transition-all duration-300",
+                active ? "bg-primary-container text-on-primary-container nav-active-glow" : "text-on-surface-variant/60 hover:bg-surface-container-low"
+              )}
+            >
+              <Icon size={14} /> {label}
+            </button>
+          );
+        })}
       </div>
+
+      {/* Secondary tabs — the different inventories (only under « Inventaire ») */}
+      {tab !== "history" && (
+        <div className="flex flex-wrap gap-1.5 mb-6">
+          {[
+            { key: "count", label: "Prise d'inventaire", icon: Check },
+            { key: "sessions", label: `Mes inventaires${foodSessions.length ? ` (${foodSessions.length})` : ""}`, icon: History },
+            { key: "count-f", label: "Prise d'inventaire fournitures", icon: ClipboardList },
+            { key: "sessions-f", label: `Mes inventaires fournitures${fournitureSessions.length ? ` (${fournitureSessions.length})` : ""}`, icon: History },
+          ].map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              onClick={() => setTab(key as any)}
+              className={clsx(
+                "flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-2xs font-bold uppercase tracking-wide transition-all",
+                tab === key ? "bg-primary text-on-primary" : "text-on-surface-variant/60 border border-outline-variant/30 hover:bg-surface-container-low"
+              )}
+            >
+              <Icon size={13} /> {label}
+            </button>
+          ))}
+        </div>
+      )}
 
 
       {/* COUNT TAB — prise d'inventaire (alimentaire + fournitures) */}
