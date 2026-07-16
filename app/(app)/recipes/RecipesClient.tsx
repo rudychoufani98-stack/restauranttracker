@@ -619,11 +619,11 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
       {/* Recipe list */}
       {visibleRecipes.length === 0 ? (
         search.trim() ? (
-          <div className="bg-white border border-gray-100 rounded-card p-10 text-center">
+          <div className="glass-card rounded-xl p-10 text-center">
             <p className="text-sm text-gray-500">Aucun résultat pour « {search} ».</p>
           </div>
         ) : (
-        <div className="bg-white border border-[#E5E7EB] rounded-card p-12 text-center">
+        <div className="glass-card rounded-xl p-12 text-center">
           <div className="text-4xl mb-3">{tab === "prep" ? "🥣" : "👨‍🍳"}</div>
           <h2 className="text-base font-medium text-gray-900 mb-1">
             {tab === "prep" ? "Aucune mise en place" : "Aucune fiche technique"}
@@ -645,7 +645,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
             const costPerPortion = recipe.total_cost / (recipe.yield_portions || 1);
             const yUnit = YIELD_UNITS.find((u) => u.value === (recipe.yield_unit || "portion"))?.label ?? recipe.yield_unit;
             return (
-              <div key={recipe.id} className="bg-white border border-[#E5E7EB] rounded-card overflow-hidden">
+              <div key={recipe.id} className="glass-card rounded-xl overflow-hidden">
                 <div
                   className="flex items-center gap-4 px-5 py-4 cursor-pointer hover:bg-gray-50 transition"
                   onClick={() => setExpandedId(isExpanded ? null : recipe.id)}

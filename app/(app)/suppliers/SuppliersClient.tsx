@@ -135,34 +135,46 @@ export default function SuppliersClient({ restaurantId, initialSuppliers }: Prop
           <button onClick={openAdd} className="px-4 py-2 text-sm text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 transition">Ajouter le premier fournisseur</button>
         </div>
       ) : (
-        <div className="bg-white border border-[#E5E7EB] rounded-card overflow-hidden">
+        <div className="glass-card rounded-xl overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-[#E5E7EB] bg-gray-50">
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Nom</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Catégorie</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Email</th>
-                <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Franco</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Réf. client</th>
-                <th className="px-4 py-3" />
+              <tr className="border-b border-outline-variant/20 bg-surface-container-low/50">
+                <th className="text-left px-5 py-3.5 text-2xs font-bold text-outline uppercase tracking-wider">Nom</th>
+                <th className="text-left px-5 py-3.5 text-2xs font-bold text-outline uppercase tracking-wider">Catégorie</th>
+                <th className="text-left px-5 py-3.5 text-2xs font-bold text-outline uppercase tracking-wider">Email</th>
+                <th className="text-right px-5 py-3.5 text-2xs font-bold text-outline uppercase tracking-wider">Franco</th>
+                <th className="text-left px-5 py-3.5 text-2xs font-bold text-outline uppercase tracking-wider">Réf. client</th>
+                <th className="px-5 py-3.5" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#E5E7EB]">
-              {suppliers.map((s) => (
-                <tr key={s.id} className="hover:bg-gray-50 transition">
-                  <td className="px-4 py-3 font-medium text-gray-900">{s.name}</td>
-                  <td className="px-4 py-3"><span className="px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">{s.category ?? "—"}</span></td>
-                  <td className="px-4 py-3 text-gray-500">{s.email ?? "—"}</td>
-                  <td className="px-4 py-3 text-right text-gray-600">{s.min_order_amount ? `€${Number(s.min_order_amount).toFixed(0)}` : "—"}</td>
-                  <td className="px-4 py-3 text-gray-500">{s.customer_reference ?? "—"}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1 justify-end">
-                      <button onClick={() => openEdit(s)} className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition"><Pencil size={14} /></button>
-                      <button onClick={() => handleDelete(s.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition"><Trash2 size={14} /></button>
+            <tbody className="divide-y divide-outline-variant/10">
+              {suppliers.map((s) => {
+                const palette = ["#00694b", "#555f71", "#525f5a", "#8a6530", "#3b82f6"];
+                const color = palette[(s.name?.charCodeAt(0) ?? 0) % palette.length];
+                return (
+                <tr key={s.id} className="group hover:bg-primary/[0.04] transition-colors">
+                  <td className="px-5 py-3.5">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-lg flex items-center justify-center font-bold text-white text-sm shrink-0"
+                        style={{ backgroundColor: color }}>
+                        {(s.name?.[0] ?? "?").toUpperCase()}
+                      </div>
+                      <span className="font-semibold text-on-surface">{s.name}</span>
+                    </div>
+                  </td>
+                  <td className="px-5 py-3.5"><span className="px-2.5 py-0.5 text-xs rounded-full bg-surface-container text-on-surface-variant">{s.category ?? "—"}</span></td>
+                  <td className="px-5 py-3.5 text-on-surface-variant/70">{s.email ?? "—"}</td>
+                  <td className="px-5 py-3.5 text-right text-on-surface-variant">{s.min_order_amount ? `€${Number(s.min_order_amount).toFixed(0)}` : "—"}</td>
+                  <td className="px-5 py-3.5 text-on-surface-variant/70">{s.customer_reference ?? "—"}</td>
+                  <td className="px-5 py-3.5">
+                    <div className="flex items-center gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => openEdit(s)} className="p-1.5 text-on-surface-variant/50 hover:text-primary hover:bg-surface-container-high rounded-lg transition"><Pencil size={15} /></button>
+                      <button onClick={() => handleDelete(s.id)} className="p-1.5 text-on-surface-variant/50 hover:text-red hover:bg-red-light rounded-lg transition"><Trash2 size={15} /></button>
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
