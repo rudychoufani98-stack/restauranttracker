@@ -9,7 +9,7 @@ export default async function NewOrderPage() {
 
   const { data: restaurant } = await supabase
     .from("restaurants")
-    .select("id, name")
+    .select("id, name, hide_po_prices")
     .eq("owner_id", user!.id)
     .single();
 
@@ -26,6 +26,7 @@ export default async function NewOrderPage() {
       restaurantName={restaurant!.name}
       suppliers={(suppliers ?? []) as any}
       ingredients={(ingredients ?? []) as any}
+      hidePrices={!!(restaurant as any)?.hide_po_prices}
     />
   );
 }

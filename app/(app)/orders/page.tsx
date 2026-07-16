@@ -32,6 +32,7 @@ export default async function OrdersPage() {
       suppliers={suppliers ?? []}
       ingredients={(ingredients ?? []) as any}
       orderEvents={orderEvents ?? []}
+      hidePrices={!!(restaurant as any)?.hide_po_prices}
     />
   );
 }

@@ -4,7 +4,7 @@ import { useState, Fragment } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { buildOrderMailto } from "@/lib/order-email";
+import { buildOrderMailto, defaultPackType } from "@/lib/order-email";
 import { Plus, Trash2, X, Send, Download, ChevronDown, ChevronUp, Zap, Check, Pencil, Truck, Search, TrendingUp, Hourglass, Star, ArrowRight } from "lucide-react";
 import clsx from "clsx";
 
@@ -102,9 +102,11 @@ function articleFor(ing: Ingredient, supplierId: string): Article | null {
   const match = (ing.ingredient_suppliers ?? []).find((a) => a.supplier_id === supplierId);
   if (match) return { ...match, unit: match.unit ?? ing.unit };
   if (ing.supplier_id === supplierId) {
+    const size = ing.unit_size ?? ing.pack_quantity ?? null;
     return { supplier_id: ing.supplier_id, supplier_reference: ing.supplier_reference ?? null,
-      pack_units: ing.pack_units ?? 1, unit_size: ing.unit_size ?? ing.pack_quantity ?? null,
-      unit: ing.unit, pack_price: ing.pack_price ?? null, pack_label: null, pack_type: "colis" };
+      pack_units: ing.pack_units ?? 1, unit_size: size,
+      unit: ing.unit, pack_price: ing.pack_price ?? null, pack_label: null,
+      pack_type: defaultPackType(ing.unit, size) };
   }
   return null;
 }
@@ -166,9 +168,10 @@ interface Props {
   suppliers: Supplier[];
   ingredients: Ingredient[];
   orderEvents?: OrderEvent[];
+  hidePrices?: boolean;
 }
 
-export default function OrdersClient({ restaurantId, restaurantName, initialOrders, suppliers, ingredients, orderEvents = [] }: Props) {
+export default function OrdersClient({ restaurantId, restaurantName, initialOrders, suppliers, ingredients, orderEvents = [], hidePrices = false }: Props) {
   const supabase = createClient();
   const params = useSearchParams();
   const flash = params.get("sent") ? "Commande envoyée ✓"
@@ -324,8 +327,13 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
       restaurantName,
       orderNumber: po.order_number,
       customerReference: supplier.customer_reference,
-      lines: po.purchase_order_lines.map((l) => ({ name: l.ingredients?.name ?? "Produit", qty: l.quantity })),
+      lines: po.purchase_order_lines.map((l) => {
+        const ing = l.ingredient_id ? ingredients.find((i) => i.id === l.ingredient_id) : undefined;
+        const art = ing && po.supplier_id ? articleFor(ing, po.supplier_id) : null;
+        return { name: l.ingredients?.name ?? "Produit", qty: l.quantity, packType: art ? packTypeOf(art) : "colis", ref: art?.supplier_reference };
+      }),
       total: Number(po.expected_total ?? 0),
+      hidePrices,
     });
 
     if (window.confirm("Ton logiciel email vient de s'ouvrir avec la commande pré-remplie (tu peux y joindre le PDF téléchargé si besoin).\n\nMarquer la commande comme envoyée ?")) {

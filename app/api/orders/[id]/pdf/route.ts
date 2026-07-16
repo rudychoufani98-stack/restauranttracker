@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { PurchaseOrderPDF } from "@/lib/pdf/PurchaseOrderPDF";
+import { defaultPackType } from "@/lib/order-email";
 import React from "react";
 
 export async function GET(
@@ -64,10 +65,10 @@ export async function GET(
     const lines = (po.purchase_order_lines ?? []).map((l: any) => {
       const ing = l.ingredients;
       const art = (ing?.ingredient_suppliers ?? []).find((a: any) => a.supplier_id === supplier.id) ?? null;
-      const packType = art?.pack_type || "colis";
       const packUnits = Number(art?.pack_units ?? ing?.pack_units ?? 1) || 1;
       const unitSize = Number(art?.unit_size ?? ing?.unit_size ?? ing?.pack_quantity ?? 0) || 0;
       const baseUnit = art?.unit ?? ing?.unit ?? "";
+      const packType = art?.pack_type || defaultPackType(baseUnit, unitSize);
       const packDetail = art?.pack_label
         ? art.pack_label
         : unitSize > 0

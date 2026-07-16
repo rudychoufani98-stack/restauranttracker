@@ -45,6 +45,7 @@ export default async function EditOrderPage({ params }: { params: { id: string }
       orderId={po.id}
       initialSupplierId={po.supplier_id ?? ""}
       initialCart={initialCart}
+      hidePrices={!!(restaurant as any)?.hide_po_prices}
     />
   );
 }

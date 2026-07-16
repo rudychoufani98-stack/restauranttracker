@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { buildOrderMailto } from "@/lib/order-email";
+import { buildOrderMailto, defaultPackType } from "@/lib/order-email";
 import { ArrowLeft, Plus, Minus, Trash2, Loader2, Check, Search, ShoppingCart, Package, Send } from "lucide-react";
 import clsx from "clsx";
 
@@ -23,9 +23,11 @@ function articleFor(ing: Ingredient, supplierId: string): Article | null {
   const match = (ing.ingredient_suppliers ?? []).find((a) => a.supplier_id === supplierId);
   if (match) return { ...match, unit: match.unit ?? ing.unit };
   if (ing.supplier_id === supplierId) {
+    const size = ing.unit_size ?? ing.pack_quantity ?? null;
     return { supplier_id: ing.supplier_id, supplier_reference: ing.supplier_reference ?? null,
-      pack_units: ing.pack_units ?? 1, unit_size: ing.unit_size ?? ing.pack_quantity ?? null,
-      unit: ing.unit, pack_price: ing.pack_price ?? null, pack_label: null, pack_type: "colis" };
+      pack_units: ing.pack_units ?? 1, unit_size: size,
+      unit: ing.unit, pack_price: ing.pack_price ?? null, pack_label: null,
+      pack_type: defaultPackType(ing.unit, size) };
   }
   return null;
 }
@@ -44,9 +46,10 @@ interface Props {
   orderId?: string;
   initialSupplierId?: string;
   initialCart?: Record<string, CartLine>;
+  hidePrices?: boolean;
 }
 
-export default function NewOrderClient({ restaurantId, restaurantName, suppliers, ingredients, orderId, initialSupplierId = "", initialCart }: Props) {
+export default function NewOrderClient({ restaurantId, restaurantName, suppliers, ingredients, orderId, initialSupplierId = "", initialCart, hidePrices = false }: Props) {
   const supabase = createClient();
   const router = useRouter();
   const isEdit = !!orderId;
@@ -169,6 +172,7 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
           return { name: ing?.name ?? "Produit", qty: l.quantity, packType: packTypeOf(art), ref: art?.supplier_reference };
         }),
         total,
+        hidePrices,
       });
     }
 
