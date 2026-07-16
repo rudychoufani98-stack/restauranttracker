@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Trash2, Check, X, Pencil, ArrowUp, ArrowDown } from "lucide-react";
+import { Plus, Trash2, Check, X, Pencil, ChevronUp, ChevronDown } from "lucide-react";
 import clsx from "clsx";
 
 type Category = { id: string; type: string; name: string; position: number };
@@ -132,100 +132,108 @@ export default function CategoriesClient({ restaurantId, initialCategories, init
 
   return (
     <div className="p-8 max-w-3xl mx-auto">
-      <div className="mb-5 pb-5 border-b border-gray-200">
-        <p className="text-xs font-semibold text-emerald-600 uppercase tracking-widest mb-1">Catalogue</p>
-        <h1 className="text-2xl font-bold text-gray-900">Catégories &amp; tags</h1>
-        <p className="text-sm text-gray-500 mt-1">Les deux façons de classer tes produits : une <b>catégorie</b> unique par produit, et autant de <b>tags</b> que tu veux.</p>
+      {/* Header */}
+      <div className="mb-6">
+        <p className="text-xs font-semibold text-primary uppercase tracking-widest mb-1">Catalogue</p>
+        <h1 className="text-3xl font-extrabold text-primary tracking-tight">Catégories &amp; Tags</h1>
+        <p className="text-sm text-on-surface-variant/70 mt-1">Les deux façons de classer tes produits : une <b>catégorie</b> unique par produit, et autant de <b>tags</b> que tu veux.</p>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 mb-4 p-1 bg-gray-100 rounded-lg w-fit">
+      {/* Glass tab selector */}
+      <div className="glass-card rounded-2xl p-2 flex flex-wrap gap-1 w-fit mb-4">
         {TABS.map((t) => {
           const count = t.key === "tags" ? tags.length : cats.filter((c) => c.type === t.key).length;
+          const active = tab === t.key;
           return (
             <button
               key={t.key}
               onClick={() => { setTab(t.key); setError(null); setEditingId(null); }}
               className={clsx(
-                "px-4 py-2 text-sm font-medium rounded-md transition",
-                tab === t.key ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                "px-4 py-2 rounded-xl text-2xs font-bold uppercase tracking-wider transition",
+                active ? "bg-primary-container text-on-primary-container nav-active-glow" : "text-on-surface-variant/60 hover:bg-surface-container-low"
               )}
             >
-              {t.label} <span className={clsx("ml-1 text-xs", tab === t.key ? "text-emerald-600" : "text-gray-400")}>{count}</span>
+              {t.label} <span className={clsx("ml-1", active ? "text-on-primary-container/80" : "text-on-surface-variant/40")}>({count})</span>
             </button>
           );
         })}
       </div>
 
-      <p className="text-xs text-gray-500 mb-4">{activeTab.help}</p>
+      <p className="text-xs text-on-surface-variant/60 mb-4">{activeTab.help}</p>
 
-      {/* Add */}
+      {/* Add bar */}
       {tab === "tags" ? (
-        <div className="flex flex-wrap items-end gap-2 mb-4">
-          <input
-            value={newTagName}
-            onChange={(e) => setNewTagName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") addTag(); }}
-            placeholder="Nouveau tag… (ex. Fournitures)"
-            className="flex-1 min-w-[180px] px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
-          />
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <div className="relative flex-1 min-w-[180px]">
+            <Plus size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/40" />
+            <input
+              value={newTagName}
+              onChange={(e) => setNewTagName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") addTag(); }}
+              placeholder="Nouveau tag… (ex. Fournitures)"
+              className="w-full bg-surface-container-low border-none rounded-xl pl-10 pr-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 placeholder:text-on-surface-variant/40"
+            />
+          </div>
           <div className="flex gap-1.5 flex-wrap items-center">
             {TAG_COLORS.map((c) => (
               <button
                 key={c.value}
                 title={c.label}
                 onClick={() => setNewTagColor(c.value)}
-                className={clsx("w-6 h-6 rounded-full border-2 transition", newTagColor === c.value ? "border-gray-900 scale-110" : "border-transparent")}
+                className={clsx("w-6 h-6 rounded-full border-2 transition", newTagColor === c.value ? "border-on-surface scale-110" : "border-transparent")}
                 style={{ backgroundColor: c.value }}
               />
             ))}
           </div>
           <button
             onClick={addTag}
-            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 transition shadow-sm"
+            className="flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary text-sm font-semibold rounded-xl hover:bg-primary-container transition shadow-lg hover:nav-active-glow active:scale-[0.98]"
           >
             <Plus size={15} /> Ajouter
           </button>
         </div>
       ) : (
         <div className="flex gap-2 mb-4">
-          <input
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") addCategory(); }}
-            placeholder="Nouvelle catégorie…"
-            className="flex-1 px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
-          />
+          <div className="relative flex-1">
+            <Plus size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/40" />
+            <input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") addCategory(); }}
+              placeholder="Nouvelle catégorie…"
+              className="w-full bg-surface-container-low border-none rounded-xl pl-10 pr-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 placeholder:text-on-surface-variant/40"
+            />
+          </div>
           <button
             onClick={addCategory}
-            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 transition shadow-sm"
+            className="flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary text-sm font-semibold rounded-xl hover:bg-primary-container transition shadow-lg hover:nav-active-glow active:scale-[0.98]"
           >
             <Plus size={15} /> Ajouter
           </button>
         </div>
       )}
-      {error && <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2 mb-4">{error}</div>}
+      {error && <div className="text-sm text-red bg-red-light border border-red/20 rounded-xl px-3 py-2 mb-4">{error}</div>}
 
       {/* Tag list */}
       {tab === "tags" && (
         tags.length === 0 ? (
-          <div className="bg-white border border-[#E5E7EB] rounded-card p-10 text-center text-sm text-gray-500">
+          <div className="glass-card rounded-2xl p-10 text-center text-sm text-on-surface-variant/60">
             Aucun tag. Ajoutes-en un ci-dessus.
           </div>
         ) : (
-          <div className="bg-white border border-[#E5E7EB] rounded-card divide-y divide-gray-100">
+          <div className="glass-card rounded-2xl overflow-hidden divide-y divide-outline-variant/10">
             {tags.map((t) => (
-              <div key={t.id} className="flex items-center justify-between px-4 py-3 group">
-                <div className="flex items-center gap-2.5">
+              <div key={t.id} className="flex items-center justify-between gap-4 px-5 py-4 hover:bg-surface-container-low/40 transition-colors group">
+                <div className="flex items-center gap-3">
                   <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: t.color }} />
-                  <span className="text-sm text-gray-800">{t.name}</span>
-                  <span className="px-2 py-0.5 rounded-full text-2xs font-medium"
+                  <span className="font-semibold text-on-surface">{t.name}</span>
+                  <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide"
                     style={{ backgroundColor: `${t.color}1A`, color: t.color }}>
                     aperçu
                   </span>
                 </div>
                 <button onClick={() => removeTag(t.id)}
-                  className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded transition opacity-0 group-hover:opacity-100">
+                  className="p-2 rounded-lg text-on-surface-variant/50 hover:text-red hover:bg-red-light transition opacity-0 group-hover:opacity-100">
                   <Trash2 size={14} />
                 </button>
               </div>
@@ -236,18 +244,18 @@ export default function CategoriesClient({ restaurantId, initialCategories, init
 
       {/* Category list */}
       {tab !== "tags" && (list.length === 0 ? (
-        <div className="bg-white border border-[#E5E7EB] rounded-card p-10 text-center text-sm text-gray-500">
+        <div className="glass-card rounded-2xl p-10 text-center text-sm text-on-surface-variant/60">
           Aucune catégorie. Ajoutez-en une ci-dessus.
         </div>
       ) : (
-        <div className="bg-white border border-[#E5E7EB] rounded-card divide-y divide-[#E5E7EB]">
+        <div className="glass-card rounded-2xl overflow-hidden divide-y divide-outline-variant/10">
           {list.map((c, i) => (
-            <div key={c.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition">
+            <div key={c.id} className="flex items-center gap-4 px-5 py-4 hover:bg-surface-container-low/40 transition-colors">
               <div className="flex flex-col">
                 <button onClick={() => move(c.id, -1)} disabled={i === 0}
-                  className="text-gray-300 hover:text-gray-600 disabled:opacity-30 disabled:hover:text-gray-300"><ArrowUp size={13} /></button>
+                  className="text-on-surface-variant/40 hover:text-primary disabled:opacity-30 disabled:hover:text-on-surface-variant/40 transition"><ChevronUp size={15} /></button>
                 <button onClick={() => move(c.id, 1)} disabled={i === list.length - 1}
-                  className="text-gray-300 hover:text-gray-600 disabled:opacity-30 disabled:hover:text-gray-300"><ArrowDown size={13} /></button>
+                  className="text-on-surface-variant/40 hover:text-primary disabled:opacity-30 disabled:hover:text-on-surface-variant/40 transition"><ChevronDown size={15} /></button>
               </div>
 
               {editingId === c.id ? (
@@ -256,21 +264,21 @@ export default function CategoriesClient({ restaurantId, initialCategories, init
                     autoFocus value={editName}
                     onChange={(e) => setEditName(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter") saveRename(c.id); if (e.key === "Escape") setEditingId(null); }}
-                    className="flex-1 px-2 py-1 text-sm border border-emerald-400 rounded outline-none"
+                    className="flex-1 bg-surface-container-low border-none rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20"
                   />
-                  <button onClick={() => saveRename(c.id)} className="text-emerald-600"><Check size={15} /></button>
-                  <button onClick={() => setEditingId(null)} className="text-gray-400"><X size={15} /></button>
+                  <button onClick={() => saveRename(c.id)} className="p-2 rounded-lg text-primary hover:bg-surface-container-high transition"><Check size={15} /></button>
+                  <button onClick={() => setEditingId(null)} className="p-2 rounded-lg text-on-surface-variant/50 hover:bg-surface-container-high transition"><X size={15} /></button>
                 </div>
               ) : (
                 <>
-                  <span className="flex-1 text-sm font-medium text-gray-800">{c.name}</span>
+                  <span className="flex-1 font-semibold text-on-surface">{c.name}</span>
                   <button
                     onClick={() => { setEditingId(c.id); setEditName(c.name); }}
-                    className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition"
+                    className="p-2 rounded-lg text-on-surface-variant/50 hover:text-primary hover:bg-surface-container-high transition"
                   ><Pencil size={14} /></button>
                   <button
                     onClick={() => remove(c.id)}
-                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition"
+                    className="p-2 rounded-lg text-on-surface-variant/50 hover:text-red hover:bg-red-light transition"
                   ><Trash2 size={14} /></button>
                 </>
               )}
@@ -279,7 +287,7 @@ export default function CategoriesClient({ restaurantId, initialCategories, init
         </div>
       ))}
 
-      <p className="text-xs text-gray-400 mt-4">
+      <p className="text-xs text-on-surface-variant/50 mt-4">
         {tab === "tags"
           ? "Un produit peut porter plusieurs tags (à assigner depuis sa fiche). Supprimer un tag le retire des produits, sans les supprimer."
           : "Supprimer une catégorie ne supprime pas les articles existants — ils gardent leur ancien libellé jusqu'à modification."}

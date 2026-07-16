@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Pencil, Check, X } from "lucide-react";
+import { Pencil, Check, X, Gauge, AlertTriangle, TrendingDown } from "lucide-react";
 import clsx from "clsx";
 
 type Recipe = {
@@ -160,84 +160,85 @@ export default function MenuClient({ restaurantId: _restaurantId, targetFoodCost
   return (
     <div className="p-8 max-w-6xl mx-auto">
       {/* Page header */}
-      <div className="mb-6 pb-5 border-b border-gray-200">
-        <p className="text-xs font-semibold text-emerald-600 uppercase tracking-widest mb-1">Menu</p>
-        <h1 className="text-2xl font-bold text-gray-900">Carte & marges</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Objectif food cost : <span className="font-semibold text-gray-700">{targetFoodCostPct}%</span> · {totalItems} article{totalItems !== 1 ? "s" : ""} · Cliquez sur un prix pour le modifier
+      <div className="mb-6">
+        <p className="text-xs font-semibold text-primary uppercase tracking-widest mb-1">Menu</p>
+        <h1 className="text-3xl font-extrabold text-primary tracking-tight">Carte & marges</h1>
+        <p className="text-sm text-on-surface-variant/70 mt-1">
+          Objectif food cost : <span className="font-semibold text-on-surface">{targetFoodCostPct}%</span> · {totalItems} article{totalItems !== 1 ? "s" : ""} · Cliquez sur un prix pour le modifier
         </p>
       </div>
 
-      {/* Summary cards */}
+      {/* KPI cards — all derived from already-computed stats (no placeholders) */}
       {stats && (
-        <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           {(() => {
             const st = getStatus(stats.avgFoodCost, targetFoodCostPct);
-            const bar = st === "green" ? "bg-emerald-400" : st === "amber" ? "bg-amber-400" : "bg-red-400";
-            const val = st === "green" ? "text-emerald-700" : st === "amber" ? "text-amber-700" : "text-red-600";
+            const barColor = st === "green" ? "bg-primary" : st === "amber" ? "bg-amber" : "bg-red";
+            const valColor = st === "green" ? "text-primary" : st === "amber" ? "text-amber-dark" : "text-red";
+            const accent = st === "green" ? "border-primary" : st === "amber" ? "border-amber" : "border-red";
+            const barPct = Math.min(100, (stats.avgFoodCost / (targetFoodCostPct * 1.5)) * 100);
             return (
-              <div className="bg-white border border-gray-200 rounded-card shadow-card overflow-hidden">
-                <div className={`h-1 ${bar}`} />
-                <div className="p-5">
-                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Food cost moyen</p>
-                  <p className={`text-3xl font-bold ${val}`}>{stats.avgFoodCost.toFixed(1)}%</p>
-                  <div className="mt-2 flex items-center gap-2">
-                    <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full ${bar}`} style={{ width: `${Math.min(100, (stats.avgFoodCost / (targetFoodCostPct * 1.5)) * 100)}%` }} />
-                    </div>
-                    <span className="text-xs text-gray-400">obj. {targetFoodCostPct}%</span>
+              <div className={clsx("glass-card rounded-2xl p-5 flex flex-col gap-3 border-l-4", accent)}>
+                <div className="flex justify-between items-center">
+                  <span className="text-2xs font-bold uppercase tracking-widest text-on-surface-variant/60">Food cost moyen</span>
+                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary"><Gauge size={18} /></div>
+                </div>
+                <div className={clsx("text-2xl font-extrabold tabular-nums", valColor)}>{stats.avgFoodCost.toFixed(1)}%</div>
+                <div className="flex items-center gap-2">
+                  <div className="w-full bg-surface-container-highest rounded-full h-2">
+                    <div className={clsx("h-full rounded-full transition-all", barColor)} style={{ width: `${barPct}%` }} />
                   </div>
+                  <span className="text-2xs text-on-surface-variant/60 whitespace-nowrap">obj. {targetFoodCostPct}%</span>
                 </div>
               </div>
             );
           })()}
-          <div className="bg-white border border-gray-200 rounded-card shadow-card overflow-hidden">
-            <div className={`h-1 ${stats.offTarget > 0 ? "bg-red-400" : "bg-emerald-400"}`} />
-            <div className="p-5">
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Articles hors objectif</p>
-              <p className={`text-3xl font-bold ${stats.offTarget > 0 ? "text-red-600" : "text-emerald-700"}`}>{stats.offTarget}</p>
-              <p className="text-xs text-gray-400 mt-2">sur {stats.pricedCount} article{stats.pricedCount !== 1 ? "s" : ""} tarifé{stats.pricedCount !== 1 ? "s" : ""}</p>
+
+          <div className={clsx("glass-card rounded-2xl p-5 flex flex-col gap-3 border-l-4", stats.offTarget > 0 ? "border-red" : "border-primary")}>
+            <div className="flex justify-between items-center">
+              <span className="text-2xs font-bold uppercase tracking-widest text-on-surface-variant/60">Articles hors objectif</span>
+              <div className={clsx("w-10 h-10 rounded-full flex items-center justify-center", stats.offTarget > 0 ? "bg-red/10 text-red" : "bg-primary/10 text-primary")}><AlertTriangle size={18} /></div>
             </div>
+            <div className={clsx("text-2xl font-extrabold tabular-nums", stats.offTarget > 0 ? "text-red" : "text-primary")}>{stats.offTarget}</div>
+            <p className="text-2xs text-on-surface-variant/60">sur {stats.pricedCount} article{stats.pricedCount !== 1 ? "s" : ""} tarifé{stats.pricedCount !== 1 ? "s" : ""}</p>
           </div>
-          <div className="bg-white border border-gray-200 rounded-card shadow-card overflow-hidden">
-            <div className="h-1 bg-orange-400" />
-            <div className="p-5">
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Moins rentable</p>
-              <p className="text-base font-bold text-gray-900 truncate">{stats.worst.name}</p>
-              <p className="text-xs text-red-500 mt-1 font-medium">{foodCostPct(stats.worst)?.toFixed(1)}% food cost</p>
+
+          <div className="glass-card rounded-2xl p-5 flex flex-col gap-3 border-l-4 border-amber">
+            <div className="flex justify-between items-center">
+              <span className="text-2xs font-bold uppercase tracking-widest text-on-surface-variant/60">Moins rentable</span>
+              <div className="w-10 h-10 rounded-full bg-amber-light flex items-center justify-center text-amber-dark"><TrendingDown size={18} /></div>
             </div>
+            <div className="text-lg font-bold text-on-surface truncate">{stats.worst.name}</div>
+            <p className="text-2xs text-red font-semibold tabular-nums">{foodCostPct(stats.worst)?.toFixed(1)}% food cost</p>
           </div>
         </div>
       )}
 
-      {/* Filter tabs */}
-      <div className="flex gap-2 mb-5">
+      {/* Filter pills — real client-side filter over computed food-cost status */}
+      <div className="flex flex-wrap gap-2 mb-5">
         {(["all", "green", "amber", "red"] as const).map((s) => (
           <button
             key={s}
             onClick={() => setFilterStatus(s)}
             className={clsx(
-              "px-4 py-2 text-xs font-semibold rounded-lg border transition",
+              "px-4 py-2 rounded-full text-xs font-semibold transition",
               filterStatus === s
-                ? s === "all" ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
-                  : s === "green" ? "bg-emerald-500 text-white border-emerald-500 shadow-sm"
-                  : s === "amber" ? "bg-amber-500 text-white border-amber-500 shadow-sm"
-                  : "bg-red-500 text-white border-red-500 shadow-sm"
-                : "bg-white text-gray-500 border-gray-200 hover:bg-gray-50 hover:text-gray-700"
+                ? "bg-primary text-on-primary nav-active-glow"
+                : "bg-surface-container-low text-on-surface-variant/70 hover:bg-surface-container"
             )}
           >
-            {s === "all" ? "Tous" : s === "green" ? "✓ Dans l'objectif" : s === "amber" ? "⚠ Légèrement dépassé" : "✗ Hors budget"}
+            {s === "all" ? "Tous" : s === "green" ? "Dans l'objectif" : s === "amber" ? "Légèrement dépassé" : "Hors budget"}
           </button>
         ))}
       </div>
 
       {/* Empty state */}
       {totalItems === 0 ? (
-        <div className="bg-white border border-[#E5E7EB] rounded-card p-12 text-center">
+        <div className="glass-card rounded-2xl p-12 text-center">
           <div className="text-4xl mb-3">📋</div>
-          <h2 className="text-base font-medium text-gray-900 mb-1">Aucun article au menu</h2>
-          <p className="text-sm text-gray-500 mb-5">Créez des recettes (fiches techniques) ou marquez des ingrédients comme revendus directement.</p>
-          <a href="/recipes" className="px-4 py-2 text-sm text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 transition inline-block">
+          <h2 className="text-base font-semibold text-on-surface mb-1">Aucun article au menu</h2>
+          <p className="text-sm text-on-surface-variant/70 mb-5">Créez des recettes (fiches techniques) ou marquez des ingrédients comme revendus directement.</p>
+          <a href="/recipes" className="inline-block px-5 py-2.5 text-sm font-semibold text-on-primary bg-primary rounded-xl hover:bg-primary-container transition">
             Aller aux recettes →
           </a>
         </div>
@@ -245,90 +246,87 @@ export default function MenuClient({ restaurantId: _restaurantId, targetFoodCost
         <div className="space-y-7">
           {grouped.map(({ category, items: catItems }) => (
             <div key={category}>
-              {/* Category header */}
+              {/* Category section title */}
               <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-bold text-gray-800 uppercase tracking-wide flex items-center gap-2">
-                  <span className="w-1.5 h-5 rounded-full bg-emerald-500 inline-block" />
-                  {category}
-                </h2>
-                <span className="text-xs text-gray-400">{catItems.length} article{catItems.length !== 1 ? "s" : ""}</span>
+                <div className="flex items-center gap-3">
+                  <div className="w-1.5 h-6 bg-primary rounded-full" />
+                  <h2 className="text-lg font-bold text-on-surface">{category}</h2>
+                </div>
+                <span className="text-2xs font-bold uppercase tracking-widest text-on-surface-variant/60">{catItems.length} article{catItems.length !== 1 ? "s" : ""}</span>
               </div>
 
-              <div className="bg-white border border-[#E5E7EB] rounded-card overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-[#E5E7EB] bg-gray-50">
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Article</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide">Coût</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide">Prix carte</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide">Food cost %</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide">Marge %</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide">Marge brute</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide">Prix suggéré</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#E5E7EB]">
-                    {catItems.map((it) => {
-                      const fcp = foodCostPct(it);
-                      const mp = marginPct(it);
-                      const gp = grossProfit(it);
-                      const sp = suggestedPrice(it);
-                      const status = fcp !== null ? getStatus(fcp, targetFoodCostPct) : null;
-                      return (
-                        <tr key={it.key} className={clsx(
-                          "transition",
-                          status === "green" ? "bg-emerald-50/40 hover:bg-emerald-50" :
-                          status === "amber" ? "bg-amber-50/40 hover:bg-amber-50" :
-                          status === "red" ? "bg-red-50/40 hover:bg-red-50" : "hover:bg-gray-50"
-                        )}>
-                          <td className="px-4 py-3 font-medium text-gray-900">
-                            {it.name}
-                            {it.type === "product" && <span className="ml-2 px-1.5 py-0.5 text-2xs rounded bg-blue-50 text-blue-500 uppercase tracking-wide">revente</span>}
-                          </td>
-                          <td className="px-4 py-3 text-right text-gray-600">€{it.cost.toFixed(2)}</td>
-                          <td className="px-4 py-3 text-right">
-                            {editingKey === it.key ? (
-                              <div className="flex items-center gap-1 justify-end">
-                                <span className="text-gray-400 text-xs">€</span>
-                                <input
-                                  autoFocus type="number" min="0" step="0.01" value={priceInput}
-                                  onChange={(e) => setPriceInput(e.target.value)}
-                                  onKeyDown={(e) => { if (e.key === "Enter") savePrice(it); if (e.key === "Escape") setEditingKey(null); }}
-                                  className="w-20 px-2 py-1 text-sm border border-emerald-400 rounded outline-none"
-                                />
-                                <button onClick={() => savePrice(it)} className="text-emerald-600"><Check size={14} /></button>
-                                <button onClick={() => setEditingKey(null)} className="text-gray-400"><X size={14} /></button>
-                              </div>
-                            ) : (
-                              <button onClick={() => startEdit(it)} className="flex items-center gap-1 group text-gray-900 hover:text-emerald-700 ml-auto">
-                                {it.price ? `€${Number(it.price).toFixed(2)}` : <span className="text-gray-400 italic text-xs">Saisir le prix…</span>}
-                                <Pencil size={11} className="text-gray-300 group-hover:text-emerald-500 transition" />
-                              </button>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            {fcp !== null ? (
-                              <span className={clsx("font-medium", status === "green" ? "text-emerald-600" : status === "amber" ? "text-amber-600" : "text-red-600")}>{fcp.toFixed(1)}%</span>
-                            ) : <span className="text-gray-300">—</span>}
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            {mp !== null ? (
-                              <span className={clsx("font-medium", mp >= 70 ? "text-emerald-600" : mp >= 50 ? "text-amber-600" : "text-red-600")}>{mp.toFixed(1)}%</span>
-                            ) : <span className="text-gray-300">—</span>}
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            {gp !== null ? (
-                              <span className={clsx("font-medium", gp > 0 ? "text-emerald-600" : "text-red-600")}>€{gp.toFixed(2)}</span>
-                            ) : <span className="text-gray-300">—</span>}
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            <span className="text-blue-600 font-medium">€{sp.toFixed(2)}</span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              <div className="glass-card rounded-2xl overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead className="bg-surface-container-low/50 border-b border-outline-variant/20">
+                      <tr>
+                        <th className="px-5 py-3 text-left text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Article</th>
+                        <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Coût</th>
+                        <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Prix carte</th>
+                        <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Food cost %</th>
+                        <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Marge %</th>
+                        <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Marge brute</th>
+                        <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Prix suggéré</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-outline-variant/10">
+                      {catItems.map((it) => {
+                        const fcp = foodCostPct(it);
+                        const mp = marginPct(it);
+                        const gp = grossProfit(it);
+                        const sp = suggestedPrice(it);
+                        const status = fcp !== null ? getStatus(fcp, targetFoodCostPct) : null;
+                        return (
+                          <tr key={it.key} className="hover:bg-surface-container-low/40 transition-colors">
+                            <td className="px-5 py-4 font-medium text-on-surface">
+                              {it.name}
+                              {it.type === "product" && <span className="ml-2 px-1.5 py-0.5 text-2xs rounded bg-blue-light text-blue uppercase tracking-wide">revente</span>}
+                            </td>
+                            <td className="px-5 py-4 text-right tabular-nums text-on-surface-variant/80">€{it.cost.toFixed(2)}</td>
+                            <td className="px-5 py-4 text-right">
+                              {editingKey === it.key ? (
+                                <div className="flex items-center gap-1 justify-end">
+                                  <span className="text-on-surface-variant/50 text-xs">€</span>
+                                  <input
+                                    autoFocus type="number" min="0" step="0.01" value={priceInput}
+                                    onChange={(e) => setPriceInput(e.target.value)}
+                                    onKeyDown={(e) => { if (e.key === "Enter") savePrice(it); if (e.key === "Escape") setEditingKey(null); }}
+                                    className="w-20 px-2 py-1 text-sm bg-surface-container-low border border-primary rounded-lg outline-none focus:ring-2 focus:ring-primary/20"
+                                  />
+                                  <button onClick={() => savePrice(it)} className="text-primary"><Check size={14} /></button>
+                                  <button onClick={() => setEditingKey(null)} className="text-on-surface-variant/50"><X size={14} /></button>
+                                </div>
+                              ) : (
+                                <button onClick={() => startEdit(it)} className="flex items-center gap-1 group text-on-surface hover:text-primary ml-auto tabular-nums">
+                                  {it.price ? `€${Number(it.price).toFixed(2)}` : <span className="text-on-surface-variant/50 italic text-xs">Saisir le prix…</span>}
+                                  <Pencil size={11} className="text-on-surface-variant/30 group-hover:text-primary transition" />
+                                </button>
+                              )}
+                            </td>
+                            <td className="px-5 py-4 text-right">
+                              {fcp !== null ? (
+                                <span className={clsx("font-semibold tabular-nums", status === "green" ? "text-primary" : status === "amber" ? "text-amber-dark" : "text-red")}>{fcp.toFixed(1)}%</span>
+                              ) : <span className="text-on-surface-variant/30">—</span>}
+                            </td>
+                            <td className="px-5 py-4 text-right">
+                              {mp !== null ? (
+                                <span className={clsx("font-semibold tabular-nums", mp >= 70 ? "text-primary" : mp >= 50 ? "text-amber-dark" : "text-red")}>{mp.toFixed(1)}%</span>
+                              ) : <span className="text-on-surface-variant/30">—</span>}
+                            </td>
+                            <td className="px-5 py-4 text-right">
+                              {gp !== null ? (
+                                <span className={clsx("font-semibold tabular-nums", gp > 0 ? "text-primary" : "text-red")}>€{gp.toFixed(2)}</span>
+                              ) : <span className="text-on-surface-variant/30">—</span>}
+                            </td>
+                            <td className="px-5 py-4 text-right">
+                              <span className="text-blue font-semibold tabular-nums">€{sp.toFixed(2)}</span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           ))}
