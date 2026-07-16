@@ -4,7 +4,7 @@ import { useState, useMemo } from "react";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { Warehouse, TrendingDown, TrendingUp, AlertTriangle, Check, Loader2, History, ClipboardList, Trash2, Download, Search } from "lucide-react";
+import { Warehouse, TrendingDown, TrendingUp, AlertTriangle, Check, Loader2, History, ClipboardList, Trash2, Download, Search, Package } from "lucide-react";
 import clsx from "clsx";
 
 type Ingredient = {
@@ -362,37 +362,38 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
   return (
     <div className="p-8 max-w-5xl mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-xl font-medium text-gray-900 flex items-center gap-2">
-            <Warehouse size={20} className="text-gray-400" /> Inventaire
-          </h1>
-          <p className="text-sm text-gray-500 mt-0.5">Stock théorique mis à jour automatiquement via les réceptions et les ventes</p>
+          <p className="text-xs font-semibold text-primary uppercase tracking-widest mb-1">Opérations</p>
+          <h1 className="text-3xl font-extrabold text-primary tracking-tight">Inventaire</h1>
+          <p className="text-sm text-on-surface-variant/70 mt-1">Stock théorique mis à jour automatiquement via les réceptions et les ventes.</p>
         </div>
-        {/* KPI pills */}
-        <div className="flex items-center gap-3">
-          <a href="/api/export/inventaire"
-            className="flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition shadow-sm">
-            <Download size={15} className="text-gray-400" /> Exporter Excel
-          </a>
-          <div className="text-right bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2">
-            <p className="text-xs text-emerald-600 font-medium">Valeur du stock</p>
-            <p className="text-lg font-bold text-emerald-700">€{totalValue.toFixed(2)}</p>
-          </div>
-          {lowStockCount > 0 && (
-            <div className="text-right bg-red-50 border border-red-200 rounded-lg px-4 py-2 flex items-center gap-2">
-              <AlertTriangle size={16} className="text-red-500" />
-              <div>
-                <p className="text-xs text-red-600 font-medium">À commander</p>
-                <p className="text-lg font-bold text-red-600">{lowStockCount}</p>
-              </div>
-            </div>
-          )}
-        </div>
+        <a href="/api/export/inventaire"
+          className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-on-surface-variant border border-outline-variant/40 rounded-xl hover:bg-surface-container-low transition w-fit">
+          <Download size={15} /> Exporter Excel
+        </a>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 mb-5 border-b border-gray-200">
+      {/* KPI glass cards — derived from live data */}
+      <section className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+        <div className="glass-card rounded-2xl p-5 flex flex-col gap-3 border-l-4 border-primary">
+          <div className="flex justify-between items-center">
+            <span className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Valeur du stock</span>
+            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary"><Warehouse size={18} /></div>
+          </div>
+          <h3 className="text-2xl font-extrabold text-primary tabular-nums">€{totalValue.toFixed(2)}</h3>
+        </div>
+        <div className={clsx("glass-card rounded-2xl p-5 flex flex-col gap-3 border-l-4", lowStockCount > 0 ? "border-red" : "border-outline-variant/30")}>
+          <div className="flex justify-between items-center">
+            <span className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">À commander</span>
+            <div className={clsx("w-10 h-10 rounded-full flex items-center justify-center", lowStockCount > 0 ? "bg-red-light text-red" : "bg-surface-container text-on-surface-variant/50")}><AlertTriangle size={18} /></div>
+          </div>
+          <h3 className={clsx("text-2xl font-extrabold tabular-nums", lowStockCount > 0 ? "text-red" : "text-on-surface")}>{lowStockCount}</h3>
+        </div>
+      </section>
+
+      {/* Tabs — glass segmented control */}
+      <div className="glass-card rounded-2xl p-2 mb-6 flex flex-wrap gap-1">
         {[
           { key: "history", label: "Stock & mouvements", icon: Warehouse },
           { key: "count", label: "Prise d'inventaire", icon: Check },
@@ -404,8 +405,8 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
             key={key}
             onClick={() => setTab(key as any)}
             className={clsx(
-              "flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition",
-              tab === key ? "border-emerald-500 text-emerald-600" : "border-transparent text-gray-500 hover:text-gray-700"
+              "flex items-center gap-1.5 px-4 py-2 rounded-xl text-2xs font-bold uppercase tracking-wider transition-all duration-300",
+              tab === key ? "bg-primary-container text-on-primary-container nav-active-glow" : "text-on-surface-variant/60 hover:bg-surface-container-low"
             )}
           >
             <Icon size={14} /> {label}
@@ -418,27 +419,27 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
       {(tab === "count" || tab === "count-f") && (
         <>
           {countDone && (
-            <div className="mb-4 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 flex items-center gap-2">
+            <div className="mb-4 text-sm text-primary bg-emerald-50 border border-primary/20 rounded-xl px-4 py-2.5 flex items-center gap-2">
               <Check size={15} /> {countDone}
             </div>
           )}
 
           {!activeSession ? (
-            <div className="bg-white border border-gray-200 rounded-xl p-8 max-w-md mx-auto text-center">
-              <ClipboardList size={28} className="text-gray-300 mx-auto mb-3" />
-              <h2 className="text-base font-semibold text-gray-900 mb-1">Nouvelle fiche d&apos;inventaire{countKind === "fournitures" ? " fournitures" : ""}</h2>
+            <div className="glass-card rounded-2xl p-8 max-w-md mx-auto text-center">
+              <ClipboardList size={28} className="text-on-surface-variant/30 mx-auto mb-3" />
+              <h2 className="text-lg font-semibold text-on-surface mb-1">Nouvelle fiche d&apos;inventaire{countKind === "fournitures" ? " fournitures" : ""}</h2>
               {countKind === "fournitures" && kindIngredients.length === 0 && (
-                <p className="text-sm text-amber-600 mb-3">Aucun ingrédient n&apos;a le tag « Fournitures ». Assigne ce tag à tes fournitures (couverts, emballages…) depuis la page Ingrédients.</p>
+                <p className="text-sm text-amber-dark mb-3">Aucun ingrédient n&apos;a le tag « Fournitures ». Assigne ce tag à tes fournitures (couverts, emballages…) depuis la page Ingrédients.</p>
               )}
-              <p className="text-sm text-gray-500 mb-4">Choisis la date et l&apos;heure de l&apos;inventaire (pour savoir si c&apos;est avant ou après service). Tu peux la laisser en brouillon et la finir plus tard.</p>
+              <p className="text-sm text-on-surface-variant/70 mb-4">Choisis la date et l&apos;heure de l&apos;inventaire (pour savoir si c&apos;est avant ou après service). Tu peux la laisser en brouillon et la finir plus tard.</p>
               <div className="flex flex-wrap items-end gap-2 justify-center">
                 <div className="text-left">
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Date &amp; heure de l&apos;inventaire</label>
+                  <label className="block text-2xs font-bold uppercase tracking-wide text-on-surface-variant/60 mb-1">Date &amp; heure de l&apos;inventaire</label>
                   <input type="datetime-local" value={newClosingAt} onChange={(e) => setNewClosingAt(e.target.value)}
-                    className="px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-emerald-500" />
+                    className="px-3 py-2 text-sm bg-surface-container-low border-none rounded-xl outline-none focus:ring-2 focus:ring-primary/20 text-on-surface" />
                 </div>
                 <button onClick={createDraft} disabled={creatingDraft}
-                  className="px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition">
+                  className="px-5 py-2.5 bg-primary text-on-primary text-sm font-semibold rounded-xl hover:bg-primary-container disabled:opacity-50 transition">
                   {creatingDraft ? "Création…" : "Créer la fiche"}
                 </button>
               </div>
@@ -446,21 +447,21 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
           ) : (
           <>
           {/* Fiche header + actions */}
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-4 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl">
+          <div className="glass-card rounded-2xl flex flex-wrap items-center justify-between gap-3 mb-4 px-5 py-4">
             <div>
-              <p className="text-sm font-semibold text-gray-900">
+              <p className="text-base font-semibold text-on-surface">
                 Inventaire du {activeSession.closing_at ? new Date(activeSession.closing_at).toLocaleString("fr-FR", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"}
               </p>
-              <p className="text-2xs text-amber-600 uppercase tracking-wide font-semibold">Brouillon · {countSummary.counted} produit(s) compté(s)</p>
+              <p className="text-2xs text-amber-dark uppercase tracking-wide font-bold">Brouillon · {countSummary.counted} produit(s) compté(s)</p>
             </div>
             <div className="flex items-center gap-2">
-              <button onClick={() => { setActiveSessionId(null); setCounts({}); }} className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700">Quitter</button>
+              <button onClick={() => { setActiveSessionId(null); setCounts({}); }} className="px-3 py-1.5 text-xs text-on-surface-variant/60 hover:text-on-surface">Quitter</button>
               <button onClick={() => saveSession(false)} disabled={validatingCount}
-                className="px-3.5 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition">
+                className="px-4 py-2 text-sm font-semibold text-on-surface-variant border border-outline-variant/40 rounded-xl hover:bg-surface-container-low disabled:opacity-50 transition">
                 Enregistrer brouillon
               </button>
               <button onClick={() => saveSession(true)} disabled={validatingCount || countSummary.counted === 0}
-                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 disabled:opacity-40 transition">
+                className="flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary text-sm font-semibold rounded-xl hover:bg-primary-container disabled:opacity-40 transition">
                 {validatingCount ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Finaliser
               </button>
             </div>
@@ -468,36 +469,37 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
 
           {/* Summary */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
-            <div className="bg-white border border-gray-200 rounded-xl p-4">
-              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Manquant (écart inexpliqué)</p>
-              <p className="text-2xl font-bold text-red-600">-€{countSummary.manque.toFixed(2)}</p>
+            <div className="glass-card rounded-2xl p-5 flex flex-col gap-2 border-l-4 border-red">
+              <p className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Manquant (écart inexpliqué)</p>
+              <p className="text-2xl font-extrabold text-red tabular-nums">-€{countSummary.manque.toFixed(2)}</p>
             </div>
-            <div className="bg-white border border-gray-200 rounded-xl p-4">
-              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Surplus trouvé</p>
-              <p className="text-2xl font-bold text-emerald-600">+€{countSummary.surplus.toFixed(2)}</p>
+            <div className="glass-card rounded-2xl p-5 flex flex-col gap-2 border-l-4 border-primary">
+              <p className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Surplus trouvé</p>
+              <p className="text-2xl font-extrabold text-primary tabular-nums">+€{countSummary.surplus.toFixed(2)}</p>
             </div>
-            <div className="bg-white border border-gray-200 rounded-xl p-4">
-              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Écart net · {countSummary.counted} comptés</p>
-              <p className={clsx("text-2xl font-bold", countSummary.net < 0 ? "text-red-600" : "text-emerald-600")}>
+            <div className={clsx("glass-card rounded-2xl p-5 flex flex-col gap-2 border-l-4", countSummary.net < 0 ? "border-red" : "border-primary")}>
+              <p className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Écart net · {countSummary.counted} comptés</p>
+              <p className={clsx("text-2xl font-extrabold tabular-nums", countSummary.net < 0 ? "text-red" : "text-primary")}>
                 {countSummary.net < 0 ? "-" : "+"}€{Math.abs(countSummary.net).toFixed(2)}
               </p>
             </div>
           </div>
 
-          <p className="text-sm text-gray-500 mb-3">Saisis le stock physique compté. <b>Enregistrer brouillon</b> ne touche pas au stock ; <b>Finaliser</b> applique les écarts et archive la fiche.</p>
+          <p className="text-sm text-on-surface-variant/70 mb-3">Saisis le stock physique compté. <b>Enregistrer brouillon</b> ne touche pas au stock ; <b>Finaliser</b> applique les écarts et archive la fiche.</p>
 
-          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 text-xs font-medium text-gray-500 uppercase tracking-wide">
-                  <th className="text-left px-4 py-3">Ingrédient</th>
-                  <th className="text-right px-4 py-3">Théorique</th>
-                  <th className="text-right px-4 py-3">Compté ({"réel"})</th>
-                  <th className="text-right px-4 py-3">Écart</th>
-                  <th className="text-right px-4 py-3">Valeur écart</th>
+          <div className="glass-card rounded-2xl overflow-hidden">
+            <div className="overflow-x-auto">
+            <table className="w-full border-collapse">
+              <thead className="bg-surface-container-low/50 border-b border-outline-variant/20">
+                <tr>
+                  <th className="text-left px-5 py-3 text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Ingrédient</th>
+                  <th className="text-right px-5 py-3 text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Théorique</th>
+                  <th className="text-right px-5 py-3 text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Compté ({"réel"})</th>
+                  <th className="text-right px-5 py-3 text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Écart</th>
+                  <th className="text-right px-5 py-3 text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Valeur écart</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-outline-variant/10">
                 {filtered.map((ing) => {
                   const theo = Number(ing.stock_qty ?? 0);
                   const cmup = Number(ing.cmup ?? ing.cost_per_base_unit ?? 0);
@@ -505,31 +507,31 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
                   const diff = real === null ? null : real - theo;
                   const valueGap = diff === null ? null : diff * cmup;
                   return (
-                    <tr key={ing.id} className="hover:bg-gray-50 transition">
-                      <td className="px-4 py-3 font-medium text-gray-900">{ing.name}<span className="block text-xs text-gray-400 font-normal">{ing.category || "—"}</span></td>
-                      <td className="px-4 py-3 text-right text-gray-600">{formatQty(theo, ing.unit)}</td>
-                      <td className="px-4 py-3 text-right">
+                    <tr key={ing.id} className="hover:bg-surface-container-low/40 transition-colors">
+                      <td className="px-5 py-4 font-semibold text-on-surface">{ing.name}<span className="block text-2xs text-on-surface-variant/50 font-normal">{ing.category || "—"}</span></td>
+                      <td className="px-5 py-4 text-right text-on-surface-variant/80 tabular-nums">{formatQty(theo, ing.unit)}</td>
+                      <td className="px-5 py-4 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <input
                             type="number" min="0" step="any"
                             value={counts[ing.id] ?? ""}
                             onChange={(e) => setCounts((p) => ({ ...p, [ing.id]: e.target.value }))}
                             placeholder="—"
-                            className="w-24 px-2 py-1 text-sm text-right border border-gray-200 rounded-lg outline-none focus:border-emerald-400"
+                            className="w-24 px-2 py-1.5 text-sm text-right bg-surface-container-low border-none rounded-xl outline-none focus:ring-2 focus:ring-primary/20"
                           />
-                          <span className="text-xs text-gray-400 w-6">{displayUnitLabel(ing.unit)}</span>
+                          <span className="text-xs text-on-surface-variant/50 w-6">{displayUnitLabel(ing.unit)}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-right">
-                        {diff === null ? <span className="text-gray-300">—</span> : (
-                          <span className={clsx("font-medium", diff < 0 ? "text-red-500" : diff > 0 ? "text-emerald-600" : "text-gray-400")}>
+                      <td className="px-5 py-4 text-right">
+                        {diff === null ? <span className="text-on-surface-variant/30">—</span> : (
+                          <span className={clsx("font-semibold tabular-nums", diff < 0 ? "text-red" : diff > 0 ? "text-primary" : "text-on-surface-variant/40")}>
                             {diff > 0 ? "+" : ""}{formatQty(Math.abs(diff), ing.unit).replace(/^/, diff < 0 ? "-" : "")}
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right">
-                        {valueGap === null ? <span className="text-gray-300">—</span> : (
-                          <span className={clsx("font-medium", valueGap < 0 ? "text-red-600" : valueGap > 0 ? "text-emerald-600" : "text-gray-400")}>
+                      <td className="px-5 py-4 text-right">
+                        {valueGap === null ? <span className="text-on-surface-variant/30">—</span> : (
+                          <span className={clsx("font-semibold tabular-nums", valueGap < 0 ? "text-red" : valueGap > 0 ? "text-primary" : "text-on-surface-variant/40")}>
                             {valueGap < 0 ? "-" : "+"}€{Math.abs(valueGap).toFixed(2)}
                           </span>
                         )}
@@ -539,8 +541,9 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
                 })}
               </tbody>
             </table>
+            </div>
           </div>
-          <p className="text-xs text-gray-400 mt-3">
+          <p className="text-xs text-on-surface-variant/50 mt-3">
             À la finalisation : le stock théorique est aligné sur le réel. Un manquant devient une perte « Écart inventaire »
             (vol, sur-portionnage, oublis), un surplus devient un ajustement. Les pertes déjà saisies (DLC, casse) ne sont pas recomptées ici.
           </p>
@@ -554,52 +557,52 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
         <div className="space-y-3">
           <div className="flex justify-end">
             <button onClick={() => { setActiveSessionId(null); setCountDone(null); setTab(tab === "sessions-f" ? "count-f" : "count"); }}
-              className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition">
+              className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-on-primary bg-primary rounded-xl hover:bg-primary-container transition">
               <ClipboardList size={14} /> Nouvel inventaire{tab === "sessions-f" ? " fournitures" : ""}
             </button>
           </div>
           {(tab === "sessions-f" ? fournitureSessions : foodSessions).length === 0 ? (
-            <div className="bg-white border border-gray-200 rounded-xl p-10 text-center">
-              <ClipboardList size={28} className="text-gray-300 mx-auto mb-3" />
-              <p className="text-sm text-gray-500">Aucun inventaire pour l'instant. Crée ta première fiche.</p>
+            <div className="glass-card rounded-2xl p-10 text-center">
+              <ClipboardList size={28} className="text-on-surface-variant/30 mx-auto mb-3" />
+              <p className="text-sm text-on-surface-variant/70">Aucun inventaire pour l'instant. Crée ta première fiche.</p>
             </div>
           ) : (
             (tab === "sessions-f" ? fournitureSessions : foodSessions).map((s) => {
               const open = expandedSession === s.id;
               const draft = s.status === "draft";
               return (
-                <div key={s.id} className={clsx("bg-white border rounded-xl overflow-hidden", draft ? "border-amber-200" : "border-gray-200")}>
+                <div key={s.id} className={clsx("glass-card rounded-2xl overflow-hidden", draft && "border-l-4 border-amber")}>
                   <div className="flex items-center gap-4 px-5 py-4">
                     <button onClick={() => draft ? loadDraft(s) : setExpandedSession(open ? null : s.id)} className="flex-1 text-left">
-                      <p className="font-medium text-gray-900 flex items-center gap-2 flex-wrap">
+                      <p className="font-semibold text-on-surface flex items-center gap-2 flex-wrap">
                         Inventaire du {new Date(s.closing_at ?? s.created_at).toLocaleString("fr-FR", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}
-                        <span className={clsx("px-1.5 py-0.5 rounded text-2xs font-semibold uppercase", draft ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700")}>
+                        <span className={clsx("px-2.5 py-1 rounded-full text-2xs font-bold uppercase tracking-wide", draft ? "bg-amber-light text-amber-dark" : "bg-emerald-50 text-primary")}>
                           {draft ? "Brouillon" : "Finalisé"}
                         </span>
                       </p>
-                      <p className="text-xs text-gray-400 mt-0.5">{s.items_counted} produit{s.items_counted !== 1 ? "s" : ""} compté{s.items_counted !== 1 ? "s" : ""}</p>
+                      <p className="text-2xs text-on-surface-variant/50 mt-0.5">{s.items_counted} produit{s.items_counted !== 1 ? "s" : ""} compté{s.items_counted !== 1 ? "s" : ""}</p>
                     </button>
                     <div className="flex items-center gap-4 text-sm">
                       <div className="text-right">
-                        <p className="text-2xs text-gray-400 uppercase">Manquant</p>
-                        <p className="font-semibold text-red-500">-€{Number(s.manquant_value).toFixed(2)}</p>
+                        <p className="text-2xs text-on-surface-variant/50 uppercase tracking-wide">Manquant</p>
+                        <p className="font-semibold text-red tabular-nums">-€{Number(s.manquant_value).toFixed(2)}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-2xs text-gray-400 uppercase">Surplus</p>
-                        <p className="font-semibold text-emerald-600">+€{Number(s.surplus_value).toFixed(2)}</p>
+                        <p className="text-2xs text-on-surface-variant/50 uppercase tracking-wide">Surplus</p>
+                        <p className="font-semibold text-primary tabular-nums">+€{Number(s.surplus_value).toFixed(2)}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-2xs text-gray-400 uppercase">Écart net</p>
-                        <p className={clsx("font-bold", Number(s.net_value) < 0 ? "text-red-600" : "text-emerald-700")}>
+                        <p className="text-2xs text-on-surface-variant/50 uppercase tracking-wide">Écart net</p>
+                        <p className={clsx("font-bold tabular-nums", Number(s.net_value) < 0 ? "text-red" : "text-primary")}>
                           {Number(s.net_value) < 0 ? "-" : "+"}€{Math.abs(Number(s.net_value)).toFixed(2)}
                         </p>
                       </div>
                       {draft ? (
-                        <button onClick={() => loadDraft(s)} className="px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition">
+                        <button onClick={() => loadDraft(s)} className="px-3 py-1.5 text-2xs font-bold uppercase tracking-wide text-primary bg-emerald-50 border border-primary/20 rounded-xl hover:bg-emerald-100 transition">
                           Continuer →
                         </button>
                       ) : (
-                        <button onClick={() => setExpandedSession(open ? null : s.id)} className="text-gray-400">
+                        <button onClick={() => setExpandedSession(open ? null : s.id)} className="text-on-surface-variant/40">
                           {open ? <TrendingUp size={16} className="rotate-180" /> : <TrendingDown size={16} />}
                         </button>
                       )}
@@ -607,10 +610,10 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
                   </div>
 
                   {open && !draft && (
-                    <div className="border-t border-gray-100 px-5 py-4 overflow-x-auto">
+                    <div className="border-t border-outline-variant/10 bg-surface-container-low/30 px-5 py-4 overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead>
-                          <tr className="text-2xs text-gray-400 uppercase tracking-wider">
+                          <tr className="text-2xs text-on-surface-variant/50 uppercase tracking-wider">
                             <th className="text-left pb-2">Produit</th>
                             <th className="text-right pb-2">Théorique</th>
                             <th className="text-right pb-2">Compté</th>
@@ -618,20 +621,20 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
                             <th className="text-right pb-2">Valeur</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-50">
+                        <tbody className="divide-y divide-outline-variant/10">
                           {(s.inventory_lines ?? []).slice().sort((a, b) => Number(a.ecart_value ?? 0) - Number(b.ecart_value ?? 0)).map((l, i) => {
                             const u = l.unit ?? "unit";
                             const ec = Number(l.ecart ?? 0);
                             const ev = Number(l.ecart_value ?? 0);
                             return (
                               <tr key={i}>
-                                <td className="py-1.5 text-gray-700">{l.ingredient_name ?? "—"}</td>
-                                <td className="py-1.5 text-right text-gray-500">{formatQty(Number(l.theoretical_qty ?? 0), u)}</td>
-                                <td className="py-1.5 text-right text-gray-700">{formatQty(Number(l.counted_qty ?? 0), u)}</td>
-                                <td className={clsx("py-1.5 text-right font-medium", ec < 0 ? "text-red-500" : ec > 0 ? "text-emerald-600" : "text-gray-400")}>
+                                <td className="py-1.5 text-on-surface-variant">{l.ingredient_name ?? "—"}</td>
+                                <td className="py-1.5 text-right text-on-surface-variant/60 tabular-nums">{formatQty(Number(l.theoretical_qty ?? 0), u)}</td>
+                                <td className="py-1.5 text-right text-on-surface-variant tabular-nums">{formatQty(Number(l.counted_qty ?? 0), u)}</td>
+                                <td className={clsx("py-1.5 text-right font-medium tabular-nums", ec < 0 ? "text-red" : ec > 0 ? "text-primary" : "text-on-surface-variant/40")}>
                                   {ec === 0 ? "—" : `${ec > 0 ? "+" : "-"}${formatQty(Math.abs(ec), u)}`}
                                 </td>
-                                <td className={clsx("py-1.5 text-right", ev < 0 ? "text-red-600" : ev > 0 ? "text-emerald-600" : "text-gray-400")}>
+                                <td className={clsx("py-1.5 text-right tabular-nums", ev < 0 ? "text-red" : ev > 0 ? "text-primary" : "text-on-surface-variant/40")}>
                                   {ev === 0 ? "—" : `${ev < 0 ? "-" : "+"}€${Math.abs(ev).toFixed(2)}`}
                                 </td>
                               </tr>
@@ -650,73 +653,95 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
 
       {/* HISTORY TAB */}
       {tab === "history" && (
-        <div className="space-y-3">
+        <div className="space-y-4">
           <div className="relative max-w-sm">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/40" />
             <input value={moveSearch} onChange={(e) => setMoveSearch(e.target.value)} placeholder="Rechercher un ingrédient…"
-              className="w-full pl-9 pr-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500" />
+              className="w-full pl-9 pr-3 py-2 text-sm bg-surface-container-low border-none rounded-xl outline-none focus:ring-2 focus:ring-primary/20 placeholder:text-on-surface-variant/40" />
           </div>
 
-          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden divide-y divide-gray-50">
+          <div className="glass-card rounded-2xl overflow-hidden">
             {stockRows.length === 0 ? (
-              <div className="p-10 text-center text-gray-400 text-sm">Aucun ingrédient.</div>
-            ) : stockRows.map(({ ing, qty, value, moves }) => {
-              const open = false; // rows now link to a dedicated history page instead of expanding
-              return (
-                <div key={ing.id}>
-                  <Link href={`/ingredients/${ing.id}/history`} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition text-left">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900">{ing.name}</p>
-                      <p className="text-2xs text-gray-400">{ing.category || "—"} · {moves.length} mouvement{moves.length !== 1 ? "s" : ""}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-semibold text-gray-900">{formatQty(qty, ing.unit)}</p>
-                      <p className="text-2xs text-gray-400">{value > 0 ? `€${value.toFixed(2)}` : "—"}</p>
-                    </div>
-                    <ChevronRight size={16} className="text-gray-300" />
-                  </Link>
+              <div className="p-10 text-center text-on-surface-variant/50 text-sm">Aucun ingrédient.</div>
+            ) : (
+              <div className="divide-y divide-outline-variant/10">
+                {stockRows.map(({ ing, qty, value, moves }) => {
+                  const open = false; // rows now link to a dedicated history page instead of expanding
+                  const low = needsReorder(ing);
+                  return (
+                    <div key={ing.id}>
+                      <Link href={`/ingredients/${ing.id}/history`}
+                        className={clsx(
+                          "w-full flex items-center gap-3 px-5 py-4 hover:bg-surface-container-low/40 transition-colors text-left",
+                          low && "border-l-4 border-red/40"
+                        )}>
+                        <div className={clsx("w-10 h-10 rounded-xl flex items-center justify-center shrink-0", low ? "bg-red-light text-red" : "bg-tertiary-fixed text-primary")}>
+                          <Package size={18} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className={clsx("text-sm font-semibold truncate", low ? "text-red" : "text-on-surface")}>{ing.name}</p>
+                            {ing.category && (
+                              <span className="inline-flex px-2.5 py-1 rounded-full bg-surface-container text-on-surface-variant text-2xs font-bold uppercase tracking-wide">{ing.category}</span>
+                            )}
+                            {low && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-red-light text-red text-2xs font-bold uppercase tracking-wide">
+                                <AlertTriangle size={11} /> À commander
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-2xs text-on-surface-variant/50 mt-0.5">{moves.length} mouvement{moves.length !== 1 ? "s" : ""}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className={clsx("text-sm font-semibold tabular-nums", low ? "text-red" : "text-on-surface")}>{formatQty(qty, ing.unit)}</p>
+                          <p className="text-2xs text-on-surface-variant/50 tabular-nums">{value > 0 ? `€${value.toFixed(2)}` : "—"}</p>
+                        </div>
+                        <ChevronRight size={16} className="text-on-surface-variant/30 shrink-0" />
+                      </Link>
 
-                  {open && (
-                    <div className="bg-gray-50/50 border-t border-gray-100 px-4 py-3">
-                      {moves.length === 0 ? (
-                        <p className="text-xs text-gray-400 py-2">Aucun mouvement pour ce produit.</p>
-                      ) : (
-                        movesByMonth(moves).map(([mk, ms]) => {
-                          const inQty = ms.filter((m) => m.movement_type === "in").reduce((s, m) => s + m.qty, 0);
-                          const outQty = ms.filter((m) => m.movement_type === "out" || m.movement_type === "loss").reduce((s, m) => s + m.qty, 0);
-                          return (
-                            <div key={mk} className="mb-3 last:mb-0">
-                              <div className="flex items-center justify-between mb-1">
-                                <p className="text-2xs font-semibold text-gray-500 uppercase tracking-wide">{monthLabel(mk)}</p>
-                                <p className="text-2xs text-gray-400">
-                                  {inQty > 0 && <span className="text-emerald-600">+{formatQty(inQty, ing.unit)} reçu</span>}
-                                  {inQty > 0 && outQty > 0 && " · "}
-                                  {outQty > 0 && <span className="text-red-500">-{formatQty(outQty, ing.unit)} sorti</span>}
-                                </p>
-                              </div>
-                              <div className="space-y-1">
-                                {ms.map((m, i) => {
-                                  const meta = MOVE_META[m.movement_type] ?? MOVE_META.adjustment;
-                                  return (
-                                    <div key={i} className="flex items-center justify-between text-xs bg-white border border-gray-100 rounded-lg px-3 py-1.5">
-                                      <span className="text-gray-500">
-                                        {new Date(m.created_at).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })} · {meta.label}
-                                        {m.loss_reason ? ` (${m.loss_reason})` : ""}
-                                      </span>
-                                      <span className={clsx("font-semibold", meta.color)}>{meta.sign}{formatQty(m.qty, ing.unit)}</span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          );
-                        })
+                      {open && (
+                        <div className="bg-surface-container-low/30 border-t border-outline-variant/10 px-5 py-4">
+                          {moves.length === 0 ? (
+                            <p className="text-xs text-on-surface-variant/50 py-2">Aucun mouvement pour ce produit.</p>
+                          ) : (
+                            movesByMonth(moves).map(([mk, ms]) => {
+                              const inQty = ms.filter((m) => m.movement_type === "in").reduce((s, m) => s + m.qty, 0);
+                              const outQty = ms.filter((m) => m.movement_type === "out" || m.movement_type === "loss").reduce((s, m) => s + m.qty, 0);
+                              return (
+                                <div key={mk} className="mb-3 last:mb-0">
+                                  <div className="flex items-center justify-between mb-1">
+                                    <p className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-wide">{monthLabel(mk)}</p>
+                                    <p className="text-2xs text-on-surface-variant/50">
+                                      {inQty > 0 && <span className="text-primary">+{formatQty(inQty, ing.unit)} reçu</span>}
+                                      {inQty > 0 && outQty > 0 && " · "}
+                                      {outQty > 0 && <span className="text-red">-{formatQty(outQty, ing.unit)} sorti</span>}
+                                    </p>
+                                  </div>
+                                  <div className="space-y-1">
+                                    {ms.map((m, i) => {
+                                      const meta = MOVE_META[m.movement_type] ?? MOVE_META.adjustment;
+                                      return (
+                                        <div key={i} className="flex items-center justify-between text-xs bg-surface-container-lowest border border-outline-variant/20 rounded-lg px-3 py-1.5">
+                                          <span className="text-on-surface-variant/70">
+                                            {new Date(m.created_at).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })} · {meta.label}
+                                            {m.loss_reason ? ` (${m.loss_reason})` : ""}
+                                          </span>
+                                          <span className={clsx("font-semibold tabular-nums", meta.color)}>{meta.sign}{formatQty(m.qty, ing.unit)}</span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
                       )}
                     </div>
-                  )}
-                </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}

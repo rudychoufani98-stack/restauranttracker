@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Pencil, Trash2, X } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Truck, Mail, BadgeEuro } from "lucide-react";
 
 const CATEGORIES = ["Légumes/Fruits", "Viande", "Poisson", "Produits laitiers", "Épicerie", "Boissons", "Autre"];
 
@@ -57,18 +57,52 @@ export default function SuppliersClient({ restaurantId, initialSuppliers }: Prop
     setSuppliers((p) => p.filter((s) => s.id !== id));
   }
 
+  // Read-only summary cards, all derived from the live suppliers list (no placeholders)
+  const withEmail = suppliers.filter((s) => !!s.email).length;
+  const withFranco = suppliers.filter((s) => Number(s.min_order_amount ?? 0) > 0).length;
+
   return (
-    <div className="p-8 max-w-4xl mx-auto">
-      <div className="flex items-end justify-between mb-6 pb-5 border-b border-gray-200">
+    <div className="p-8 max-w-6xl mx-auto">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-          <p className="text-xs font-semibold text-emerald-600 uppercase tracking-widest mb-1">Opérations</p>
-          <h1 className="text-2xl font-bold text-gray-900">Fournisseurs</h1>
-          <p className="text-sm text-gray-500 mt-1">{suppliers.length} fournisseur{suppliers.length !== 1 ? "s" : ""}</p>
+          <p className="text-xs font-semibold text-primary uppercase tracking-widest mb-1">Opérations</p>
+          <h1 className="text-3xl font-extrabold text-primary tracking-tight">Fournisseurs</h1>
+          <p className="text-sm text-on-surface-variant/70 mt-1">
+            {suppliers.length} fournisseur{suppliers.length !== 1 ? "s" : ""} enregistré{suppliers.length !== 1 ? "s" : ""}.
+          </p>
         </div>
-        <button onClick={openAdd} className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 transition shadow-sm">
+        <button onClick={openAdd}
+          className="flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary text-sm font-semibold rounded-xl hover:bg-primary-container transition shadow-lg hover:nav-active-glow active:scale-[0.98]">
           <Plus size={15} /> Ajouter un fournisseur
         </button>
       </div>
+
+      {/* Summary cards — all derived from the live suppliers list */}
+      {suppliers.length > 0 && (
+        <section className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+          <div className="glass-card rounded-2xl p-5 flex items-center justify-between">
+            <div>
+              <p className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Fournisseurs</p>
+              <h3 className="text-2xl font-extrabold text-primary tabular-nums mt-1">{suppliers.length}</h3>
+            </div>
+            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0"><Truck size={18} /></div>
+          </div>
+          <div className="glass-card rounded-2xl p-5 flex items-center justify-between">
+            <div>
+              <p className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Avec email</p>
+              <h3 className="text-2xl font-extrabold text-on-surface tabular-nums mt-1">{withEmail}</h3>
+            </div>
+            <div className="w-10 h-10 rounded-full bg-secondary/10 flex items-center justify-center text-secondary shrink-0"><Mail size={18} /></div>
+          </div>
+          <div className="glass-card rounded-2xl p-5 flex items-center justify-between">
+            <div>
+              <p className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Franco défini</p>
+              <h3 className="text-2xl font-extrabold text-on-surface tabular-nums mt-1">{withFranco}</h3>
+            </div>
+            <div className="w-10 h-10 rounded-full bg-primary-container/20 flex items-center justify-center text-primary-container shrink-0"><BadgeEuro size={18} /></div>
+          </div>
+        </section>
+      )}
 
       {showForm && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4">
@@ -128,55 +162,62 @@ export default function SuppliersClient({ restaurantId, initialSuppliers }: Prop
       )}
 
       {suppliers.length === 0 ? (
-        <div className="bg-white border border-[#E5E7EB] rounded-card p-12 text-center">
+        <div className="glass-card rounded-2xl p-12 text-center">
           <div className="text-4xl mb-3">🚚</div>
-          <h2 className="text-base font-medium text-gray-900 mb-1">Aucun fournisseur</h2>
-          <p className="text-sm text-gray-500 mb-5">Ajoutez vos fournisseurs pour lier les ingrédients et envoyer des bons de commande.</p>
-          <button onClick={openAdd} className="px-4 py-2 text-sm text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 transition">Ajouter le premier fournisseur</button>
+          <h2 className="text-base font-semibold text-on-surface mb-1">Aucun fournisseur</h2>
+          <p className="text-sm text-on-surface-variant/70 mb-5">Ajoutez vos fournisseurs pour lier les ingrédients et envoyer des bons de commande.</p>
+          <button onClick={openAdd} className="inline-block px-5 py-2.5 text-sm font-semibold text-on-primary bg-primary rounded-xl hover:bg-primary-container transition">Ajouter le premier fournisseur</button>
         </div>
       ) : (
-        <div className="glass-card rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-outline-variant/20 bg-surface-container-low/50">
-                <th className="text-left px-5 py-3.5 text-2xs font-bold text-outline uppercase tracking-wider">Nom</th>
-                <th className="text-left px-5 py-3.5 text-2xs font-bold text-outline uppercase tracking-wider">Catégorie</th>
-                <th className="text-left px-5 py-3.5 text-2xs font-bold text-outline uppercase tracking-wider">Email</th>
-                <th className="text-right px-5 py-3.5 text-2xs font-bold text-outline uppercase tracking-wider">Franco</th>
-                <th className="text-left px-5 py-3.5 text-2xs font-bold text-outline uppercase tracking-wider">Réf. client</th>
-                <th className="px-5 py-3.5" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-outline-variant/10">
-              {suppliers.map((s) => {
-                const palette = ["#00694b", "#555f71", "#525f5a", "#8a6530", "#3b82f6"];
-                const color = palette[(s.name?.charCodeAt(0) ?? 0) % palette.length];
-                return (
-                <tr key={s.id} className="group hover:bg-primary/[0.04] transition-colors">
-                  <td className="px-5 py-3.5">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-lg flex items-center justify-center font-bold text-white text-sm shrink-0"
-                        style={{ backgroundColor: color }}>
-                        {(s.name?.[0] ?? "?").toUpperCase()}
-                      </div>
-                      <span className="font-semibold text-on-surface">{s.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-5 py-3.5"><span className="px-2.5 py-0.5 text-xs rounded-full bg-surface-container text-on-surface-variant">{s.category ?? "—"}</span></td>
-                  <td className="px-5 py-3.5 text-on-surface-variant/70">{s.email ?? "—"}</td>
-                  <td className="px-5 py-3.5 text-right text-on-surface-variant">{s.min_order_amount ? `€${Number(s.min_order_amount).toFixed(0)}` : "—"}</td>
-                  <td className="px-5 py-3.5 text-on-surface-variant/70">{s.customer_reference ?? "—"}</td>
-                  <td className="px-5 py-3.5">
-                    <div className="flex items-center gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => openEdit(s)} className="p-1.5 text-on-surface-variant/50 hover:text-primary hover:bg-surface-container-high rounded-lg transition"><Pencil size={15} /></button>
-                      <button onClick={() => handleDelete(s.id)} className="p-1.5 text-on-surface-variant/50 hover:text-red hover:bg-red-light rounded-lg transition"><Trash2 size={15} /></button>
-                    </div>
-                  </td>
+        <div className="glass-card rounded-2xl overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse">
+              <thead className="bg-surface-container-low/50 border-b border-outline-variant/20">
+                <tr>
+                  <th className="px-5 py-3 text-left text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Nom</th>
+                  <th className="px-5 py-3 text-left text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Catégorie</th>
+                  <th className="px-5 py-3 text-left text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Email</th>
+                  <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Franco</th>
+                  <th className="px-5 py-3 text-left text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Réf. client</th>
+                  <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Actions</th>
                 </tr>
-                );
-              })}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-outline-variant/10">
+                {suppliers.map((s) => {
+                  const palette = ["#00694b", "#555f71", "#525f5a", "#8a6530", "#3b82f6"];
+                  const color = palette[(s.name?.charCodeAt(0) ?? 0) % palette.length];
+                  return (
+                  <tr key={s.id} className="group hover:bg-surface-container-low/40 transition-colors">
+                    <td className="px-5 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-white text-sm shrink-0"
+                          style={{ backgroundColor: color }}>
+                          {(s.name?.[0] ?? "?").toUpperCase()}
+                        </div>
+                        <span className="font-semibold text-primary whitespace-nowrap">{s.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-4">
+                      <span className="inline-flex px-2.5 py-1 rounded-full bg-surface-container text-on-surface-variant text-2xs font-bold uppercase tracking-wide">{s.category ?? "—"}</span>
+                    </td>
+                    <td className="px-5 py-4 text-sm text-on-surface-variant/70">{s.email ?? "—"}</td>
+                    <td className="px-5 py-4 text-right text-sm font-semibold text-on-surface tabular-nums">{s.min_order_amount ? `€${Number(s.min_order_amount).toFixed(0)}` : "—"}</td>
+                    <td className="px-5 py-4 text-sm text-on-surface-variant/70">{s.customer_reference ?? "—"}</td>
+                    <td className="px-5 py-4">
+                      <div className="flex items-center gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => openEdit(s)} className="p-1.5 text-on-surface-variant/50 hover:text-primary hover:bg-surface-container-high rounded-lg transition"><Pencil size={15} /></button>
+                        <button onClick={() => handleDelete(s.id)} className="p-1.5 text-on-surface-variant/50 hover:text-red hover:bg-red-light rounded-lg transition"><Trash2 size={15} /></button>
+                      </div>
+                    </td>
+                  </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="px-5 py-3 bg-surface-container-low/30 border-t border-outline-variant/20 text-sm text-on-surface-variant/60">
+            {suppliers.length} fournisseur{suppliers.length !== 1 ? "s" : ""}
+          </div>
         </div>
       )}
     </div>

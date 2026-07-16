@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Trash2, X, Send, Download, ChevronDown, ChevronUp, Zap, Check, Pencil } from "lucide-react";
+import { Plus, Trash2, X, Send, Download, ChevronDown, ChevronUp, Zap, Check, Pencil, Truck, Search, TrendingUp, Hourglass, Star, ArrowRight } from "lucide-react";
 import clsx from "clsx";
 
 const toBase = (qty: number, unit: string) => (unit === "kg" || unit === "l" ? qty * 1000 : qty);
@@ -22,15 +22,6 @@ function suggestColis(i: { stock_qty?: number | null; reorder_threshold?: number
   const need = Math.max(thr * 2 - stock, thr - stock, packBase);
   return Math.max(1, Math.ceil(need / packBase));
 }
-
-const STATUS_COLORS: Record<string, string> = {
-  Draft: "bg-gray-100 text-gray-600",
-  Sent: "bg-blue-50 text-blue-600",
-  "Partially received": "bg-amber-50 text-amber-600",
-  Received: "bg-emerald-50 text-emerald-600",
-  Invoiced: "bg-purple-50 text-purple-600",
-  Cancelled: "bg-red-50 text-red-500",
-};
 
 // Status filter buckets (French label → which DB statuses it matches).
 const STATUS_FILTERS: { key: string; label: string; match: (s: string) => boolean }[] = [
@@ -79,6 +70,16 @@ const STATUS_LABELS: Record<string, string> = {
   Received: "Reçue",
   Invoiced: "Facturée",
   Cancelled: "Annulée",
+};
+
+// Glass-pill styling per status: background/text/border + the leading status dot.
+const STATUS_PILL: Record<string, { cls: string; dot: string }> = {
+  Draft: { cls: "bg-surface-container-highest text-on-surface-variant border-outline-variant/40", dot: "bg-on-surface-variant/50" },
+  Sent: { cls: "bg-secondary-container/50 text-secondary border-secondary/20", dot: "bg-secondary" },
+  "Partially received": { cls: "bg-amber-light text-amber-dark border-amber/30", dot: "bg-amber" },
+  Received: { cls: "bg-emerald-50 text-primary border-primary/20", dot: "bg-primary animate-pulse" },
+  Invoiced: { cls: "bg-primary-container/15 text-primary-container border-primary-container/30", dot: "bg-primary-container" },
+  Cancelled: { cls: "bg-red-light text-red border-red/20", dot: "bg-red" },
 };
 
 type Article = {
@@ -175,6 +176,7 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
     : null;
   const [orders, setOrders] = useState<PO[]>(initialOrders);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [search, setSearch] = useState("");
   const [period, setPeriod] = useState("all");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -362,29 +364,65 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
     setOrders((p) => p.filter((o) => o.id !== id));
   }
 
+  // ── Live filtered list (status + period + free-text search) ──
+  const searchLc = search.trim().toLowerCase();
+  const statusMatch = STATUS_FILTERS.find((f) => f.key === statusFilter)?.match ?? (() => true);
+  const visibleOrders = orders.filter((o) =>
+    statusMatch(o.status) &&
+    inPeriod(receptionDate(o), period, fromDate, toDate) &&
+    (searchLc === "" ||
+      (o.suppliers?.name ?? "").toLowerCase().includes(searchLc) ||
+      (o.order_number ?? "").toLowerCase().includes(searchLc))
+  );
+
+  // ── Stat cards, all derived from the live orders (no placeholders) ──
+  const now = new Date();
+  const monthKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  const curKey = monthKey(now);
+  const lastKey = monthKey(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+  const spendIn = (key: string) =>
+    orders.filter((o) => receptionDate(o).slice(0, 7) === key).reduce((s, o) => s + Number(o.expected_total ?? 0), 0);
+  const spendThis = spendIn(curKey);
+  const spendLast = spendIn(lastKey);
+  const spendDelta = spendLast > 0 ? Math.round(((spendThis - spendLast) / spendLast) * 100) : null;
+  const spendBarPct = spendThis + spendLast > 0 ? (spendThis / Math.max(spendThis, spendLast)) * 100 : 0;
+
+  const PENDING = new Set(["Draft", "Sent", "Partially received"]);
+  const pendingCount = orders.filter((o) => PENDING.has(o.status)).length;
+  const pendingBarPct = orders.length ? (pendingCount / orders.length) * 100 : 0;
+
+  const supplierTally = new Map<string, { name: string; count: number }>();
+  for (const o of orders) {
+    const id = o.supplier_id ?? "?";
+    const e = supplierTally.get(id) ?? { name: o.suppliers?.name ?? "Fournisseur inconnu", count: 0 };
+    e.count += 1;
+    supplierTally.set(id, e);
+  }
+  const topSupplier = Array.from(supplierTally.values()).sort((a, b) => b.count - a.count)[0] ?? null;
+
   return (
-    <div className="p-8 max-w-5xl mx-auto">
+    <div className="p-8 max-w-6xl mx-auto">
       {flash && (
         <div className="mb-4 flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5">
           <Check size={15} /> {flash}
         </div>
       )}
-      <div className="flex items-end justify-between mb-6 pb-5 border-b border-gray-200">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-          <p className="text-xs font-semibold text-emerald-600 uppercase tracking-widest mb-1">Opérations</p>
-          <h1 className="text-2xl font-bold text-gray-900">Bons de commande</h1>
-          <p className="text-sm text-gray-500 mt-1">{orders.length} commande{orders.length !== 1 ? "s" : ""}</p>
+          <p className="text-xs font-semibold text-primary uppercase tracking-widest mb-1">Opérations</p>
+          <h1 className="text-3xl font-extrabold text-primary tracking-tight">Gestion des commandes</h1>
+          <p className="text-sm text-on-surface-variant/70 mt-1">Suivez et gérez vos approvisionnements en temps réel.</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => setShowRestock(true)}
-            className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition">
+            className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-amber-dark bg-amber-light border border-amber/30 rounded-xl hover:brightness-95 transition">
             <Zap size={15} /> Réapprovisionner
             {restockGroups.length > 0 && (
-              <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-white text-2xs">{restockGroups.reduce((s, g) => s + g.items.length, 0)}</span>
+              <span className="px-1.5 py-0.5 rounded-full bg-amber text-white text-2xs">{restockGroups.reduce((s, g) => s + g.items.length, 0)}</span>
             )}
           </button>
           <Link href="/orders/new"
-            className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 transition shadow-sm">
+            className="flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary text-sm font-semibold rounded-xl hover:bg-primary-container transition shadow-lg hover:nav-active-glow active:scale-[0.98]">
             <Plus size={15} /> Nouvelle commande
           </Link>
         </div>
@@ -565,33 +603,43 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
         </div>
       )}
 
-      {/* Filters — statut + date */}
+      {/* Filters — glass card: status pills · search · period */}
       {orders.length > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <div className="flex flex-wrap gap-1.5">
+        <div className="glass-card rounded-2xl p-2 mb-4 flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap gap-1">
             {STATUS_FILTERS.map((f) => {
               const count = f.key === "all" ? orders.length : orders.filter((o) => f.match(o.status)).length;
+              const active = statusFilter === f.key;
               return (
                 <button key={f.key} onClick={() => setStatusFilter(f.key)}
-                  className={clsx("px-3 py-1.5 text-xs rounded-full border transition", statusFilter === f.key ? "bg-emerald-500 text-white border-emerald-500" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50")}>
-                  {f.label} <span className={clsx("ml-0.5", statusFilter === f.key ? "text-emerald-100" : "text-gray-400")}>{count}</span>
+                  className={clsx(
+                    "px-4 py-2 rounded-xl text-2xs font-bold uppercase tracking-wider transition-all duration-300",
+                    active ? "bg-primary-container text-on-primary-container nav-active-glow" : "text-on-surface-variant/60 hover:bg-surface-container-low"
+                  )}>
+                  {f.label} <span className={clsx("ml-1", active ? "text-on-primary-container/80" : "text-on-surface-variant/40")}>({count})</span>
                 </button>
               );
             })}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 ml-auto">
+            <div className="relative">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/40" />
+              <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
+                placeholder="Rechercher…"
+                className="w-44 md:w-56 pl-9 pr-3 py-2 text-sm bg-surface-container-low border-none rounded-xl outline-none focus:ring-2 focus:ring-primary/20 placeholder:text-on-surface-variant/40" />
+            </div>
             {period === "custom" && (
               <div className="flex items-center gap-1.5">
-                <span className="text-2xs text-gray-400">Du</span>
+                <span className="text-2xs text-on-surface-variant/40">Du</span>
                 <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)}
-                  className="px-2 py-1.5 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500 text-gray-600" />
-                <span className="text-2xs text-gray-400">au</span>
+                  className="px-2 py-2 text-xs bg-surface-container-low border-none rounded-xl outline-none focus:ring-2 focus:ring-primary/20 text-on-surface-variant" />
+                <span className="text-2xs text-on-surface-variant/40">au</span>
                 <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)}
-                  className="px-2 py-1.5 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500 text-gray-600" />
+                  className="px-2 py-2 text-xs bg-surface-container-low border-none rounded-xl outline-none focus:ring-2 focus:ring-primary/20 text-on-surface-variant" />
               </div>
             )}
             <select value={period} onChange={(e) => setPeriod(e.target.value)}
-              className="px-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500 text-gray-600">
+              className="px-3 py-2 text-xs bg-surface-container-low border-none rounded-xl outline-none focus:ring-2 focus:ring-primary/20 text-on-surface-variant">
               {PERIODS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
             </select>
           </div>
@@ -600,162 +648,235 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
 
       {/* Orders list */}
       {orders.length === 0 ? (
-        <div className="bg-white border border-[#E5E7EB] rounded-card p-12 text-center">
+        <div className="glass-card rounded-2xl p-12 text-center">
           <div className="text-4xl mb-3">📦</div>
-          <h2 className="text-base font-medium text-gray-900 mb-1">Aucune commande</h2>
-          <p className="text-sm text-gray-500 mb-5">Créez un bon de commande pour l'envoyer à vos fournisseurs.</p>
-          <Link href="/orders/new" className="inline-block px-4 py-2 text-sm text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 transition">Créer la première commande</Link>
+          <h2 className="text-base font-semibold text-on-surface mb-1">Aucune commande</h2>
+          <p className="text-sm text-on-surface-variant/70 mb-5">Créez un bon de commande pour l'envoyer à vos fournisseurs.</p>
+          <Link href="/orders/new" className="inline-block px-5 py-2.5 text-sm font-semibold text-on-primary bg-primary rounded-xl hover:bg-primary-container transition">Créer la première commande</Link>
         </div>
       ) : (
-        <div className="space-y-3">
-          {(() => {
-            const match = STATUS_FILTERS.find((f) => f.key === statusFilter)?.match ?? (() => true);
-            const visibleOrders = orders.filter((o) => match(o.status) && inPeriod(receptionDate(o), period, fromDate, toDate));
-            if (visibleOrders.length === 0) {
-              return <p className="text-sm text-gray-400 text-center py-10 border border-dashed border-gray-200 rounded-card">Aucune commande pour ce filtre.</p>;
-            }
-            // Group by reception month (latest delivery note, else order date).
-            const groups = new Map<string, PO[]>();
-            for (const o of visibleOrders) {
-              const key = receptionDate(o).slice(0, 7);
-              if (!groups.has(key)) groups.set(key, []);
-              groups.get(key)!.push(o);
-            }
-            const months = Array.from(groups.entries()).sort((a, b) => b[0].localeCompare(a[0]));
-            return months.map(([month, list]) => (
-              <div key={month}>
-                <h3 className="text-sm font-bold text-gray-800 capitalize mt-5 first:mt-0 mb-2">{monthLabelFr(month)}</h3>
-                <div className="space-y-3">
-                {list.map((order) => {
-            const isExpanded = expandedId === order.id;
-            return (
-              <div key={order.id} className="bg-white border border-[#E5E7EB] rounded-card overflow-hidden">
-                <div className="flex items-center gap-4 px-5 py-4 cursor-pointer hover:bg-gray-50 transition"
-                  onClick={() => setExpandedId(isExpanded ? null : order.id)}>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-semibold text-gray-900">{order.suppliers?.name ?? "Fournisseur inconnu"}</span>
-                      <span className={clsx("px-2 py-0.5 text-xs rounded-full font-medium", STATUS_COLORS[order.status] ?? "bg-gray-100 text-gray-500")}>
-                        {STATUS_LABELS[order.status] ?? order.status}
-                      </span>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {order.order_number && <span className="font-semibold text-emerald-700">{order.order_number}</span>}
-                      {order.order_number && " · "}
-                      {new Date(order.created_at).toLocaleDateString("fr-FR")} · {order.purchase_order_lines.length} ligne{order.purchase_order_lines.length !== 1 ? "s" : ""}
-                    </p>
-                  </div>
-                  <span className="text-sm font-medium text-gray-900">€{Number(order.expected_total ?? 0).toFixed(2)}</span>
-                  <div className="flex items-center gap-1">
-                    {/* Download PDF — always available */}
-                    <a
-                      href={`/api/orders/${order.id}/pdf`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="flex items-center gap-1 px-3 py-1.5 text-xs text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition"
-                    >
-                      <Download size={12} /> PDF
-                    </a>
-
-                    {order.status === "Draft" && (<>
-                      <a
-                        href={`/orders/${order.id}/edit`}
-                        onClick={(e) => e.stopPropagation()}
-                        className="flex items-center gap-1 px-3 py-1.5 text-xs text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition">
-                        <Pencil size={12} /> Modifier
-                      </a>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleMarkSent(order.id); }}
-                        disabled={sending === order.id}
-                        className="flex items-center gap-1 px-3 py-1.5 text-xs text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition">
-                        {sending === order.id ? "…" : "Marquer envoyé"}
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleSend(order); }}
-                        disabled={sending === order.id}
-                        className="flex items-center gap-1 px-3 py-1.5 text-xs text-white bg-blue-500 rounded-lg hover:bg-blue-600 disabled:opacity-50 transition">
-                        <Send size={12} />{sending === order.id ? "Envoi…" : "Envoyer"}
-                      </button>
-                    </>)}
-                    {(order.status === "Sent" || order.status === "Partially received") && (
-                      <a href={`/orders/${order.id}/receive`}
-                        className="flex items-center gap-1 px-3 py-1.5 text-xs text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 transition">
-                        Réceptionner
-                      </a>
-                    )}
-                    {(order.status === "Received" || order.status === "Partially received") && (
-                      <a href={`/orders/${order.id}/invoice`}
-                        className="flex items-center gap-1 px-3 py-1.5 text-xs text-white bg-purple-500 rounded-lg hover:bg-purple-600 transition">
-                        Facturer
-                      </a>
-                    )}
-                    {order.status === "Invoiced" && (
-                      <a href={`/orders/${order.id}/invoice`}
-                        className="flex items-center gap-1 px-3 py-1.5 text-xs text-purple-600 border border-purple-200 rounded-lg hover:bg-purple-50 transition">
-                        <Pencil size={12} /> Modifier la facture
-                      </a>
-                    )}
-                    {/* Only draft orders can be deleted */}
-                    {order.status === "Draft" && (
-                      <button onClick={(e) => { e.stopPropagation(); handleDelete(order.id); }}
-                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition" title="Supprimer le brouillon"><Trash2 size={14} /></button>
-                    )}
-                    {isExpanded ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
-                  </div>
-                </div>
-
-                {isExpanded && (
-                  <div className="border-t border-[#E5E7EB] px-5 py-4">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="text-xs text-gray-400 uppercase">
-                          <th className="text-left pb-2">Ingrédient</th>
-                          <th className="text-right pb-2">Quantité</th>
-                          <th className="text-right pb-2">Prix prévu</th>
-                          <th className="text-right pb-2">Sous-total</th>
+        <>
+          {/* Main order table (glass) */}
+          <div className="glass-card rounded-2xl overflow-hidden mb-6">
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead className="bg-surface-container-low/50 border-b border-outline-variant/20">
+                  <tr>
+                    <th className="px-5 py-3 text-left text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">N°</th>
+                    <th className="px-5 py-3 text-left text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Fournisseur</th>
+                    <th className="px-5 py-3 text-left text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Statut</th>
+                    <th className="px-5 py-3 text-left text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Date</th>
+                    <th className="px-5 py-3 text-center text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Articles</th>
+                    <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Total</th>
+                    <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-outline-variant/10">
+                  {visibleOrders.length === 0 ? (
+                    <tr><td colSpan={7} className="text-center py-12 text-sm text-on-surface-variant/50">Aucune commande pour ce filtre.</td></tr>
+                  ) : (() => {
+                    // Group by reception month (latest delivery note, else order date).
+                    const groups = new Map<string, PO[]>();
+                    for (const o of visibleOrders) {
+                      const key = receptionDate(o).slice(0, 7);
+                      if (!groups.has(key)) groups.set(key, []);
+                      groups.get(key)!.push(o);
+                    }
+                    const months = Array.from(groups.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+                    return months.map(([month, list]) => (
+                      <Fragment key={month}>
+                        <tr>
+                          <td colSpan={7} className="bg-surface-container-low/40 px-5 py-2 text-2xs font-bold uppercase tracking-widest text-on-surface-variant/60 capitalize">
+                            {monthLabelFr(month)}
+                          </td>
                         </tr>
-                      </thead>
-                      <tbody className="divide-y divide-[#F3F4F6]">
-                        {order.purchase_order_lines.map((line, i) => (
-                          <tr key={i}>
-                            <td className="py-1.5 text-gray-700">{line.ingredients?.name ?? "—"}</td>
-                            <td className="text-right text-gray-500">{line.quantity} {line.ingredients?.unit}</td>
-                            <td className="text-right text-gray-500">€{Number(line.expected_price ?? 0).toFixed(2)}</td>
-                            <td className="text-right font-medium text-gray-900">€{(line.quantity * Number(line.expected_price ?? 0)).toFixed(2)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        {list.map((order) => {
+                          const isExpanded = expandedId === order.id;
+                          const pill = STATUS_PILL[order.status] ?? STATUS_PILL.Draft;
+                          return (
+                            <Fragment key={order.id}>
+                              <tr onClick={() => setExpandedId(isExpanded ? null : order.id)}
+                                className="cursor-pointer transition-colors hover:bg-surface-container-low/40">
+                                <td className="px-5 py-4 text-sm font-semibold text-on-surface tabular-nums whitespace-nowrap">
+                                  {order.order_number ?? `#${order.id.slice(0, 8)}`}
+                                </td>
+                                <td className="px-5 py-4">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-lg bg-tertiary-fixed flex items-center justify-center text-primary shrink-0">
+                                      <Truck size={15} />
+                                    </div>
+                                    <span className="font-semibold text-primary whitespace-nowrap">{order.suppliers?.name ?? "Fournisseur inconnu"}</span>
+                                  </div>
+                                </td>
+                                <td className="px-5 py-4">
+                                  <span className={clsx("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-2xs font-bold uppercase tracking-wide w-fit whitespace-nowrap", pill.cls)}>
+                                    <span className={clsx("w-1.5 h-1.5 rounded-full", pill.dot)} />
+                                    {STATUS_LABELS[order.status] ?? order.status}
+                                  </span>
+                                </td>
+                                <td className="px-5 py-4 text-sm text-on-surface-variant/80 whitespace-nowrap">{new Date(order.created_at).toLocaleDateString("fr-FR")}</td>
+                                <td className="px-5 py-4 text-center text-sm text-on-surface-variant/80">{order.purchase_order_lines.length}</td>
+                                <td className="px-5 py-4 text-right text-sm font-bold text-on-surface tabular-nums whitespace-nowrap">€{Number(order.expected_total ?? 0).toFixed(2)}</td>
+                                <td className="px-5 py-4">
+                                  <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                                    <a href={`/api/orders/${order.id}/pdf`} target="_blank" rel="noopener noreferrer" title="Télécharger le PDF"
+                                      className="flex items-center gap-1 px-2.5 py-1.5 text-2xs font-semibold text-on-surface-variant border border-outline-variant/40 rounded-lg hover:bg-surface-container-low transition">
+                                      <Download size={12} /> PDF
+                                    </a>
+                                    {order.status === "Draft" && (<>
+                                      <a href={`/orders/${order.id}/edit`} title="Modifier"
+                                        className="flex items-center gap-1 px-2.5 py-1.5 text-2xs font-semibold text-on-surface-variant border border-outline-variant/40 rounded-lg hover:bg-surface-container-low transition">
+                                        <Pencil size={12} /> Modifier
+                                      </a>
+                                      <button onClick={() => handleMarkSent(order.id)} disabled={sending === order.id}
+                                        className="flex items-center gap-1 px-2.5 py-1.5 text-2xs font-semibold text-on-surface-variant border border-outline-variant/40 rounded-lg hover:bg-surface-container-low disabled:opacity-50 transition">
+                                        {sending === order.id ? "…" : "Envoyé"}
+                                      </button>
+                                      <button onClick={() => handleSend(order)} disabled={sending === order.id}
+                                        className="flex items-center gap-1 px-2.5 py-1.5 text-2xs font-semibold text-on-primary bg-primary rounded-lg hover:bg-primary-container disabled:opacity-50 transition">
+                                        <Send size={12} />{sending === order.id ? "Envoi…" : "Envoyer"}
+                                      </button>
+                                    </>)}
+                                    {(order.status === "Sent" || order.status === "Partially received") && (
+                                      <a href={`/orders/${order.id}/receive`}
+                                        className="flex items-center gap-1 px-2.5 py-1.5 text-2xs font-semibold text-on-primary bg-primary rounded-lg hover:bg-primary-container transition">
+                                        Réceptionner
+                                      </a>
+                                    )}
+                                    {(order.status === "Received" || order.status === "Partially received") && (
+                                      <a href={`/orders/${order.id}/invoice`}
+                                        className="flex items-center gap-1 px-2.5 py-1.5 text-2xs font-semibold text-white bg-purple-500 rounded-lg hover:bg-purple-600 transition">
+                                        Facturer
+                                      </a>
+                                    )}
+                                    {order.status === "Invoiced" && (
+                                      <a href={`/orders/${order.id}/invoice`}
+                                        className="flex items-center gap-1 px-2.5 py-1.5 text-2xs font-semibold text-purple-600 border border-purple-200 rounded-lg hover:bg-purple-50 transition">
+                                        <Pencil size={12} /> Facture
+                                      </a>
+                                    )}
+                                    {order.status === "Draft" && (
+                                      <button onClick={() => handleDelete(order.id)} title="Supprimer le brouillon"
+                                        className="p-1.5 text-on-surface-variant/50 hover:text-red hover:bg-red-light rounded-lg transition"><Trash2 size={14} /></button>
+                                    )}
+                                    {isExpanded ? <ChevronUp size={16} className="text-on-surface-variant/40" /> : <ChevronDown size={16} className="text-on-surface-variant/40" />}
+                                  </div>
+                                </td>
+                              </tr>
 
-                    {/* Historique de la commande */}
-                    <div className="mt-5 pt-4 border-t border-gray-100">
-                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Historique</p>
-                      <ol className="space-y-2.5">
-                        {buildTimeline(order, orderEvents).map((it, i) => (
-                          <li key={i} className="flex items-start gap-3">
-                            <span className={clsx("mt-1 w-2 h-2 rounded-full shrink-0", it.color)} />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm text-gray-800">
-                                {it.label}
-                                {it.detail && <span className="text-gray-400"> · {it.detail}</span>}
-                              </p>
-                              <p className="text-2xs text-gray-400">{dateTimeFr(it.date)}</p>
-                            </div>
-                          </li>
-                        ))}
-                      </ol>
-                    </div>
+                              {isExpanded && (
+                                <tr>
+                                  <td colSpan={7} className="bg-surface-container-low/30 px-5 py-4 border-t border-outline-variant/10">
+                                    <table className="w-full text-sm">
+                                      <thead>
+                                        <tr className="text-2xs text-on-surface-variant/50 uppercase tracking-wide">
+                                          <th className="text-left pb-2">Ingrédient</th>
+                                          <th className="text-right pb-2">Quantité</th>
+                                          <th className="text-right pb-2">Prix prévu</th>
+                                          <th className="text-right pb-2">Sous-total</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-outline-variant/10">
+                                        {order.purchase_order_lines.map((line, i) => (
+                                          <tr key={i}>
+                                            <td className="py-1.5 text-on-surface-variant">{line.ingredients?.name ?? "—"}</td>
+                                            <td className="text-right text-on-surface-variant/70">{line.quantity} {line.ingredients?.unit}</td>
+                                            <td className="text-right text-on-surface-variant/70">€{Number(line.expected_price ?? 0).toFixed(2)}</td>
+                                            <td className="text-right font-semibold text-on-surface tabular-nums">€{(line.quantity * Number(line.expected_price ?? 0)).toFixed(2)}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+
+                                    {/* Historique de la commande */}
+                                    <div className="mt-5 pt-4 border-t border-outline-variant/10">
+                                      <p className="text-2xs font-bold text-on-surface-variant/50 uppercase tracking-wide mb-3">Historique</p>
+                                      <ol className="space-y-2.5">
+                                        {buildTimeline(order, orderEvents).map((it, i) => (
+                                          <li key={i} className="flex items-start gap-3">
+                                            <span className={clsx("mt-1 w-2 h-2 rounded-full shrink-0", it.color)} />
+                                            <div className="flex-1 min-w-0">
+                                              <p className="text-sm text-on-surface">
+                                                {it.label}
+                                                {it.detail && <span className="text-on-surface-variant/50"> · {it.detail}</span>}
+                                              </p>
+                                              <p className="text-2xs text-on-surface-variant/40">{dateTimeFr(it.date)}</p>
+                                            </div>
+                                          </li>
+                                        ))}
+                                      </ol>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </Fragment>
+                          );
+                        })}
+                      </Fragment>
+                    ));
+                  })()}
+                </tbody>
+              </table>
+            </div>
+            <div className="px-5 py-3 bg-surface-container-low/30 border-t border-outline-variant/20 text-sm text-on-surface-variant/60">
+              {visibleOrders.length} commande{visibleOrders.length !== 1 ? "s" : ""} affichée{visibleOrders.length !== 1 ? "s" : ""} sur {orders.length}
+            </div>
+          </div>
+
+          {/* Stats row — all derived from live orders */}
+          <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="glass-card rounded-2xl p-5 flex flex-col gap-3">
+              <div className="flex justify-between items-center">
+                <span className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Dépenses ce mois</span>
+                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary"><TrendingUp size={18} /></div>
+              </div>
+              <div>
+                <h3 className="text-2xl font-extrabold text-primary tabular-nums">€{spendThis.toFixed(2)}</h3>
+                <p className="text-2xs text-on-surface-variant/60 mt-1">
+                  {spendDelta === null ? "Pas d'historique le mois dernier" : `${spendDelta >= 0 ? "+" : ""}${spendDelta}% par rapport au mois dernier`}
+                </p>
+              </div>
+              <div className="w-full bg-surface-container-highest rounded-full h-2">
+                <div className="bg-primary h-full rounded-full transition-all" style={{ width: `${spendBarPct}%` }} />
+              </div>
+            </div>
+
+            <div className="glass-card rounded-2xl p-5 flex flex-col gap-3">
+              <div className="flex justify-between items-center">
+                <span className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Commandes en attente</span>
+                <div className="w-10 h-10 rounded-full bg-secondary/10 flex items-center justify-center text-secondary"><Hourglass size={18} /></div>
+              </div>
+              <div>
+                <h3 className="text-2xl font-extrabold text-on-surface tabular-nums">{pendingCount}</h3>
+                <p className="text-2xs text-on-surface-variant/60 mt-1">Brouillons, envoyées ou partiellement reçues</p>
+              </div>
+              <div className="w-full bg-surface-container-highest rounded-full h-2">
+                <div className="bg-secondary h-full rounded-full transition-all" style={{ width: `${pendingBarPct}%` }} />
+              </div>
+            </div>
+
+            <div className="glass-card rounded-2xl p-5 flex flex-col gap-3">
+              <div className="flex justify-between items-center">
+                <span className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Fournisseur top</span>
+                <div className="w-10 h-10 rounded-full bg-primary-container/20 flex items-center justify-center text-primary-container"><Star size={18} /></div>
+              </div>
+              {topSupplier ? (
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-tertiary-fixed flex items-center justify-center text-primary shrink-0"><Truck size={22} /></div>
+                  <div className="min-w-0">
+                    <h3 className="font-semibold text-on-surface truncate">{topSupplier.name}</h3>
+                    <p className="text-2xs text-on-surface-variant/60">{topSupplier.count} commande{topSupplier.count !== 1 ? "s" : ""}</p>
                   </div>
-                )}
-              </div>
-            );
-            })}
                 </div>
-              </div>
-            ));
-          })()}
-        </div>
+              ) : (
+                <p className="text-sm text-on-surface-variant/50">Aucune commande</p>
+              )}
+              <Link href="/suppliers" className="mt-auto text-primary font-bold text-2xs uppercase tracking-wide flex items-center gap-1 hover:gap-2 transition-all w-fit">
+                Voir les fournisseurs <ArrowRight size={14} />
+              </Link>
+            </div>
+          </section>
+        </>
       )}
     </div>
   );

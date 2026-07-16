@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Trash2, X, ChevronDown, ChevronUp, RefreshCw, Copy, Search } from "lucide-react";
+import { Plus, Trash2, X, ChevronDown, ChevronUp, RefreshCw, Copy, Search, ChefHat, Percent, Coins, Layers } from "lucide-react";
 import clsx from "clsx";
 
 
@@ -132,6 +132,16 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
     if (!q) return base;
     return base.filter((r) => r.name.toLowerCase().includes(q) || (r.category ?? "").toLowerCase().includes(q));
   }, [tab, menuRecipes, prepRecipes, search]);
+
+  // ── Read-only stat cards, all derived from the live recipes (no placeholders) ──
+  const statBase = tab === "recipe" ? menuRecipes : prepRecipes;
+  const pricedRecipes = statBase.filter((r) => Number(r.menu_price ?? 0) > 0);
+  const avgFoodCost = pricedRecipes.length
+    ? pricedRecipes.reduce((s, r) => s + (r.total_cost / Number(r.menu_price)) * 100, 0) / pricedRecipes.length
+    : null;
+  const avgCostPerPortion = statBase.length
+    ? statBase.reduce((s, r) => s + r.total_cost / (r.yield_portions || 1), 0) / statBase.length
+    : 0;
 
   const totalCost = useMemo(() =>
     lines.reduce((sum, l) => sum + calcLineCost(l, ingredients, allRecipes), 0),
@@ -384,11 +394,15 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
 
   return (
     <div className="p-8 max-w-5xl mx-auto">
-      <div className="flex items-end justify-between mb-5 pb-5 border-b border-gray-200">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-          <p className="text-xs font-semibold text-emerald-600 uppercase tracking-widest mb-1">Ma cuisine</p>
-          <h1 className="text-2xl font-bold text-gray-900">{lockMode === "prep" ? "Mises en place" : "Recettes"}</h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="text-xs font-semibold text-primary uppercase tracking-widest mb-1">
+            Ma cuisine <span className="text-on-surface-variant/40">/</span> {lockMode === "prep" ? "Mises en place" : "Recettes"}
+          </p>
+          <h1 className="text-3xl font-extrabold text-primary tracking-tight">
+            {lockMode === "prep" ? "Mises en place" : "Fiches Techniques"}
+          </h1>
+          <p className="text-sm text-on-surface-variant/70 mt-1">
             {lockMode === "prep"
               ? `${prepRecipes.length} mise${prepRecipes.length !== 1 ? "s" : ""} en place (sauces, fonds, bases…)`
               : lockMode === "recipe"
@@ -401,14 +415,14 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
             onClick={handleRecalcAll}
             disabled={recalcing}
             title="Recalcule les coûts et allergènes de toutes les recettes"
-            className="flex items-center gap-2 px-3.5 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition shadow-sm disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-on-surface-variant bg-surface-container-low border border-outline-variant/40 rounded-xl hover:bg-surface-container-high transition disabled:opacity-50"
           >
-            <RefreshCw size={14} className={clsx("text-gray-400", recalcing && "animate-spin")} />
+            <RefreshCw size={14} className={clsx(recalcing && "animate-spin")} />
             {recalcing ? "Recalcul…" : "Tout recalculer"}
           </button>
           <button
             onClick={openAdd}
-            className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 transition shadow-sm"
+            className="flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary text-sm font-semibold rounded-xl hover:bg-primary-container transition shadow-lg hover:nav-active-glow active:scale-[0.98]"
           >
             <Plus size={15} />
             {tab === "prep" ? "Nouvelle mise en place" : "Nouvelle recette"}
@@ -417,29 +431,70 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
       </div>
 
       {recalcMsg && (
-        <div className="mb-5 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5">
+        <div className="mb-6 flex items-center gap-2 text-sm text-primary bg-emerald-50 border border-primary/20 rounded-xl px-4 py-2.5">
           {recalcMsg}
         </div>
       )}
 
+      {/* Stats row — all derived from live recipes */}
+      {statBase.length > 0 && (
+        <section className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+          <div className="glass-card rounded-2xl p-5 flex flex-col gap-3 border-l-4 border-primary">
+            <div className="flex justify-between items-center">
+              <span className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">
+                {tab === "prep" ? "Mises en place" : "Fiches techniques"}
+              </span>
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary"><Layers size={18} /></div>
+            </div>
+            <h3 className="text-2xl font-extrabold text-primary tabular-nums">{statBase.length}</h3>
+          </div>
+
+          <div className="glass-card rounded-2xl p-5 flex flex-col gap-3">
+            <div className="flex justify-between items-center">
+              <span className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Food cost moyen</span>
+              <div className="w-10 h-10 rounded-full bg-secondary/10 flex items-center justify-center text-secondary"><Percent size={18} /></div>
+            </div>
+            <div>
+              <h3 className="text-2xl font-extrabold text-on-surface tabular-nums">
+                {avgFoodCost === null ? "—" : `${avgFoodCost.toFixed(1)}%`}
+              </h3>
+              <p className="text-2xs text-on-surface-variant/60 mt-1">
+                {avgFoodCost === null ? "Aucun prix de vente renseigné" : `Sur ${pricedRecipes.length} recette${pricedRecipes.length !== 1 ? "s" : ""} avec prix`}
+              </p>
+            </div>
+          </div>
+
+          <div className="glass-card rounded-2xl p-5 flex flex-col gap-3">
+            <div className="flex justify-between items-center">
+              <span className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Coût moyen / portion</span>
+              <div className="w-10 h-10 rounded-full bg-primary-container/20 flex items-center justify-center text-primary-container"><Coins size={18} /></div>
+            </div>
+            <h3 className="text-2xl font-extrabold text-on-surface tabular-nums">€{avgCostPerPortion.toFixed(2)}</h3>
+          </div>
+        </section>
+      )}
+
       {/* Tabs — hidden when the page is locked to a single type */}
       {!lockMode && (
-        <div className="flex gap-1 mb-6 p-1 bg-gray-100 rounded-lg w-fit">
+        <div className="glass-card rounded-2xl p-2 mb-4 flex flex-wrap gap-1 w-fit">
           {([
             { key: "recipe" as const, label: "Fiches techniques", count: menuRecipes.length },
             { key: "prep" as const, label: "Mises en place", count: prepRecipes.length },
-          ]).map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={clsx(
-                "px-4 py-2 text-sm font-medium rounded-md transition",
-                tab === t.key ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
-              )}
-            >
-              {t.label} <span className={clsx("ml-1 text-xs", tab === t.key ? "text-emerald-600" : "text-gray-400")}>{t.count}</span>
-            </button>
-          ))}
+          ]).map((t) => {
+            const active = tab === t.key;
+            return (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={clsx(
+                  "px-4 py-2 rounded-xl text-2xs font-bold uppercase tracking-wider transition-all duration-300",
+                  active ? "bg-primary-container text-on-primary-container nav-active-glow" : "text-on-surface-variant/60 hover:bg-surface-container-low"
+                )}
+              >
+                {t.label} <span className={clsx("ml-1", active ? "text-on-primary-container/80" : "text-on-surface-variant/40")}>({t.count})</span>
+              </button>
+            );
+          })}
         </div>
       )}
 
@@ -601,39 +656,41 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
       )}
 
       {/* Search */}
-      <div className="relative mb-4 max-w-sm">
-        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder={tab === "prep" ? "Rechercher une mise en place…" : "Rechercher une recette…"}
-          className="w-full pl-9 pr-8 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 transition"
-        />
-        {search && (
-          <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-            <X size={14} />
-          </button>
-        )}
+      <div className="glass-card rounded-2xl p-2 mb-4 flex items-center">
+        <div className="relative w-full max-w-sm">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/40" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={tab === "prep" ? "Rechercher une mise en place…" : "Rechercher une recette…"}
+            className="w-full pl-9 pr-8 py-2 text-sm bg-surface-container-low border-none rounded-xl outline-none focus:ring-2 focus:ring-primary/20 placeholder:text-on-surface-variant/40"
+          />
+          {search && (
+            <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-on-surface-variant/40 hover:text-on-surface-variant">
+              <X size={14} />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Recipe list */}
       {visibleRecipes.length === 0 ? (
         search.trim() ? (
-          <div className="glass-card rounded-xl p-10 text-center">
-            <p className="text-sm text-gray-500">Aucun résultat pour « {search} ».</p>
+          <div className="glass-card rounded-2xl p-10 text-center">
+            <p className="text-sm text-on-surface-variant/70">Aucun résultat pour « {search} ».</p>
           </div>
         ) : (
-        <div className="glass-card rounded-xl p-12 text-center">
+        <div className="glass-card rounded-2xl p-12 text-center">
           <div className="text-4xl mb-3">{tab === "prep" ? "🥣" : "👨‍🍳"}</div>
-          <h2 className="text-base font-medium text-gray-900 mb-1">
+          <h2 className="text-base font-semibold text-on-surface mb-1">
             {tab === "prep" ? "Aucune mise en place" : "Aucune fiche technique"}
           </h2>
-          <p className="text-sm text-gray-500 mb-5">
+          <p className="text-sm text-on-surface-variant/70 mb-5">
             {tab === "prep"
               ? "Créez vos préparations de base (sauces, fonds, pâtes…) réutilisables dans vos fiches techniques."
               : "Créez votre première recette pour connaître le vrai coût de chaque plat."}
           </p>
-          <button onClick={openAdd} className="px-4 py-2 text-sm text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 transition">
+          <button onClick={openAdd} className="inline-block px-5 py-2.5 text-sm font-semibold text-on-primary bg-primary rounded-xl hover:bg-primary-container transition">
             {tab === "prep" ? "Créer la première mise en place" : "Créer la première recette"}
           </button>
         </div>
@@ -644,62 +701,75 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
             const isExpanded = expandedId === recipe.id;
             const costPerPortion = recipe.total_cost / (recipe.yield_portions || 1);
             const yUnit = YIELD_UNITS.find((u) => u.value === (recipe.yield_unit || "portion"))?.label ?? recipe.yield_unit;
+            const foodCost = Number(recipe.menu_price ?? 0) > 0 ? (recipe.total_cost / Number(recipe.menu_price)) * 100 : null;
+            const highCost = foodCost !== null && foodCost > 35;
             return (
-              <div key={recipe.id} className="glass-card rounded-xl overflow-hidden">
+              <div key={recipe.id} className="glass-card rounded-2xl overflow-hidden">
                 <div
-                  className="flex items-center gap-4 px-5 py-4 cursor-pointer hover:bg-gray-50 transition"
+                  className="flex items-center gap-4 p-4 cursor-pointer hover:bg-white/80 transition group"
                   onClick={() => setExpandedId(isExpanded ? null : recipe.id)}
                 >
+                  <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                    <ChefHat size={17} />
+                  </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-gray-900">{recipe.name}</span>
-                      <span className="px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-500">{recipe.category}</span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-primary truncate">{recipe.name}</span>
+                      <span className="inline-flex px-2 py-0.5 rounded bg-surface-container-low text-on-surface-variant/70 text-[10px] font-bold uppercase tracking-wide">{recipe.category}</span>
                     </div>
-                    <p className="text-xs text-gray-500 mt-0.5">Rendement {recipe.yield_portions} {yUnit} · {recipe.category}</p>
+                    <p className="text-xs text-on-surface-variant/60 mt-0.5">Rendement {recipe.yield_portions} {yUnit}</p>
                     {(recipe.allergens?.length ?? 0) > 0 && (
                       <div className="flex flex-wrap gap-1 mt-1.5">
                         {recipe.allergens!.map((a) => (
-                          <span key={a} className="px-1.5 py-0.5 text-2xs rounded bg-amber-100 text-amber-700 font-medium">{a}</span>
+                          <span key={a} className="px-1.5 py-0.5 text-2xs rounded bg-amber-light text-amber-dark font-bold">{a}</span>
                         ))}
                       </div>
                     )}
                   </div>
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-gray-900">€{recipe.total_cost.toFixed(2)} total</p>
-                    <p className="text-xs text-emerald-600">€{costPerPortion.toFixed(2)} / {yUnit}</p>
-
+                  {foodCost !== null && (
+                    <span className={clsx(
+                      "text-2xs font-bold rounded-full whitespace-nowrap",
+                      highCost ? "px-2.5 py-1 bg-error-container text-red" : "px-2.5 py-1 bg-emerald-50 text-primary border border-primary/10"
+                    )}>
+                      {foodCost.toFixed(1)}% FC
+                    </span>
+                  )}
+                  <div className="text-right shrink-0">
+                    <p className="text-sm font-semibold text-on-surface tabular-nums">€{recipe.total_cost.toFixed(2)}</p>
+                    <p className="text-xs text-primary tabular-nums">€{costPerPortion.toFixed(2)} / {yUnit}</p>
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 shrink-0">
                     <Link href={`${recipe.is_prep ? "/mises-en-place" : "/recipes"}/${recipe.id}`} onClick={(e) => e.stopPropagation()}
-                      className="px-3 py-1.5 text-xs text-gray-600 border border-[#E5E7EB] rounded-lg hover:bg-gray-100 transition">
+                      className="px-3 py-1.5 text-2xs font-semibold text-on-surface-variant border border-outline-variant/40 rounded-lg hover:bg-surface-container-high transition">
                       Ouvrir
                     </Link>
                     <button onClick={(e) => { e.stopPropagation(); handleDuplicate(recipe); }}
                       disabled={duplicatingId === recipe.id}
                       title="Dupliquer"
-                      className="p-1.5 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition disabled:opacity-50">
+                      className="p-2 rounded-lg text-on-surface-variant/50 hover:bg-surface-container-high hover:text-primary transition disabled:opacity-50">
                       <Copy size={14} />
                     </button>
                     <button onClick={(e) => { e.stopPropagation(); handleDelete(recipe.id); }}
                       disabled={deletingId === recipe.id}
-                      className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition">
+                      title="Supprimer"
+                      className="p-2 rounded-lg text-on-surface-variant/50 hover:text-red hover:bg-red-light transition disabled:opacity-50">
                       <Trash2 size={14} />
                     </button>
-                    {isExpanded ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+                    {isExpanded ? <ChevronUp size={16} className="text-on-surface-variant/40" /> : <ChevronDown size={16} className="text-on-surface-variant/40" />}
                   </div>
                 </div>
 
                 {isExpanded && (
-                  <div className="border-t border-[#E5E7EB] px-5 py-4">
+                  <div className="border-t border-outline-variant/20 bg-surface-container-low/30 px-5 py-4">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="text-xs text-gray-400 uppercase">
+                        <tr className="text-2xs text-on-surface-variant/50 uppercase tracking-wide">
                           <th className="text-left pb-2">Ingrédient / Mise en place</th>
                           <th className="text-right pb-2">Quantité</th>
                           <th className="text-right pb-2">Coût</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-[#F3F4F6]">
+                      <tbody className="divide-y divide-outline-variant/10">
                         {recipe.recipe_lines.map((line, i) => {
                           const label = line.ingredients?.name ?? line.sub_recipe?.name ?? "—";
                           const isSubRecipe = !!line.sub_recipe_id;
@@ -710,21 +780,21 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                             : 0;
                           return (
                             <tr key={i}>
-                              <td className="py-1.5 text-gray-700">
-                                {isSubRecipe && <span className="text-xs text-blue-500 mr-1">[mise en place]</span>}
+                              <td className="py-1.5 text-on-surface-variant">
+                                {isSubRecipe && <span className="text-2xs font-bold text-blue mr-1">[mise en place]</span>}
                                 {label}
                               </td>
-                              <td className="text-right text-gray-500">{line.quantity} {line.unit}</td>
-                              <td className="text-right text-gray-900">€{lineCost.toFixed(3)}</td>
+                              <td className="text-right text-on-surface-variant/70">{line.quantity} {line.unit}</td>
+                              <td className="text-right text-on-surface tabular-nums">€{lineCost.toFixed(3)}</td>
                             </tr>
                           );
                         })}
                       </tbody>
                       <tfoot>
-                        <tr className="border-t border-[#E5E7EB]">
-                          <td className="pt-2 text-xs font-medium text-gray-500">Total recette</td>
+                        <tr className="border-t border-outline-variant/20">
+                          <td className="pt-2 text-2xs font-bold text-on-surface-variant/50 uppercase tracking-wide">Total recette</td>
                           <td />
-                          <td className="pt-2 text-right font-medium text-gray-900">€{recipe.total_cost.toFixed(2)}</td>
+                          <td className="pt-2 text-right font-semibold text-on-surface tabular-nums">€{recipe.total_cost.toFixed(2)}</td>
                         </tr>
                       </tfoot>
                     </table>

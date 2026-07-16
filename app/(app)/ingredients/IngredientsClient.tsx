@@ -4,8 +4,8 @@ import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Search, Trash2, Check, ChevronDown, Download, Copy } from "lucide-react";
-import { PageHeader, Card, Button, Input, Select, Modal, Alert, Table, Th, Td, EmptyState } from "@/components/ui";
+import { Plus, Search, Trash2, Check, ChevronDown, Download, Copy, Package, Layers, TrendingUp } from "lucide-react";
+import { Card, Button, Input, Select, Modal, Alert, EmptyState } from "@/components/ui";
 import clsx from "clsx";
 
 const UNITS = ["g", "kg", "ml", "l", "unit"];
@@ -420,44 +420,52 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
     setDuplicatingId(null);
   }
 
-  return (
-    <div className="p-7 max-w-6xl mx-auto">
-      <PageHeader
-        eyebrow="Catalogue"
-        title="Ingrédients"
-        subtitle={`${ingredients.length} ingrédient${ingredients.length !== 1 ? "s" : ""} dans votre bibliothèque`}
-        action={
-          <div className="flex items-center gap-2">
-            <a href="/api/export/achats"
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition shadow-sm">
-              <Download size={14} className="text-gray-400" /> Export achats
-            </a>
-            <Button variant="primary" onClick={openAdd}><Plus size={14} /> Ajouter un ingrédient</Button>
-          </div>
-        }
-      />
+  // ── Read-only summary stats, all derived from the live ingredients list ──
+  const categoriesUsed = new Set(ingredients.map((i) => i.category)).size;
+  const resaleCount = ingredients.filter((i) => i.selling_price != null).length;
 
-      {/* Filters */}
-      <div className="glass-card rounded-xl p-3 mb-5 flex flex-wrap items-center gap-3">
+  return (
+    <div className="p-8 max-w-6xl mx-auto">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+        <div>
+          <p className="text-xs font-semibold text-primary uppercase tracking-widest mb-1">Catalogue</p>
+          <h1 className="text-3xl font-extrabold text-primary tracking-tight">Ingrédients</h1>
+          <p className="text-sm text-on-surface-variant/70 mt-1">
+            {ingredients.length} ingrédient{ingredients.length !== 1 ? "s" : ""} dans votre bibliothèque
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <a href="/api/export/achats"
+            className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-on-surface-variant bg-surface-container-low border border-outline-variant/40 rounded-xl hover:bg-surface-container transition">
+            <Download size={15} /> Export achats
+          </a>
+          <button onClick={openAdd}
+            className="flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary text-sm font-semibold rounded-xl hover:bg-primary-container transition shadow-lg hover:nav-active-glow active:scale-[0.98]">
+            <Plus size={15} /> Ajouter un ingrédient
+          </button>
+        </div>
+      </div>
+
+      {/* Filters — glass bar */}
+      <div className="glass-card rounded-2xl p-4 mb-5 flex flex-wrap items-center gap-4">
         <div className="relative flex-1 min-w-[200px]">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-outline" />
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/40" />
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher un ingrédient…"
-            className="w-full pl-9 pr-3 py-2 text-sm bg-transparent border-none outline-none focus:ring-0 text-on-surface" />
+            className="w-full pl-9 pr-3 py-2 text-sm bg-surface-container-low border-none rounded-xl outline-none focus:ring-2 focus:ring-primary/20 placeholder:text-on-surface-variant/40 text-on-surface" />
         </div>
-        <div className="flex items-center gap-2 border-l border-outline-variant/30 pl-3">
-          <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}
-            className="px-3 py-2 text-sm bg-surface-container-low border-none rounded-full outline-none focus:ring-2 focus:ring-primary/20 text-on-surface-variant cursor-pointer">
-            <option value="All">Toutes les catégories</option>
-            {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+        <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}
+          className="bg-surface-container-low border-none rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20 text-on-surface-variant cursor-pointer">
+          <option value="All">Toutes les catégories</option>
+          {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+        </select>
+        {allTags.length > 0 && (
+          <select value={filterTagId} onChange={(e) => setFilterTagId(e.target.value)}
+            className="bg-surface-container-low border-none rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20 text-on-surface-variant cursor-pointer">
+            <option value="All">Tous les tags</option>
+            {allTags.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
-          {allTags.length > 0 && (
-            <select value={filterTagId} onChange={(e) => setFilterTagId(e.target.value)}
-              className="px-3 py-2 text-sm bg-surface-container-low border-none rounded-full outline-none focus:ring-2 focus:ring-primary/20 text-on-surface-variant cursor-pointer">
-              <option value="All">Tous les tags</option>
-              {allTags.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-          )}
-        </div>
+        )}
       </div>
 
       {/* Modal */}
@@ -804,130 +812,181 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
           />
         </Card>
       ) : (
-        <Table>
-          <thead>
-            <tr>
-              <Th>Nom</Th>
-              <Th>Catégorie</Th>
-              <Th>Tags</Th>
-              <Th>Conditionnement</Th>
-              <Th right>Prix HT</Th>
-              <Th right>TVA</Th>
-              <Th right>Prix TTC</Th>
-              <Th right>Coût / kg · L · pce</Th>
-              <Th right>Prix vente</Th>
-              <Th right>Marge</Th>
-              <Th>Fournisseur</Th>
-              <Th><span className="sr-only">Actions</span></Th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {filtered.map((ing) => {
-              const ttc = priceTTC(ing.pack_price, ing.vat_rate ?? 0);
-              const tags = (ing.ingredient_tags ?? []).map((it) => it.tags).filter(Boolean);
-              return (
-                <tr key={ing.id} className="row-hover cursor-pointer"
-                  onClick={() => router.push(`/ingredients/${ing.id}`)}>
-                  <Td>
-                    <Link href={`/ingredients/${ing.id}`} onClick={(e) => e.stopPropagation()}
-                      className="font-medium text-gray-900 hover:text-emerald-600 transition">
-                      {ing.name}
-                    </Link>
-                  </Td>
-                  <Td>
-                    <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                      {ing.category}
-                    </span>
-                  </Td>
-                  <Td>
-                    <div className="flex flex-wrap gap-1">
-                      {tags.length > 0
-                        ? tags.map((tag) => (
-                            <span key={tag.id} className="px-2 py-0.5 rounded-full text-xs font-medium text-white"
-                              style={{ backgroundColor: tag.color }}>
-                              {tag.name}
-                            </span>
-                          ))
-                        : <span className="text-gray-300 text-xs">—</span>}
-                    </div>
-                  </Td>
-                  <Td muted>
-                    {baseCondText(ing.unit)}
-                    {(ing.yield_pct ?? 100) < 100 && (
-                      <span className="ml-1.5 px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-2xs font-medium">rdt {ing.yield_pct}%</span>
-                    )}
-                  </Td>
-                  <Td right><span className="text-gray-700">€{Number(ing.pack_price).toFixed(2)}</span></Td>
-                  <Td right><span className="text-gray-500">{ing.vat_rate ?? 0}%</span></Td>
-                  <Td right><span className="text-gray-700">€{ttc.toFixed(2)}</span></Td>
-                  <Td right>
-                    {(() => {
-                      const y = Number(ing.yield_pct ?? 100);
-                      const netBase = y > 0 ? Number(ing.cost_per_base_unit) / (y / 100) : Number(ing.cost_per_base_unit);
-                      const net = perDisplayUnit(netBase, ing.unit);
-                      const gross = perDisplayUnit(Number(ing.cost_per_base_unit), ing.unit);
-                      return (
-                        <span className="font-medium text-green">
-                          €{net.toFixed(2)}/{displayUnitLabel(ing.unit)}
-                          {y < 100 && <span className="block text-2xs text-gray-400 font-normal">brut €{gross.toFixed(2)}</span>}
-                        </span>
-                      );
-                    })()}
-                  </Td>
-                  <Td right>
-                    {ing.selling_price != null
-                      ? <span className="text-gray-700">€{Number(ing.selling_price).toFixed(2)}</span>
-                      : <span className="text-gray-300 text-xs">—</span>}
-                  </Td>
-                  <Td right>
-                    {ing.selling_price != null
-                      ? (() => {
-                          const marge = ing.selling_price - ing.pack_price;
-                          const pct = ing.selling_price > 0 ? (marge / ing.selling_price) * 100 : 0;
-                          return (
-                            <span className={marge >= 0 ? "font-medium text-emerald-600" : "font-medium text-red-500"}>
-                              €{marge.toFixed(2)} <span className="text-xs text-gray-400">({pct.toFixed(0)}%)</span>
-                            </span>
-                          );
-                        })()
-                      : <span className="text-gray-300 text-xs">—</span>}
-                  </Td>
-                  <Td muted>
-                    {(() => {
-                      const alts = ing.ingredient_suppliers ?? [];
-                      const main = ing.suppliers?.name ?? "—";
-                      if (alts.length === 0) return main;
-                      const names = alts.map((a) => a.suppliers?.name).filter(Boolean).join(", ");
-                      return (
-                        <span title={`Aussi : ${names}`}>
-                          {main}
-                          <span className="ml-1.5 px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-2xs font-medium">+{alts.length}</span>
-                        </span>
-                      );
-                    })()}
-                  </Td>
-                  <Td right>
-                    <div className="flex items-center gap-1 justify-end">
-                      <Link href={`/ingredients/${ing.id}`} onClick={(e) => e.stopPropagation()}
-                        className="px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100 transition">
-                        Ouvrir
-                      </Link>
-                      <button onClick={(e) => { e.stopPropagation(); handleDuplicate(ing); }} disabled={duplicatingId === ing.id}
-                        title="Dupliquer"
-                        className="p-1.5 rounded-md text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 transition disabled:opacity-50">
-                        <Copy size={13} />
-                      </button>
-                      <button onClick={(e) => { e.stopPropagation(); handleDelete(ing.id); }} disabled={deletingId === ing.id}
-                        className="p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 transition">
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  </Td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </Table>
+        <>
+          {/* Main catalogue table (glass) */}
+          <div className="glass-card rounded-2xl overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead className="bg-surface-container-low/50 border-b border-outline-variant/20">
+                  <tr>
+                    <th className="px-5 py-3 text-left text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Nom</th>
+                    <th className="px-5 py-3 text-left text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Catégorie</th>
+                    <th className="px-5 py-3 text-left text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Tags</th>
+                    <th className="px-5 py-3 text-left text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Conditionnement</th>
+                    <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Prix HT</th>
+                    <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">TVA</th>
+                    <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Prix TTC</th>
+                    <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Coût / kg · L · pce</th>
+                    <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Prix vente</th>
+                    <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Marge</th>
+                    <th className="px-5 py-3 text-left text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Fournisseur</th>
+                    <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-outline-variant/10">
+                  {filtered.map((ing) => {
+                    const ttc = priceTTC(ing.pack_price, ing.vat_rate ?? 0);
+                    const tags = (ing.ingredient_tags ?? []).map((it) => it.tags).filter(Boolean);
+                    return (
+                      <tr key={ing.id} className="group cursor-pointer transition-colors hover:bg-surface-container-low/40"
+                        onClick={() => router.push(`/ingredients/${ing.id}`)}>
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-tertiary-fixed flex items-center justify-center text-primary shrink-0">
+                              <Package size={15} />
+                            </div>
+                            <Link href={`/ingredients/${ing.id}`} onClick={(e) => e.stopPropagation()}
+                              className="font-semibold text-primary hover:text-primary-container transition whitespace-nowrap">
+                              {ing.name}
+                            </Link>
+                          </div>
+                        </td>
+                        <td className="px-5 py-4">
+                          <span className="inline-flex px-2.5 py-1 rounded-full bg-surface-container text-on-surface-variant text-2xs font-bold uppercase tracking-wide">
+                            {ing.category}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4">
+                          <div className="flex flex-wrap gap-1">
+                            {tags.length > 0
+                              ? tags.map((tag) => (
+                                  <span key={tag.id} className="px-2 py-0.5 rounded-full text-xs font-medium text-white"
+                                    style={{ backgroundColor: tag.color }}>
+                                    {tag.name}
+                                  </span>
+                                ))
+                              : <span className="text-on-surface-variant/30 text-xs">—</span>}
+                          </div>
+                        </td>
+                        <td className="px-5 py-4 text-sm text-on-surface-variant/70">
+                          {baseCondText(ing.unit)}
+                          {(ing.yield_pct ?? 100) < 100 && (
+                            <span className="ml-1.5 px-1.5 py-0.5 rounded bg-amber-light text-amber-dark text-2xs font-medium">rdt {ing.yield_pct}%</span>
+                          )}
+                        </td>
+                        <td className="px-5 py-4 text-right text-sm text-on-surface-variant/80 tabular-nums">€{Number(ing.pack_price).toFixed(2)}</td>
+                        <td className="px-5 py-4 text-right text-sm text-on-surface-variant/60 tabular-nums">{ing.vat_rate ?? 0}%</td>
+                        <td className="px-5 py-4 text-right text-sm text-on-surface-variant/80 tabular-nums">€{ttc.toFixed(2)}</td>
+                        <td className="px-5 py-4 text-right tabular-nums">
+                          {(() => {
+                            const y = Number(ing.yield_pct ?? 100);
+                            const netBase = y > 0 ? Number(ing.cost_per_base_unit) / (y / 100) : Number(ing.cost_per_base_unit);
+                            const net = perDisplayUnit(netBase, ing.unit);
+                            const gross = perDisplayUnit(Number(ing.cost_per_base_unit), ing.unit);
+                            return (
+                              <span className="font-semibold text-primary">
+                                €{net.toFixed(2)}/{displayUnitLabel(ing.unit)}
+                                {y < 100 && <span className="block text-2xs text-on-surface-variant/40 font-normal">brut €{gross.toFixed(2)}</span>}
+                              </span>
+                            );
+                          })()}
+                        </td>
+                        <td className="px-5 py-4 text-right text-sm tabular-nums">
+                          {ing.selling_price != null
+                            ? <span className="text-on-surface-variant/80">€{Number(ing.selling_price).toFixed(2)}</span>
+                            : <span className="text-on-surface-variant/30 text-xs">—</span>}
+                        </td>
+                        <td className="px-5 py-4 text-right text-sm tabular-nums">
+                          {ing.selling_price != null
+                            ? (() => {
+                                const marge = ing.selling_price - ing.pack_price;
+                                const pct = ing.selling_price > 0 ? (marge / ing.selling_price) * 100 : 0;
+                                return (
+                                  <span className={marge >= 0 ? "font-semibold text-emerald-600" : "font-semibold text-red"}>
+                                    €{marge.toFixed(2)} <span className="text-xs text-on-surface-variant/40">({pct.toFixed(0)}%)</span>
+                                  </span>
+                                );
+                              })()
+                            : <span className="text-on-surface-variant/30 text-xs">—</span>}
+                        </td>
+                        <td className="px-5 py-4 text-sm text-on-surface-variant/70">
+                          {(() => {
+                            const alts = ing.ingredient_suppliers ?? [];
+                            const main = ing.suppliers?.name ?? "—";
+                            if (alts.length === 0) return main;
+                            const names = alts.map((a) => a.suppliers?.name).filter(Boolean).join(", ");
+                            return (
+                              <span title={`Aussi : ${names}`}>
+                                {main}
+                                <span className="ml-1.5 px-1.5 py-0.5 rounded bg-blue-light text-blue-dark text-2xs font-medium">+{alts.length}</span>
+                              </span>
+                            );
+                          })()}
+                        </td>
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-1 justify-end">
+                            <Link href={`/ingredients/${ing.id}`} onClick={(e) => e.stopPropagation()}
+                              className="px-3 py-1.5 bg-surface-container-low text-primary text-2xs font-bold uppercase tracking-wide rounded-lg hover:bg-primary hover:text-on-primary transition opacity-0 group-hover:opacity-100">
+                              Ouvrir
+                            </Link>
+                            <button onClick={(e) => { e.stopPropagation(); handleDuplicate(ing); }} disabled={duplicatingId === ing.id}
+                              title="Dupliquer"
+                              className="p-1.5 rounded-md text-on-surface-variant/50 hover:text-primary hover:bg-surface-container-low transition disabled:opacity-50">
+                              <Copy size={13} />
+                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); handleDelete(ing.id); }} disabled={deletingId === ing.id}
+                              className="p-1.5 rounded-md text-on-surface-variant/50 hover:text-red hover:bg-red-light transition">
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="px-5 py-3 bg-surface-container-low/30 border-t border-outline-variant/20 text-sm text-on-surface-variant/60">
+              {filtered.length} ingrédient{filtered.length !== 1 ? "s" : ""} affiché{filtered.length !== 1 ? "s" : ""} sur {ingredients.length}
+            </div>
+          </div>
+
+          {/* Summary stats — all derived from live ingredients */}
+          <section className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+            <div className="glass-card rounded-2xl p-5 flex flex-col gap-3">
+              <div className="flex justify-between items-center">
+                <span className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Ingrédients</span>
+                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary"><Package size={18} /></div>
+              </div>
+              <div>
+                <h3 className="text-2xl font-extrabold text-primary tabular-nums">{ingredients.length}</h3>
+                <p className="text-2xs text-on-surface-variant/60 mt-1">dans votre bibliothèque</p>
+              </div>
+            </div>
+
+            <div className="glass-card rounded-2xl p-5 flex flex-col gap-3">
+              <div className="flex justify-between items-center">
+                <span className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Catégories</span>
+                <div className="w-10 h-10 rounded-full bg-secondary/10 flex items-center justify-center text-secondary"><Layers size={18} /></div>
+              </div>
+              <div>
+                <h3 className="text-2xl font-extrabold text-on-surface tabular-nums">{categoriesUsed}</h3>
+                <p className="text-2xs text-on-surface-variant/60 mt-1">catégorie{categoriesUsed !== 1 ? "s" : ""} utilisée{categoriesUsed !== 1 ? "s" : ""}</p>
+              </div>
+            </div>
+
+            <div className="glass-card rounded-2xl p-5 flex flex-col gap-3">
+              <div className="flex justify-between items-center">
+                <span className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Revente directe</span>
+                <div className="w-10 h-10 rounded-full bg-primary-container/20 flex items-center justify-center text-primary-container"><TrendingUp size={18} /></div>
+              </div>
+              <div>
+                <h3 className="text-2xl font-extrabold text-on-surface tabular-nums">{resaleCount}</h3>
+                <p className="text-2xs text-on-surface-variant/60 mt-1">produit{resaleCount !== 1 ? "s" : ""} avec prix de vente</p>
+              </div>
+            </div>
+          </section>
+        </>
       )}
     </div>
   );
