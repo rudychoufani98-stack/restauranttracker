@@ -93,6 +93,7 @@ type Ingredient = {
   pack_units?: number | null; unit_size?: number | null;
   stock_qty?: number | null; reorder_threshold?: number | null; supplier_id?: string | null;
   supplier_reference?: string | null; suppliers?: { name: string } | null;
+  secondary_unit_label?: string | null; secondary_unit_size?: number | null;
   ingredient_suppliers?: Article[];
 };
 
@@ -103,10 +104,14 @@ function articleFor(ing: Ingredient, supplierId: string): Article | null {
   if (match) return { ...match, unit: match.unit ?? ing.unit };
   if (ing.supplier_id === supplierId) {
     const size = ing.unit_size ?? ing.pack_quantity ?? null;
+    // Conditionnement secondaire (ex. bouteille = 0,75 L) : sert de libellé
+    // quand sa taille correspond au colisage — sinon défaut déduit de l'unité.
+    const secLabel = (ing.secondary_unit_label ?? "").trim();
+    const secMatches = secLabel && Number(ing.secondary_unit_size ?? 0) > 0 && Number(size ?? 0) === Number(ing.secondary_unit_size);
     return { supplier_id: ing.supplier_id, supplier_reference: ing.supplier_reference ?? null,
       pack_units: ing.pack_units ?? 1, unit_size: size,
       unit: ing.unit, pack_price: ing.pack_price ?? null, pack_label: null,
-      pack_type: defaultPackType(ing.unit, size) };
+      pack_type: secMatches ? secLabel : defaultPackType(ing.unit, size) };
   }
   return null;
 }

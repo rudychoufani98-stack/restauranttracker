@@ -19,7 +19,17 @@ type Ingredient = {
   pack_price: number | null;
   reorder_threshold?: number | null;
   suppliers?: { name: string } | null;
+  secondary_unit_label?: string | null;
+  secondary_unit_size?: number | null;
 };
+
+// Conditionnement secondaire (ex. « 1 bouteille = 0,75 L ») : si défini,
+// l'inventaire se compte dans ce conditionnement, converti en unité de base.
+function secOf(ing: Ingredient): { label: string; size: number } | null {
+  const label = (ing.secondary_unit_label ?? "").trim();
+  const size = Number(ing.secondary_unit_size ?? 0);
+  return label && size > 0 ? { label, size } : null;
+}
 
 function baseUnitLabel(unit: string) {
   return unit === "kg" ? "g" : unit === "l" ? "ml" : unit;
@@ -192,12 +202,15 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
   }
 
   // ---- Prise d'inventaire (écart théorique vs réel) ----
+  // La saisie se fait dans le conditionnement secondaire s'il existe
+  // (ex. « 12 bouteilles » → 12 × 0,75 L → 9 000 ml), sinon en kg/L/pièce.
   function countedBase(ing: Ingredient): number | null {
     const raw = counts[ing.id];
     if (raw === undefined || raw === "") return null;
     const v = parseFloat(raw);
     if (isNaN(v) || v < 0) return null;
-    return displayToBase(v, ing.unit);
+    const sec = secOf(ing);
+    return displayToBase(sec ? v * sec.size : v, ing.unit);
   }
 
   const countSummary = useMemo(() => {
@@ -250,7 +263,9 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
     for (const l of s.inventory_lines ?? []) {
       if (l.ingredient_id && l.counted_qty != null) {
         const ing = localIngredients.find((i) => i.id === l.ingredient_id);
-        next[l.ingredient_id] = String(baseToDisplay(Number(l.counted_qty), ing?.unit ?? l.unit ?? "unit"));
+        const disp = baseToDisplay(Number(l.counted_qty), ing?.unit ?? l.unit ?? "unit");
+        const sec = ing ? secOf(ing) : null;
+        next[l.ingredient_id] = String(sec ? Number((disp / sec.size).toFixed(3)) : disp);
       }
     }
     setCounts(next);
@@ -518,10 +533,19 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
                   const real = countedBase(ing);
                   const diff = real === null ? null : real - theo;
                   const valueGap = diff === null ? null : diff * cmup;
+                  const sec = secOf(ing);
+                  const theoSec = sec ? Number((baseToDisplay(theo, ing.unit) / sec.size).toFixed(2)) : null;
                   return (
                     <tr key={ing.id} className="hover:bg-surface-container-low/40 transition-colors">
-                      <td className="px-5 py-4 font-semibold text-on-surface">{ing.name}<span className="block text-2xs text-on-surface-variant/50 font-normal">{ing.category || "—"}</span></td>
-                      <td className="px-5 py-4 text-right text-on-surface-variant/80 tabular-nums">{formatQty(theo, ing.unit)}</td>
+                      <td className="px-5 py-4 font-semibold text-on-surface">{ing.name}
+                        <span className="block text-2xs text-on-surface-variant/50 font-normal">
+                          {ing.category || "—"}{sec ? ` · 1 ${sec.label} = ${fmtNum(sec.size)} ${displayUnitLabel(ing.unit)}` : ""}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 text-right text-on-surface-variant/80 tabular-nums">
+                        {formatQty(theo, ing.unit)}
+                        {sec && <span className="block text-2xs text-on-surface-variant/50">≈ {theoSec} {sec.label}{theoSec !== null && theoSec >= 2 ? "s" : ""}</span>}
+                      </td>
                       <td className="px-5 py-4 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <input
@@ -531,7 +555,7 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
                             placeholder="—"
                             className="w-24 px-2 py-1.5 text-sm text-right bg-surface-container-low border-none rounded-xl outline-none focus:ring-2 focus:ring-primary/20"
                           />
-                          <span className="text-xs text-on-surface-variant/50 w-6">{displayUnitLabel(ing.unit)}</span>
+                          <span className="text-xs text-on-surface-variant/50 min-w-6 max-w-20 truncate">{sec ? sec.label : displayUnitLabel(ing.unit)}</span>
                         </div>
                       </td>
                       <td className="px-5 py-4 text-right">
@@ -705,7 +729,15 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
                           <p className="text-2xs text-on-surface-variant/50 mt-0.5">{moves.length} mouvement{moves.length !== 1 ? "s" : ""}</p>
                         </div>
                         <div className="text-right shrink-0">
-                          <p className={clsx("text-sm font-semibold tabular-nums", low ? "text-red" : "text-on-surface")}>{formatQty(qty, ing.unit)}</p>
+                          <p className={clsx("text-sm font-semibold tabular-nums", low ? "text-red" : "text-on-surface")}>
+                            {formatQty(qty, ing.unit)}
+                            {(() => {
+                              const sec = secOf(ing);
+                              if (!sec) return null;
+                              const n = Number((baseToDisplay(qty, ing.unit) / sec.size).toFixed(1));
+                              return <span className="font-normal text-on-surface-variant/60"> · {fmtNum(n)} {sec.label}{n >= 2 ? "s" : ""}</span>;
+                            })()}
+                          </p>
                           <p className="text-2xs text-on-surface-variant/50 tabular-nums">{value > 0 ? `€${value.toFixed(2)}` : "—"}</p>
                         </div>
                         <ChevronRight size={16} className="text-on-surface-variant/30 shrink-0" />

@@ -16,7 +16,7 @@ export default async function NewOrderPage() {
   const [{ data: suppliers }, { data: ingredients }] = await Promise.all([
     supabase.from("suppliers").select("*").eq("restaurant_id", restaurant!.id).order("name"),
     supabase.from("ingredients")
-      .select("id, name, unit, category, pack_price, pack_units, unit_size, pack_quantity, supplier_id, supplier_reference, ingredient_suppliers(*)")
+      .select("id, name, unit, category, pack_price, pack_units, unit_size, pack_quantity, supplier_id, supplier_reference, secondary_unit_label, secondary_unit_size, ingredient_suppliers(*)")
       .eq("restaurant_id", restaurant!.id).order("name"),
   ]);
 

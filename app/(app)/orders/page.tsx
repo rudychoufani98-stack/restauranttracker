@@ -13,7 +13,7 @@ export default async function OrdersPage() {
       .eq("restaurant_id", restaurant!.id)
       .order("created_at", { ascending: false }),
     supabase.from("suppliers").select("*").eq("restaurant_id", restaurant!.id).order("name"),
-    supabase.from("ingredients").select("id, name, unit, pack_price, pack_units, unit_size, pack_quantity, cost_per_base_unit, stock_qty, reorder_threshold, supplier_id, supplier_reference, suppliers(name), ingredient_suppliers(*)").eq("restaurant_id", restaurant!.id).order("name"),
+    supabase.from("ingredients").select("id, name, unit, pack_price, pack_units, unit_size, pack_quantity, cost_per_base_unit, stock_qty, reorder_threshold, supplier_id, supplier_reference, secondary_unit_label, secondary_unit_size, suppliers(name), ingredient_suppliers(*)").eq("restaurant_id", restaurant!.id).order("name"),
   ]);
 
   // Draft-edit events (separate + resilient: won't break the list if the table

@@ -93,6 +93,11 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
   const [sellingPrice, setSellingPrice] = useState(ingredient.selling_price != null ? String(ingredient.selling_price) : "");
   const [allergens, setAllergens] = useState<string[]>(ingredient.allergens ?? []);
   const [articles, setArticles] = useState<Article[]>(initialArticles(ingredient));
+  // Conditionnement secondaire (optionnel) : « 1 bouteille = 0,75 L » —
+  // permet de compter l'inventaire (et libeller les commandes sans article)
+  // dans ce conditionnement plutôt qu'en unité de base.
+  const [secLabel, setSecLabel] = useState<string>((ingredient as any).secondary_unit_label ?? "");
+  const [secSize, setSecSize] = useState<string>((ingredient as any).secondary_unit_size != null ? String((ingredient as any).secondary_unit_size) : "");
 
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -127,6 +132,9 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
     setError(null);
     if (!name.trim()) return setError("Le nom est requis.");
     if (yPct <= 0 || yPct > 100) return setError("Le rendement doit être entre 1 et 100 %.");
+    const secSizeNum = parseFloat(secSize) || 0;
+    if (secLabel.trim() && secSizeNum <= 0) return setError("Conditionnement secondaire : indique sa taille (ex. 0,75).");
+    if (!secLabel.trim() && secSizeNum > 0) return setError("Conditionnement secondaire : indique son nom (ex. bouteille).");
     const validArticles = articles.filter((a) => parseFloat(a.pack_price) >= 0 && parseFloat(a.unit_size) > 0);
     setSaving(true);
 
@@ -149,6 +157,8 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
       yield_pct: yPct, reorder_threshold: qtyFromDisplay(parseFloat(reorder) || 0, unit),
       selling_price: sellingPrice !== "" ? parseFloat(sellingPrice) : null,
       allergens,
+      secondary_unit_label: secLabel.trim() || null,
+      secondary_unit_size: secSizeNum > 0 ? secSizeNum : null,
       updated_at: new Date().toISOString(),
     };
     const { error: err } = await supabase.from("ingredients").update(payload).eq("id", ingredient.id);
@@ -280,6 +290,34 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
             </div>
             <p className="text-2xs text-gray-400 mt-1">« à commander » si stock ≤</p>
           </div>
+        </div>
+
+        {/* Conditionnement secondaire — compter en bouteilles/boîtes plutôt qu'en kg/L */}
+        <div className="mt-4 pt-4 border-t border-gray-100">
+          <p className="text-xs font-medium text-gray-600 mb-2">
+            Conditionnement secondaire <span className="text-gray-400 font-normal">(optionnel)</span>
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-gray-500">1</span>
+            <input list="sec-units" value={secLabel} onChange={(e) => setSecLabel(e.target.value)}
+              placeholder="ex. bouteille" className={clsx(inputCls, "w-36")} />
+            <span className="text-sm text-gray-500">=</span>
+            <div className="relative w-28">
+              <input type="number" min="0" step="any" value={secSize} onChange={(e) => setSecSize(e.target.value)}
+                placeholder="0.75" className={clsx(inputCls, "pr-9")} />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">{uLabel}</span>
+            </div>
+            {secLabel.trim() && (parseFloat(secSize) || 0) > 0 && (
+              <button onClick={() => { setSecLabel(""); setSecSize(""); }}
+                className="text-2xs text-gray-400 hover:text-red-500 underline">retirer</button>
+            )}
+          </div>
+          <datalist id="sec-units">
+            {["bouteille", "boîte", "pot", "barquette", "sachet", "portion", "pièce"].map((t) => <option key={t} value={t} />)}
+          </datalist>
+          <p className="text-2xs text-gray-400 mt-1.5">
+            Pour compter l&apos;inventaire dans ce conditionnement plutôt qu&apos;en {uLabel} — ex. « 1 bouteille = 0,75 L » : tu saisiras « 12 bouteilles » et le stock sera converti automatiquement.
+          </p>
         </div>
       </Section>
 

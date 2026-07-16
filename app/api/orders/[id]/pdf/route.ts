@@ -30,7 +30,7 @@ export async function GET(
         suppliers(*),
         purchase_order_lines(
           quantity, expected_price,
-          ingredients(name, unit, vat_rate, pack_quantity, pack_units, unit_size,
+          ingredients(name, unit, vat_rate, pack_quantity, pack_units, unit_size, secondary_unit_label, secondary_unit_size,
             ingredient_suppliers(supplier_id, pack_type, pack_units, unit_size, pack_label, unit))
         )
       `)
@@ -68,7 +68,11 @@ export async function GET(
       const packUnits = Number(art?.pack_units ?? ing?.pack_units ?? 1) || 1;
       const unitSize = Number(art?.unit_size ?? ing?.unit_size ?? ing?.pack_quantity ?? 0) || 0;
       const baseUnit = art?.unit ?? ing?.unit ?? "";
-      const packType = art?.pack_type || defaultPackType(baseUnit, unitSize);
+      // Sans article : le conditionnement secondaire sert de libellé quand sa
+      // taille correspond au colisage (ex. « bouteille » pour 0,75 L).
+      const secLabel = (ing?.secondary_unit_label ?? "").trim();
+      const secMatches = secLabel && Number(ing?.secondary_unit_size ?? 0) > 0 && unitSize === Number(ing?.secondary_unit_size);
+      const packType = art?.pack_type || (secMatches ? secLabel : defaultPackType(baseUnit, unitSize));
       const packDetail = art?.pack_label
         ? art.pack_label
         : unitSize > 0
