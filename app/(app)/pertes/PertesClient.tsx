@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Trash2, Plus, Loader2, Check, X, Clock } from "lucide-react";
+import { Trash2, Plus, Loader2, Check, X, Clock, TrendingDown } from "lucide-react";
 import clsx from "clsx";
 
 type Ingredient = {
@@ -33,13 +33,23 @@ const REASONS = [
   "Vol / inconnu",
 ];
 
+// Glass cause-pill styling per reason, using only tokens that exist in this app.
 const REASON_COLORS: Record<string, string> = {
-  "DLC dépassée": "bg-red-100 text-red-700",
-  "DLC OK mais tourne": "bg-amber-100 text-amber-700",
-  "Casse": "bg-orange-100 text-orange-700",
-  "Erreur cuisine": "bg-purple-100 text-purple-700",
-  "Offert / geste commercial": "bg-blue-100 text-blue-700",
-  "Vol / inconnu": "bg-gray-200 text-gray-700",
+  "DLC dépassée": "bg-error-container text-red",
+  "DLC OK mais tourne": "bg-amber-light text-amber-dark",
+  "Casse": "bg-red-light text-red",
+  "Erreur cuisine": "bg-secondary-container text-secondary",
+  "Offert / geste commercial": "bg-blue-light text-blue",
+  "Vol / inconnu": "bg-surface-container text-on-surface-variant",
+};
+// Accent bar color for the "Répartition par cause" glass bars.
+const REASON_BAR: Record<string, string> = {
+  "DLC dépassée": "bg-red",
+  "DLC OK mais tourne": "bg-amber",
+  "Casse": "bg-red/70",
+  "Erreur cuisine": "bg-secondary",
+  "Offert / geste commercial": "bg-blue",
+  "Vol / inconnu": "bg-on-surface-variant/40",
 };
 
 // Convert a quantity in the ingredient's purchase unit to base units (g/ml/unit)
@@ -136,45 +146,57 @@ export default function PertesClient({ restaurantId, ingredients, recentLosses }
   const displayUnitLabel = (u: string) => (u === "g" || u === "kg" ? "kg" : u === "ml" || u === "l" ? "L" : u === "unit" ? "u" : u);
 
   return (
-    <div className="p-8 max-w-4xl mx-auto">
-      <div className="flex items-end justify-between mb-6 pb-5 border-b border-gray-200">
+    <div className="p-8 max-w-5xl mx-auto">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-          <p className="text-xs font-semibold text-emerald-600 uppercase tracking-widest mb-1">Opérations</p>
-          <h1 className="text-2xl font-bold text-gray-900">Pertes & gaspillage</h1>
-          <p className="text-sm text-gray-500 mt-1">Chaque perte sort du stock et est valorisée au CMUP.</p>
+          <p className="text-xs font-semibold text-primary uppercase tracking-widest mb-1">Opérations</p>
+          <h1 className="text-3xl font-extrabold text-primary tracking-tight">Pertes & gaspillage</h1>
+          <p className="text-sm text-on-surface-variant/70 mt-1">Chaque perte sort du stock et est valorisée au CMUP.</p>
         </div>
         <button
           onClick={() => { resetForm(); setShowForm(true); }}
-          className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 transition shadow-sm"
+          className="flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary text-sm font-semibold rounded-xl hover:bg-primary-container transition shadow-lg hover:nav-active-glow active:scale-[0.98]"
         >
           <Plus size={15} /> Enregistrer une perte
         </button>
       </div>
 
-      {/* Summary */}
+      {/* Summary — all derived from live losses (real numbers only) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="bg-white border border-gray-200 rounded-card shadow-card overflow-hidden">
-          <div className="h-1 bg-red-400" />
-          <div className="p-5">
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Pertes ce mois</p>
-            <p className="text-3xl font-bold text-red-600">€{summary.total.toFixed(2)}</p>
-            <p className="text-xs text-gray-400 mt-2">{summary.count} enregistrement{summary.count !== 1 ? "s" : ""}</p>
+        <div className="glass-card rounded-2xl p-5 flex flex-col gap-3 border-l-4 border-red">
+          <div className="flex justify-between items-center">
+            <span className="text-2xs font-bold uppercase tracking-widest text-on-surface-variant/60">Pertes ce mois</span>
+            <div className="w-10 h-10 rounded-full bg-red-light flex items-center justify-center text-red"><TrendingDown size={18} /></div>
+          </div>
+          <div>
+            <h3 className="text-2xl font-extrabold text-red tabular-nums">€{summary.total.toFixed(2)}</h3>
+            <p className="text-2xs text-on-surface-variant/60 mt-1">{summary.count} enregistrement{summary.count !== 1 ? "s" : ""}</p>
           </div>
         </div>
-        <div className="md:col-span-2 bg-white border border-gray-200 rounded-card shadow-card p-5">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Répartition par cause (ce mois)</p>
+        <div className="md:col-span-2 glass-card rounded-2xl p-5">
+          <p className="text-2xs font-bold uppercase tracking-widest text-on-surface-variant/60 mb-4">Répartition par cause (ce mois)</p>
           {summary.byReason.size === 0 ? (
-            <p className="text-sm text-gray-400">Aucune perte enregistrée ce mois.</p>
-          ) : (
-            <div className="space-y-1.5">
-              {Array.from(summary.byReason.entries()).sort((a, b) => b[1] - a[1]).map(([r, val]) => (
-                <div key={r} className="flex items-center justify-between text-sm">
-                  <span className={clsx("px-2 py-0.5 rounded-full text-xs font-medium", REASON_COLORS[r] ?? "bg-gray-100 text-gray-600")}>{r}</span>
-                  <span className="font-medium text-gray-700">€{val.toFixed(2)}</span>
-                </div>
-              ))}
-            </div>
-          )}
+            <p className="text-sm text-on-surface-variant/50">Aucune perte enregistrée ce mois.</p>
+          ) : (() => {
+            const rows = Array.from(summary.byReason.entries()).sort((a, b) => b[1] - a[1]);
+            const max = Math.max(...rows.map(([, v]) => v), 0);
+            return (
+              <div className="space-y-3">
+                {rows.map(([r, val]) => (
+                  <div key={r} className="flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className={clsx("inline-flex px-2.5 py-1 rounded-full text-2xs font-bold uppercase tracking-wide", REASON_COLORS[r] ?? "bg-surface-container text-on-surface-variant")}>{r}</span>
+                      <span className="font-bold text-on-surface tabular-nums">€{val.toFixed(2)}</span>
+                    </div>
+                    <div className="w-full bg-surface-container-highest rounded-full h-2">
+                      <div className={clsx("h-full rounded-full transition-all", REASON_BAR[r] ?? "bg-on-surface-variant/40")}
+                        style={{ width: `${max > 0 ? (val / max) * 100 : 0}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
         </div>
       </div>
 
@@ -238,44 +260,49 @@ export default function PertesClient({ restaurantId, ingredients, recentLosses }
       )}
 
       {/* Recent losses */}
-      <h2 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-        <Clock size={14} className="text-gray-400" /> Historique des pertes
+      <h2 className="text-2xs font-bold uppercase tracking-widest text-on-surface-variant/60 mb-3 flex items-center gap-2">
+        <Clock size={14} className="text-on-surface-variant/40" /> Historique des pertes
       </h2>
       {losses.length === 0 ? (
-        <div className="bg-white border border-[#E5E7EB] rounded-card p-12 text-center">
-          <Trash2 size={28} className="text-gray-300 mx-auto mb-3" />
-          <p className="text-sm text-gray-500">Aucune perte enregistrée. Utilise « Enregistrer une perte » pour commencer.</p>
+        <div className="glass-card rounded-2xl p-12 text-center">
+          <Trash2 size={28} className="text-on-surface-variant/30 mx-auto mb-3" />
+          <p className="text-sm text-on-surface-variant/70">Aucune perte enregistrée. Utilise « Enregistrer une perte » pour commencer.</p>
         </div>
       ) : (
-        <div className="bg-white border border-[#E5E7EB] rounded-card overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-[#E5E7EB] bg-gray-50 text-xs font-medium text-gray-500 uppercase tracking-wide">
-                <th className="text-left px-4 py-3">Date</th>
-                <th className="text-left px-4 py-3">Ingrédient</th>
-                <th className="text-left px-4 py-3">Cause</th>
-                <th className="text-right px-4 py-3">Quantité</th>
-                <th className="text-right px-4 py-3">Coût</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#E5E7EB]">
-              {losses.map((l, i) => {
-                const ing = ingMap.get(l.ingredient_id);
-                const cost = Number(l.qty) * Number(l.unit_cost ?? 0);
-                return (
-                  <tr key={i} className="hover:bg-gray-50 transition">
-                    <td className="px-4 py-3 text-gray-500">{new Date(l.created_at).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })}</td>
-                    <td className="px-4 py-3 font-medium text-gray-900">{ing?.name ?? "—"}{l.notes && <span className="block text-xs text-gray-400 font-normal">{l.notes}</span>}</td>
-                    <td className="px-4 py-3">
-                      <span className={clsx("px-2 py-0.5 rounded-full text-xs font-medium", REASON_COLORS[l.loss_reason ?? ""] ?? "bg-gray-100 text-gray-600")}>{l.loss_reason ?? "—"}</span>
-                    </td>
-                    <td className="px-4 py-3 text-right text-gray-600">{ing ? fmtQty(Number(l.qty), ing.unit) : Number(l.qty).toFixed(0)}</td>
-                    <td className="px-4 py-3 text-right font-medium text-red-600">€{cost.toFixed(2)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="glass-card rounded-2xl overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse">
+              <thead className="bg-surface-container-low/50 border-b border-outline-variant/20">
+                <tr>
+                  <th className="px-5 py-3 text-left text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Date</th>
+                  <th className="px-5 py-3 text-left text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Ingrédient</th>
+                  <th className="px-5 py-3 text-left text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Cause</th>
+                  <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Quantité</th>
+                  <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Coût</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-outline-variant/10">
+                {losses.map((l, i) => {
+                  const ing = ingMap.get(l.ingredient_id);
+                  const cost = Number(l.qty) * Number(l.unit_cost ?? 0);
+                  return (
+                    <tr key={i} className="hover:bg-surface-container-low/40 transition-colors">
+                      <td className="px-5 py-4 text-sm text-on-surface-variant/80 whitespace-nowrap">{new Date(l.created_at).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })}</td>
+                      <td className="px-5 py-4 font-semibold text-on-surface">{ing?.name ?? "—"}{l.notes && <span className="block text-2xs text-on-surface-variant/50 font-normal">{l.notes}</span>}</td>
+                      <td className="px-5 py-4">
+                        <span className={clsx("inline-flex px-2.5 py-1 rounded-full text-2xs font-bold uppercase tracking-wide", REASON_COLORS[l.loss_reason ?? ""] ?? "bg-surface-container text-on-surface-variant")}>{l.loss_reason ?? "—"}</span>
+                      </td>
+                      <td className="px-5 py-4 text-right text-sm text-on-surface-variant/80 tabular-nums whitespace-nowrap">{ing ? fmtQty(Number(l.qty), ing.unit) : Number(l.qty).toFixed(0)}</td>
+                      <td className="px-5 py-4 text-right text-sm font-bold text-red tabular-nums whitespace-nowrap">€{cost.toFixed(2)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="px-5 py-3 bg-surface-container-low/30 border-t border-outline-variant/20 text-sm text-on-surface-variant/60">
+            {losses.length} perte{losses.length !== 1 ? "s" : ""} enregistrée{losses.length !== 1 ? "s" : ""}
+          </div>
         </div>
       )}
     </div>

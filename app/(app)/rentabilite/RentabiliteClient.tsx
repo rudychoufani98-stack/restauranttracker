@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, Fragment } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Plus, Check, Loader2, ChevronDown, ChevronUp, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import clsx from "clsx";
@@ -303,26 +303,126 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
       });
   }, [periods, recipes, simpleProducts]);
 
+  // ── Read-only KPI aggregates, derived from the existing calcPeriodStats ──
+  const globals = useMemo(() => {
+    let ca = 0, cout = 0, marge = 0;
+    for (const p of periods) {
+      const s = calcPeriodStats(p, recipes, simpleProducts);
+      ca += s.ca; cout += s.coutMatiere; marge += s.margeB;
+    }
+    return {
+      ca, cout, marge,
+      foodCostPct: ca > 0 ? (cout / ca) * 100 : null,
+      margePct: ca > 0 ? (marge / ca) * 100 : null,
+    };
+  }, [periods, recipes, simpleProducts]);
+
+  // ── Revenue segmentation per real distribution channel (only those with data) ──
+  const segments = useMemo(() => {
+    return CHANNELS.map((ch) => {
+      const chPeriods = periods.filter((p) => (p.channel ?? "dine_in") === ch.key);
+      let ca = 0, cout = 0, marge = 0;
+      for (const p of chPeriods) {
+        const s = calcPeriodStats(p, recipes, simpleProducts);
+        ca += s.ca; cout += s.coutMatiere; marge += s.margeB;
+      }
+      return { ...ch, ca, cout, marge, foodCostPct: ca > 0 ? (cout / ca) * 100 : null, hasData: chPeriods.length > 0 };
+    }).filter((s) => s.hasData);
+  }, [periods, recipes, simpleProducts]);
+  const segTotalCA = segments.reduce((s, x) => s + x.ca, 0);
+
+  const fcGlobalStatus = globals.foodCostPct === null ? null :
+    globals.foodCostPct <= targetFoodCostPct ? "green" :
+    globals.foodCostPct <= targetFoodCostPct * 1.2 ? "amber" : "red";
+
   return (
-    <div className="p-8 max-w-5xl mx-auto">
-      <div className="flex items-end justify-between mb-6 pb-5 border-b border-gray-200">
+    <div className="p-8 max-w-6xl mx-auto">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-          <p className="text-xs font-semibold text-emerald-600 uppercase tracking-widest mb-1">Analyse</p>
-          <h1 className="text-2xl font-bold text-gray-900">Rentabilité</h1>
-          <p className="text-sm text-gray-500 mt-1">Saisissez vos ventes mensuelles pour calculer vos marges réelles</p>
+          <p className="text-xs font-semibold text-primary uppercase tracking-widest mb-1">Analyse financière</p>
+          <h1 className="text-3xl font-extrabold text-primary tracking-tight">Rentabilité</h1>
+          <p className="text-sm text-on-surface-variant/70 mt-1">Vos ventes mensuelles, converties en marges réelles.</p>
         </div>
         <button
           onClick={openForm}
-          className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 transition shadow-sm"
+          className="flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary text-sm font-semibold rounded-xl hover:bg-primary-container transition shadow-lg hover:nav-active-glow active:scale-[0.98]"
         >
           <Plus size={15} /> Saisir un mois
         </button>
       </div>
 
       {pricedRecipes.length === 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-700 mb-5">
+        <div className="bg-amber-light border border-amber/30 rounded-xl px-4 py-3 text-sm text-amber-dark mb-5">
           Aucune recette n&apos;a de prix de vente. Définissez les prix dans la page <a href="/menu" className="underline font-medium">Menu</a> d&apos;abord.
         </div>
+      )}
+
+      {/* KPI cards — all derived from the existing per-period calculations */}
+      {periods.length > 0 && (
+        <section className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="glass-card rounded-2xl p-5 flex flex-col gap-3 border-l-4 border-primary">
+            <span className="text-2xs font-bold uppercase tracking-widest text-on-surface-variant/60">Marge brute globale</span>
+            <span className={clsx("text-2xl font-extrabold tabular-nums", globals.marge >= 0 ? "text-primary" : "text-red")}>€{globals.marge.toFixed(2)}</span>
+            {globals.margePct !== null && (
+              <>
+                <div className="w-full bg-surface-container-highest rounded-full h-2">
+                  <div className="bg-primary h-full rounded-full transition-all" style={{ width: `${Math.min(100, Math.max(0, globals.margePct))}%` }} />
+                </div>
+                <p className="text-2xs text-on-surface-variant/60">{globals.margePct.toFixed(1)}% du chiffre d&apos;affaires</p>
+              </>
+            )}
+          </div>
+
+          {globals.foodCostPct !== null && (
+            <div className="glass-card rounded-2xl p-5 flex flex-col gap-3">
+              <span className="text-2xs font-bold uppercase tracking-widest text-on-surface-variant/60">Food cost</span>
+              <span className={clsx("text-2xl font-extrabold tabular-nums",
+                fcGlobalStatus === "green" ? "text-primary" : fcGlobalStatus === "amber" ? "text-amber-dark" : "text-red")}>
+                {globals.foodCostPct.toFixed(1)}%
+              </span>
+              <div className="w-full bg-surface-container-highest rounded-full h-2">
+                <div className={clsx("h-full rounded-full transition-all",
+                  fcGlobalStatus === "green" ? "bg-primary" : fcGlobalStatus === "amber" ? "bg-amber" : "bg-red")}
+                  style={{ width: `${Math.min(100, globals.foodCostPct)}%` }} />
+              </div>
+              <p className="text-2xs text-on-surface-variant/60">Objectif {targetFoodCostPct}%</p>
+            </div>
+          )}
+
+          <div className="glass-card rounded-2xl p-5 flex flex-col gap-3">
+            <span className="text-2xs font-bold uppercase tracking-widest text-on-surface-variant/60">CA réalisé</span>
+            <span className="text-2xl font-extrabold text-primary tabular-nums">€{globals.ca.toFixed(2)}</span>
+            <p className="text-2xs text-on-surface-variant/60">Coût matière €{globals.cout.toFixed(2)}</p>
+          </div>
+        </section>
+      )}
+
+      {/* Segmentation des revenus — per real channel that has data */}
+      {segments.length > 0 && (
+        <section className="glass-card rounded-2xl p-5 mb-6">
+          <h2 className="text-lg font-semibold text-primary mb-4">Segmentation des revenus</h2>
+          <div className="space-y-4">
+            {segments.map((seg) => {
+              const share = segTotalCA > 0 ? (seg.ca / segTotalCA) * 100 : 0;
+              return (
+                <div key={seg.key}>
+                  <div className="flex items-center justify-between mb-1.5 flex-wrap gap-x-4 gap-y-1">
+                    <span className="text-sm font-semibold text-on-surface">{seg.label}</span>
+                    <div className="flex items-center gap-4 text-2xs tabular-nums text-on-surface-variant/70">
+                      <span>CA <b className="text-on-surface">€{seg.ca.toFixed(0)}</b></span>
+                      <span>Coût <b className="text-red">€{seg.cout.toFixed(0)}</b></span>
+                      <span>Marge <b className={seg.marge >= 0 ? "text-primary" : "text-red"}>€{seg.marge.toFixed(0)}</b></span>
+                      {seg.foodCostPct !== null && <span>Food cost <b className="text-on-surface">{seg.foodCostPct.toFixed(1)}%</b></span>}
+                    </div>
+                  </div>
+                  <div className="w-full bg-surface-container-highest rounded-full h-2">
+                    <div className="bg-primary h-full rounded-full transition-all" style={{ width: `${share}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
       )}
 
       {/* Sales entry form */}
@@ -502,216 +602,221 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
 
       {/* History */}
       {periods.length === 0 ? (
-        <div className="bg-white border border-[#E5E7EB] rounded-card p-12 text-center">
+        <div className="glass-card rounded-2xl p-12 text-center">
           <div className="text-4xl mb-3">📊</div>
-          <h2 className="text-base font-medium text-gray-900 mb-1">Aucune donnée de vente</h2>
-          <p className="text-sm text-gray-500 mb-5">Saisissez vos ventes du mois pour calculer votre rentabilité réelle.</p>
-          <button onClick={openForm} className="px-4 py-2 text-sm text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 transition">
+          <h2 className="text-base font-semibold text-on-surface mb-1">Aucune donnée de vente</h2>
+          <p className="text-sm text-on-surface-variant/70 mb-5">Saisissez vos ventes du mois pour calculer votre rentabilité réelle.</p>
+          <button onClick={openForm} className="inline-block px-5 py-2.5 text-sm font-semibold text-on-primary bg-primary rounded-xl hover:bg-primary-container transition">
             Saisir le premier mois
           </button>
         </div>
       ) : (
-        <div className="space-y-3">
+        <>
           {/* Trend banner if 2+ months */}
           {trend !== null && (
             <div className={clsx(
-              "flex items-center gap-3 px-4 py-3 rounded-lg border text-sm font-medium",
-              trend > 0 ? "bg-emerald-50 border-emerald-200 text-emerald-700" :
-              trend < 0 ? "bg-red-50 border-red-200 text-red-700" :
-              "bg-gray-50 border-gray-200 text-gray-600"
+              "flex items-center gap-3 px-4 py-3 rounded-xl border text-sm font-medium mb-4",
+              trend > 0 ? "bg-emerald-50 border-primary/20 text-primary" :
+              trend < 0 ? "bg-red-light border-red/20 text-red" :
+              "bg-surface-container-low border-outline-variant/20 text-on-surface-variant"
             )}>
               {trend > 0 ? <TrendingUp size={16} /> : trend < 0 ? <TrendingDown size={16} /> : <Minus size={16} />}
               Marge brute {trend > 0 ? "en hausse" : trend < 0 ? "en baisse" : "stable"} de {Math.abs(trend).toFixed(1)}% vs le mois précédent
             </div>
           )}
 
-          {monthsGrouped.map(({ month, list, combined }) => (
-            <div key={month}>
-              {/* Month separator */}
-              <div className="flex items-center justify-between mb-2 mt-5 first:mt-0">
-                <h3 className="text-sm font-bold text-gray-800 capitalize">{monthLabel(month)}</h3>
-                <div className="flex items-center gap-4 text-xs text-gray-500">
-                  <span>CA <b className="text-gray-900">€{combined.ca.toFixed(0)}</b></span>
-                  <span>Marge <b className={combined.marge >= 0 ? "text-emerald-600" : "text-red-500"}>€{combined.marge.toFixed(0)}</b></span>
-                  <span className="text-gray-400">{combined.couverts} couv.</span>
-                </div>
-              </div>
-              <div className="space-y-2">
-          {list.map((period) => {
-            const stats = calcPeriodStats(period, recipes, simpleProducts);
-            const isExpanded = expandedId === period.id;
-            const fcStatus = stats.foodCostPct === null ? null :
-              stats.foodCostPct <= targetFoodCostPct ? "green" :
-              stats.foodCostPct <= targetFoodCostPct * 1.2 ? "amber" : "red";
-            const fcBarColor = fcStatus === "green" ? "bg-emerald-400" : fcStatus === "amber" ? "bg-amber-400" : fcStatus === "red" ? "bg-red-400" : "bg-gray-200";
-
-            return (
-              <div key={period.id} className="bg-white border border-gray-200 rounded-card shadow-card overflow-hidden">
-                {/* Color bar top */}
-                <div className={`h-1 w-full ${fcBarColor}`} />
-                <div
-                  className="flex items-center gap-4 px-5 py-4 cursor-pointer hover:bg-gray-50/70 transition"
-                  onClick={() => setExpandedId(isExpanded ? null : period.id)}
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className={clsx("text-xs font-semibold px-2.5 py-1 rounded-full",
-                        period.channel === "delivery" ? "bg-blue-100 text-blue-700" : "bg-emerald-100 text-emerald-700")}>
-                        {channelLabel(period.channel)}
-                      </span>
-                      {period.notes && <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">· {period.notes}</span>}
-                    </div>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      {stats.totalCouverts} couvert{stats.totalCouverts !== 1 ? "s" : ""}
-                      {stats.commission > 0 && <span className="text-blue-600"> · commission €{stats.commission.toFixed(0)}</span>}
-                    </p>
-                  </div>
-
-                  {/* Mini stats */}
-                  <div className="hidden md:flex items-center gap-5 text-sm">
-                    <div className="text-right">
-                      <p className="text-2xs text-gray-400 uppercase tracking-wide font-medium">CA</p>
-                      <p className="font-bold text-gray-900">€{stats.ca.toFixed(0)}</p>
-                    </div>
-                    <div className="w-px h-8 bg-gray-100" />
-                    <div className="text-right">
-                      <p className="text-2xs text-gray-400 uppercase tracking-wide font-medium">Coût</p>
-                      <p className="font-semibold text-red-500">€{stats.coutMatiere.toFixed(0)}</p>
-                    </div>
-                    <div className="w-px h-8 bg-gray-100" />
-                    <div className="text-right">
-                      <p className="text-2xs text-gray-400 uppercase tracking-wide font-medium">Marge</p>
-                      <p className={clsx("font-bold", stats.margeB >= 0 ? "text-emerald-600" : "text-red-500")}>
-                        €{stats.margeB.toFixed(0)}
-                      </p>
-                    </div>
-                    {stats.foodCostPct !== null && (
-                      <>
-                        <div className="w-px h-8 bg-gray-100" />
-                        <div className="text-right">
-                          <p className="text-2xs text-gray-400 uppercase tracking-wide font-medium mb-1">Food cost</p>
-                          <span className={clsx(
-                            "inline-block px-2 py-0.5 rounded-full text-xs font-bold",
-                            fcStatus === "green" ? "bg-emerald-100 text-emerald-700" :
-                            fcStatus === "amber" ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"
-                          )}>
-                            {stats.foodCostPct.toFixed(1)}%
-                          </span>
-                        </div>
-                      </>
-                    )}
-                  </div>
-
-                  {isExpanded ? <ChevronUp size={16} className="text-gray-400 ml-2" /> : <ChevronDown size={16} className="text-gray-400 ml-2" />}
-                </div>
-
-                {isExpanded && (
-                  <div className="border-t border-[#E5E7EB] px-5 py-4">
-                    {/* Summary cards */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                      {[
-                        { label: "Couverts", value: stats.totalCouverts.toString(), color: "text-gray-900" },
-                        { label: "Chiffre d'affaires", value: `€${stats.ca.toFixed(2)}`, color: "text-gray-900" },
-                        { label: "Coût matière", value: `€${stats.coutMatiere.toFixed(2)}`, color: "text-red-500" },
-                        { label: "Marge brute", value: `€${stats.margeB.toFixed(2)}`, color: stats.margeB >= 0 ? "text-emerald-600" : "text-red-500" },
-                      ].map((s) => (
-                        <div key={s.label} className="bg-gray-50 rounded-lg p-3">
-                          <p className="text-xs text-gray-500 mb-1">{s.label}</p>
-                          <p className={clsx("text-lg font-semibold", s.color)}>{s.value}</p>
-                        </div>
-                      ))}
-                    </div>
-
-                    {stats.foodCostPct !== null && (
-                      <div className="mb-4 px-4 py-3 rounded-lg border flex items-center justify-between"
-                        style={{
-                          backgroundColor: fcStatus === "green" ? "#f0fdf4" : fcStatus === "amber" ? "#fffbeb" : "#fef2f2",
-                          borderColor: fcStatus === "green" ? "#bbf7d0" : fcStatus === "amber" ? "#fde68a" : "#fecaca",
-                        }}>
-                        <span className="text-sm font-medium text-gray-700">Food cost global ce mois</span>
-                        <span className={clsx("text-lg font-bold",
-                          fcStatus === "green" ? "text-emerald-600" :
-                          fcStatus === "amber" ? "text-amber-500" : "text-red-500"
-                        )}>
-                          {stats.foodCostPct.toFixed(1)}% <span className="text-sm font-normal text-gray-400">/ objectif {targetFoodCostPct}%</span>
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Detail per dish */}
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="text-xs text-gray-400 uppercase">
-                          <th className="text-left pb-2">Plat</th>
-                          <th className="text-right pb-2">Qté</th>
-                          <th className="text-right pb-2">Prix</th>
-                          <th className="text-right pb-2">CA</th>
-                          <th className="text-right pb-2">Coût matière</th>
-                          <th className="text-right pb-2">Marge</th>
-                          <th className="text-right pb-2">Food cost</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-[#F3F4F6]">
-                        {period.sales_lines
-                          .filter((l) => l.qty_sold > 0)
-                          .map((line) => {
-                            const recipe = recipes.find((r) => r.id === line.recipe_id);
-                            if (!recipe || !recipe.menu_price) return null;
-                            const cpp = recipe.total_cost / (recipe.yield_portions || 1);
-                            const lineCA = line.qty_sold * recipe.menu_price;
-                            const lineCout = line.qty_sold * cpp;
-                            const lineMarge = lineCA - lineCout;
-                            const lineFCP = (lineCout / lineCA) * 100;
-                            return (
-                              <tr key={line.recipe_id}>
-                                <td className="py-1.5 text-gray-700 font-medium">{recipe.name}</td>
-                                <td className="text-right text-gray-500">{line.qty_sold}</td>
-                                <td className="text-right text-gray-500">€{Number(recipe.menu_price).toFixed(2)}</td>
-                                <td className="text-right text-gray-900">€{lineCA.toFixed(2)}</td>
-                                <td className="text-right text-red-500">€{lineCout.toFixed(2)}</td>
-                                <td className="text-right font-medium text-emerald-600">€{lineMarge.toFixed(2)}</td>
-                                <td className="text-right">
-                                  <span className={clsx("text-xs font-medium",
-                                    lineFCP <= targetFoodCostPct ? "text-emerald-600" :
-                                    lineFCP <= targetFoodCostPct * 1.2 ? "text-amber-500" : "text-red-500"
-                                  )}>
-                                    {lineFCP.toFixed(1)}%
-                                  </span>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                      </tbody>
-                      <tfoot>
-                        <tr className="border-t-2 border-gray-200 font-semibold">
-                          <td className="pt-2 text-gray-900">Total</td>
-                          <td className="text-right pt-2 text-gray-700">{stats.totalCouverts}</td>
-                          <td />
-                          <td className="text-right pt-2 text-gray-900">€{stats.ca.toFixed(2)}</td>
-                          <td className="text-right pt-2 text-red-500">€{stats.coutMatiere.toFixed(2)}</td>
-                          <td className="text-right pt-2 text-emerald-600">€{stats.margeB.toFixed(2)}</td>
-                          <td className="text-right pt-2">
-                            {stats.foodCostPct !== null && (
-                              <span className={clsx("text-sm",
-                                fcStatus === "green" ? "text-emerald-600" :
-                                fcStatus === "amber" ? "text-amber-500" : "text-red-500"
-                              )}>
-                                {stats.foodCostPct.toFixed(1)}%
-                              </span>
-                            )}
+          {/* Historique des clôtures — glass table grouped by month */}
+          <div className="glass-card rounded-2xl overflow-hidden">
+            <div className="px-5 pt-5 pb-3">
+              <h2 className="text-lg font-semibold text-primary">Historique des clôtures</h2>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead className="bg-surface-container-low/50 border-b border-outline-variant/20">
+                  <tr>
+                    <th className="px-5 py-3 text-left text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Canal</th>
+                    <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">CA</th>
+                    <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Coût</th>
+                    <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Marge</th>
+                    <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Food cost</th>
+                    <th className="px-5 py-3 text-center text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Couverts</th>
+                    <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-outline-variant/10">
+                  {monthsGrouped.map(({ month, list, combined }) => {
+                    const closed = month < currentMonth;
+                    return (
+                      <Fragment key={month}>
+                        {/* Month group header with closure status pill */}
+                        <tr>
+                          <td colSpan={7} className="bg-surface-container-low/40 px-5 py-2.5">
+                            <div className="flex items-center justify-between flex-wrap gap-x-4 gap-y-1">
+                              <div className="flex items-center gap-3">
+                                <span className="text-2xs font-bold uppercase tracking-widest text-on-surface-variant/60 capitalize">{monthLabel(month)}</span>
+                                <span className={clsx("inline-flex px-2.5 py-1 rounded-full text-2xs font-bold uppercase tracking-wide",
+                                  closed ? "bg-emerald-50 text-primary" : "bg-surface-container-highest text-on-surface-variant")}>
+                                  {closed ? "Clôturé" : "En attente"}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-4 text-2xs tabular-nums text-on-surface-variant/70">
+                                <span>CA <b className="text-on-surface">€{combined.ca.toFixed(0)}</b></span>
+                                <span>Marge <b className={combined.marge >= 0 ? "text-primary" : "text-red"}>€{combined.marge.toFixed(0)}</b></span>
+                                <span className="text-on-surface-variant/50">{combined.couverts} couv.</span>
+                              </div>
+                            </div>
                           </td>
                         </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-              </div>
+
+                        {list.map((period) => {
+                          const stats = calcPeriodStats(period, recipes, simpleProducts);
+                          const isExpanded = expandedId === period.id;
+                          const fcStatus = stats.foodCostPct === null ? null :
+                            stats.foodCostPct <= targetFoodCostPct ? "green" :
+                            stats.foodCostPct <= targetFoodCostPct * 1.2 ? "amber" : "red";
+
+                          return (
+                            <Fragment key={period.id}>
+                              <tr onClick={() => setExpandedId(isExpanded ? null : period.id)}
+                                className="cursor-pointer transition-colors hover:bg-surface-container-low/40">
+                                <td className="px-5 py-4">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className={clsx("inline-flex px-2.5 py-1 rounded-full text-2xs font-bold uppercase tracking-wide",
+                                      period.channel === "delivery" ? "bg-blue-light text-blue-dark" : "bg-emerald-50 text-primary")}>
+                                      {channelLabel(period.channel)}
+                                    </span>
+                                    {period.notes && <span className="text-2xs text-on-surface-variant/60 bg-surface-container-low px-2 py-0.5 rounded-full">· {period.notes}</span>}
+                                    {stats.commission > 0 && <span className="text-2xs text-blue">commission €{stats.commission.toFixed(0)}</span>}
+                                  </div>
+                                </td>
+                                <td className="px-5 py-4 text-right text-sm font-bold text-on-surface tabular-nums whitespace-nowrap">€{stats.ca.toFixed(0)}</td>
+                                <td className="px-5 py-4 text-right text-sm font-semibold text-red tabular-nums whitespace-nowrap">€{stats.coutMatiere.toFixed(0)}</td>
+                                <td className={clsx("px-5 py-4 text-right text-sm font-bold tabular-nums whitespace-nowrap", stats.margeB >= 0 ? "text-primary" : "text-red")}>€{stats.margeB.toFixed(0)}</td>
+                                <td className="px-5 py-4 text-right">
+                                  {stats.foodCostPct !== null ? (
+                                    <span className={clsx("inline-flex px-2.5 py-1 rounded-full text-2xs font-bold tabular-nums",
+                                      fcStatus === "green" ? "bg-emerald-50 text-primary" :
+                                      fcStatus === "amber" ? "bg-amber-light text-amber-dark" : "bg-red-light text-red")}>
+                                      {stats.foodCostPct.toFixed(1)}%
+                                    </span>
+                                  ) : <span className="text-on-surface-variant/40 text-sm">—</span>}
+                                </td>
+                                <td className="px-5 py-4 text-center text-sm text-on-surface-variant/80 tabular-nums">{stats.totalCouverts}</td>
+                                <td className="px-5 py-4 text-right">
+                                  {isExpanded ? <ChevronUp size={16} className="text-on-surface-variant/40 inline" /> : <ChevronDown size={16} className="text-on-surface-variant/40 inline" />}
+                                </td>
+                              </tr>
+
+                              {isExpanded && (
+                                <tr>
+                                  <td colSpan={7} className="bg-surface-container-low/30 px-5 py-4 border-t border-outline-variant/10">
+                                    {/* Summary cards */}
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                                      {[
+                                        { label: "Couverts", value: stats.totalCouverts.toString(), color: "text-on-surface" },
+                                        { label: "Chiffre d'affaires", value: `€${stats.ca.toFixed(2)}`, color: "text-on-surface" },
+                                        { label: "Coût matière", value: `€${stats.coutMatiere.toFixed(2)}`, color: "text-red" },
+                                        { label: "Marge brute", value: `€${stats.margeB.toFixed(2)}`, color: stats.margeB >= 0 ? "text-primary" : "text-red" },
+                                      ].map((s) => (
+                                        <div key={s.label} className="bg-surface-container-low/60 rounded-xl p-3">
+                                          <p className="text-2xs font-bold uppercase tracking-widest text-on-surface-variant/60 mb-1">{s.label}</p>
+                                          <p className={clsx("text-lg font-semibold tabular-nums", s.color)}>{s.value}</p>
+                                        </div>
+                                      ))}
+                                    </div>
+
+                                    {stats.foodCostPct !== null && (
+                                      <div className={clsx("mb-4 px-4 py-3 rounded-xl border flex items-center justify-between",
+                                        fcStatus === "green" ? "bg-emerald-50 border-primary/20" :
+                                        fcStatus === "amber" ? "bg-amber-light border-amber/30" : "bg-red-light border-red/20")}>
+                                        <span className="text-sm font-medium text-on-surface-variant">Food cost global ce mois</span>
+                                        <span className={clsx("text-lg font-bold tabular-nums",
+                                          fcStatus === "green" ? "text-primary" :
+                                          fcStatus === "amber" ? "text-amber-dark" : "text-red")}>
+                                          {stats.foodCostPct.toFixed(1)}% <span className="text-sm font-normal text-on-surface-variant/50">/ objectif {targetFoodCostPct}%</span>
+                                        </span>
+                                      </div>
+                                    )}
+
+                                    {/* Detail per dish */}
+                                    <table className="w-full text-sm">
+                                      <thead>
+                                        <tr className="text-2xs text-on-surface-variant/50 uppercase tracking-wide">
+                                          <th className="text-left pb-2">Plat</th>
+                                          <th className="text-right pb-2">Qté</th>
+                                          <th className="text-right pb-2">Prix</th>
+                                          <th className="text-right pb-2">CA</th>
+                                          <th className="text-right pb-2">Coût matière</th>
+                                          <th className="text-right pb-2">Marge</th>
+                                          <th className="text-right pb-2">Food cost</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-outline-variant/10">
+                                        {period.sales_lines
+                                          .filter((l) => l.qty_sold > 0)
+                                          .map((line) => {
+                                            const recipe = recipes.find((r) => r.id === line.recipe_id);
+                                            if (!recipe || !recipe.menu_price) return null;
+                                            const cpp = recipe.total_cost / (recipe.yield_portions || 1);
+                                            const lineCA = line.qty_sold * recipe.menu_price;
+                                            const lineCout = line.qty_sold * cpp;
+                                            const lineMarge = lineCA - lineCout;
+                                            const lineFCP = (lineCout / lineCA) * 100;
+                                            return (
+                                              <tr key={line.recipe_id}>
+                                                <td className="py-1.5 text-on-surface-variant font-medium">{recipe.name}</td>
+                                                <td className="text-right text-on-surface-variant/70 tabular-nums">{line.qty_sold}</td>
+                                                <td className="text-right text-on-surface-variant/70 tabular-nums">€{Number(recipe.menu_price).toFixed(2)}</td>
+                                                <td className="text-right text-on-surface tabular-nums">€{lineCA.toFixed(2)}</td>
+                                                <td className="text-right text-red tabular-nums">€{lineCout.toFixed(2)}</td>
+                                                <td className="text-right font-medium text-primary tabular-nums">€{lineMarge.toFixed(2)}</td>
+                                                <td className="text-right">
+                                                  <span className={clsx("text-2xs font-medium tabular-nums",
+                                                    lineFCP <= targetFoodCostPct ? "text-primary" :
+                                                    lineFCP <= targetFoodCostPct * 1.2 ? "text-amber-dark" : "text-red"
+                                                  )}>
+                                                    {lineFCP.toFixed(1)}%
+                                                  </span>
+                                                </td>
+                                              </tr>
+                                            );
+                                          })}
+                                      </tbody>
+                                      <tfoot>
+                                        <tr className="border-t-2 border-outline-variant/30 font-semibold">
+                                          <td className="pt-2 text-on-surface">Total</td>
+                                          <td className="text-right pt-2 text-on-surface-variant tabular-nums">{stats.totalCouverts}</td>
+                                          <td />
+                                          <td className="text-right pt-2 text-on-surface tabular-nums">€{stats.ca.toFixed(2)}</td>
+                                          <td className="text-right pt-2 text-red tabular-nums">€{stats.coutMatiere.toFixed(2)}</td>
+                                          <td className="text-right pt-2 text-primary tabular-nums">€{stats.margeB.toFixed(2)}</td>
+                                          <td className="text-right pt-2">
+                                            {stats.foodCostPct !== null && (
+                                              <span className={clsx("text-sm tabular-nums",
+                                                fcStatus === "green" ? "text-primary" :
+                                                fcStatus === "amber" ? "text-amber-dark" : "text-red"
+                                              )}>
+                                                {stats.foodCostPct.toFixed(1)}%
+                                              </span>
+                                            )}
+                                          </td>
+                                        </tr>
+                                      </tfoot>
+                                    </table>
+                                  </td>
+                                </tr>
+                              )}
+                            </Fragment>
+                          );
+                        })}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
-          ))}
-        </div>
+          </div>
+        </>
       )}
     </div>
   );
