@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { ingredientsPerYieldBase, type RecipeRow } from "@/lib/costing";
 import { ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Warehouse, TrendingDown, TrendingUp, AlertTriangle, Check, Loader2, History, ClipboardList, Trash2, Download, Search, Package } from "lucide-react";
@@ -55,7 +56,21 @@ type InventoryLine = {
   ingredient_id: string | null; ingredient_name: string | null; unit: string | null;
   theoretical_qty: number | null; counted_qty: number | null; ecart: number | null;
   cmup: number | null; ecart_value: number | null;
+  recipe_id?: string | null; // ligne de comptage d'une MEP / recette
 };
+
+// MEP / recette comptable à l'inventaire (avec ses lignes pour la conversion
+// récursive en équivalents ingrédients).
+type CountRecipe = {
+  id: string; name: string; is_prep: boolean; countable_in_inventory: boolean;
+  yield_portions: number; yield_unit: string;
+  recipe_lines: { ingredient_id: string | null; sub_recipe_id: string | null; quantity: number; unit: string }[];
+};
+// Libellé de saisie pour une MEP/recette : son unité de rendement.
+function yieldLabel(r: CountRecipe): string {
+  const u = r.yield_unit || "portion";
+  return u === "kg" || u === "g" ? "kg" : u === "l" || u === "ml" ? "L" : "portion(s)";
+}
 type Kind = "food" | "fournitures";
 type InventorySession = {
   id: string; created_at: string; closing_at: string | null; status: string; finalized_at: string | null;
@@ -71,6 +86,7 @@ interface Props {
   recentMovements: Movement[];
   inventorySessions: InventorySession[];
   fournitureIds: string[];
+  recipes?: CountRecipe[];
 }
 
 const UNIT_LABELS: Record<string, string> = {
@@ -107,7 +123,7 @@ function displayToBase(qty: number, unit: string): number {
   return isWeightVol ? qty * 1000 : qty;
 }
 
-export default function InventaireClient({ restaurantId, ingredients, recentMovements, inventorySessions, fournitureIds }: Props) {
+export default function InventaireClient({ restaurantId, ingredients, recentMovements, inventorySessions, fournitureIds, recipes = [] }: Props) {
   const supabase = createClient();
   const fournitureSet = useMemo(() => new Set(fournitureIds), [fournitureIds]);
   const isFourniture = (id: string) => fournitureSet.has(id);
@@ -127,6 +143,8 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
   });
   const [creatingDraft, setCreatingDraft] = useState(false);
   const [counts, setCounts] = useState<Record<string, string>>({});
+  // Comptage des MEP / recettes (clé = recipe id, valeur saisie en unité de rendement)
+  const [mepCounts, setMepCounts] = useState<Record<string, string>>({});
   const [validatingCount, setValidatingCount] = useState(false);
   const [countDone, setCountDone] = useState<string | null>(null);
   const [adjustId, setAdjustId] = useState<string | null>(null);
@@ -201,16 +219,45 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
     setSaving(false);
   }
 
+  // ---- MEP / recettes comptables (vue alimentaire uniquement) ----
+  const countableMeps = useMemo(() => recipes.filter((r) => r.is_prep), [recipes]);
+  const countableRecipes = useMemo(() => recipes.filter((r) => !r.is_prep && r.countable_in_inventory), [recipes]);
+  const recipeMap = useMemo(() => new Map<string, RecipeRow>(recipes.map((r) => [r.id, r as unknown as RecipeRow])), [recipes]);
+
+  // Équivalents ingrédients (unités de base) apportés par les MEP / recettes
+  // comptées : « 4 L de crème d'ail » → x g d'ail, y ml d'huile… (récursif).
+  const mepContributions = useMemo(() => {
+    const map = new Map<string, number>();
+    if (countKind !== "food") return map;
+    for (const [rid, raw] of Object.entries(mepCounts)) {
+      const v = parseFloat(raw);
+      if (isNaN(v) || v <= 0) continue;
+      const yieldBase = toBase(v, recipeMap.get(rid)?.yield_unit ?? "portion");
+      const perYieldBase = ingredientsPerYieldBase(rid, recipeMap, new Map(), new Set());
+      for (const [ingId, qty] of Array.from(perYieldBase.entries())) {
+        map.set(ingId, (map.get(ingId) ?? 0) + qty * yieldBase);
+      }
+    }
+    return map;
+  }, [mepCounts, recipeMap, countKind]);
+
   // ---- Prise d'inventaire (écart théorique vs réel) ----
   // La saisie se fait dans le conditionnement secondaire s'il existe
   // (ex. « 12 bouteilles » → 12 × 0,75 L → 9 000 ml), sinon en kg/L/pièce.
+  // Les MEP/recettes comptées s'ajoutent automatiquement en équivalents.
   function countedBase(ing: Ingredient): number | null {
     const raw = counts[ing.id];
-    if (raw === undefined || raw === "") return null;
-    const v = parseFloat(raw);
-    if (isNaN(v) || v < 0) return null;
-    const sec = secOf(ing);
-    return displayToBase(sec ? v * sec.size : v, ing.unit);
+    const contrib = mepContributions.get(ing.id) ?? 0;
+    const hasRaw = raw !== undefined && raw !== "";
+    if (!hasRaw && contrib <= 0) return null;
+    let own = 0;
+    if (hasRaw) {
+      const v = parseFloat(raw);
+      if (isNaN(v) || v < 0) return contrib > 0 ? contrib : null;
+      const sec = secOf(ing);
+      own = displayToBase(sec ? v * sec.size : v, ing.unit);
+    }
+    return own + contrib;
   }
 
   const countSummary = useMemo(() => {
@@ -228,7 +275,8 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
       else if (diff > 0) surplus += diff * cmup;
     }
     return { manque, surplus, counted, net: surplus - manque };
-  }, [counts, kindIngredients]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [counts, kindIngredients, mepContributions]);
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
   const foodSessions = useMemo(() => sessions.filter((s) => (s.kind ?? "food") !== "fournitures"), [sessions]);
@@ -253,6 +301,7 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
       setSessions((prev) => [{ ...session, inventory_lines: [] } as InventorySession, ...prev]);
       setActiveSessionId(session.id);
       setCounts({});
+      setMepCounts({});
       setCountDone(null);
       setTab(kind === "fournitures" ? "count-f" : "count");
     }
@@ -260,15 +309,39 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
 
   function loadDraft(s: InventorySession) {
     const next: Record<string, string> = {};
+    const nextMep: Record<string, string> = {};
+
+    // 1) Lignes MEP/recettes d'abord (quantité stockée en base de rendement)
     for (const l of s.inventory_lines ?? []) {
-      if (l.ingredient_id && l.counted_qty != null) {
+      if (l.recipe_id && l.counted_qty != null) {
+        const yu = recipeMap.get(l.recipe_id)?.yield_unit ?? l.unit ?? "portion";
+        const disp = yu === "kg" || yu === "l" ? Number(l.counted_qty) / 1000 : Number(l.counted_qty);
+        nextMep[l.recipe_id] = String(Number(disp.toFixed(3)));
+      }
+    }
+    // Contributions apportées par ces MEP (pour les DÉDUIRE des champs
+    // ingrédients : le total sauvegardé les incluait déjà).
+    const contrib = new Map<string, number>();
+    for (const [rid, raw] of Object.entries(nextMep)) {
+      const v = parseFloat(raw);
+      if (isNaN(v) || v <= 0) continue;
+      const yieldBase = toBase(v, recipeMap.get(rid)?.yield_unit ?? "portion");
+      const per = ingredientsPerYieldBase(rid, recipeMap, new Map(), new Set());
+      for (const [ingId, qty] of Array.from(per.entries())) contrib.set(ingId, (contrib.get(ingId) ?? 0) + qty * yieldBase);
+    }
+
+    // 2) Lignes ingrédients : champ = total sauvegardé − part venue des MEP
+    for (const l of s.inventory_lines ?? []) {
+      if (l.ingredient_id && !l.recipe_id && l.counted_qty != null) {
         const ing = localIngredients.find((i) => i.id === l.ingredient_id);
-        const disp = baseToDisplay(Number(l.counted_qty), ing?.unit ?? l.unit ?? "unit");
+        const own = Math.max(0, Number(l.counted_qty) - (contrib.get(l.ingredient_id) ?? 0));
+        const disp = baseToDisplay(own, ing?.unit ?? l.unit ?? "unit");
         const sec = ing ? secOf(ing) : null;
-        next[l.ingredient_id] = String(sec ? Number((disp / sec.size).toFixed(3)) : disp);
+        next[l.ingredient_id] = String(sec ? Number((disp / sec.size).toFixed(3)) : Number(disp.toFixed(3)));
       }
     }
     setCounts(next);
+    setMepCounts(nextMep);
     setActiveSessionId(s.id);
     setCountDone(null);
     setTab(s.kind === "fournitures" ? "count-f" : "count");
@@ -297,6 +370,24 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
         movements.push(diff < 0
           ? { restaurant_id: restaurantId, ingredient_id: ing.id, movement_type: "loss", qty: Math.abs(diff), unit_cost: cmup, reference_type: "inventory", reference_id: activeSessionId, loss_reason: "Écart inventaire", notes: `Inventaire : ${theo} → ${real}` }
           : { restaurant_id: restaurantId, ingredient_id: ing.id, movement_type: "adjustment", qty: diff, unit_cost: cmup, reference_type: "inventory", reference_id: activeSessionId, notes: `Inventaire : ${theo} → ${real}` });
+      }
+    }
+
+    // Lignes MEP / recettes comptées (archivées telles quelles ; leur
+    // équivalent ingrédients est déjà inclus dans les lignes ingrédients).
+    if (sessionKind === "food") {
+      for (const [rid, raw] of Object.entries(mepCounts)) {
+        const v = parseFloat(raw);
+        if (isNaN(v) || v <= 0) continue;
+        const rec = recipes.find((x) => x.id === rid);
+        if (!rec) continue;
+        sessionLines.push({
+          ingredient_id: null, recipe_id: rid,
+          ingredient_name: (rec.is_prep ? "MEP — " : "Recette — ") + rec.name,
+          unit: rec.yield_unit || "portion",
+          theoretical_qty: null, counted_qty: toBase(v, rec.yield_unit || "portion"),
+          ecart: null, cmup: null, ecart_value: null,
+        });
       }
     }
 
@@ -349,6 +440,7 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
 
     if (finalize) {
       setCounts({});
+      setMepCounts({});
       setActiveSessionId(null);
       setCountDone(`Inventaire finalisé : ${updates.length} ajustement(s) appliqué(s), écart net €${countSummary.net.toFixed(2)}.`);
       setTab(sessionKind === "fournitures" ? "sessions-f" : "sessions");
@@ -506,7 +598,7 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
               <p className="text-2xs text-amber-dark uppercase tracking-wide font-bold">Brouillon · {countSummary.counted} produit(s) compté(s)</p>
             </div>
             <div className="flex items-center gap-2">
-              <button onClick={() => { setActiveSessionId(null); setCounts({}); }} className="px-3 py-1.5 text-xs text-on-surface-variant/60 hover:text-on-surface">Quitter</button>
+              <button onClick={() => { setActiveSessionId(null); setCounts({}); setMepCounts({}); }} className="px-3 py-1.5 text-xs text-on-surface-variant/60 hover:text-on-surface">Quitter</button>
               <button onClick={() => saveSession(false)} disabled={validatingCount}
                 className="px-4 py-2 text-sm font-semibold text-on-surface-variant border border-outline-variant/40 rounded-xl hover:bg-surface-container-low disabled:opacity-50 transition">
                 Enregistrer brouillon
@@ -551,6 +643,71 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant/10">
+                {/* SECTION MEP — converties automatiquement en équivalents ingrédients */}
+                {countKind === "food" && countableMeps.length > 0 && (
+                  <>
+                    <tr>
+                      <td colSpan={5} className="bg-surface-container-low/40 px-5 py-2 text-2xs font-bold uppercase tracking-widest text-on-surface-variant/60">
+                        Mises en place — converties automatiquement en ingrédients
+                      </td>
+                    </tr>
+                    {countableMeps.map((r) => (
+                      <tr key={r.id} className="hover:bg-surface-container-low/40 transition-colors">
+                        <td className="px-5 py-3 font-semibold text-on-surface">{r.name}
+                          <span className="block text-2xs text-on-surface-variant/50 font-normal">rendement : {fmtNum(Number(r.yield_portions) || 1)} {yieldLabel(r)}</span>
+                        </td>
+                        <td className="px-5 py-3 text-right text-on-surface-variant/30">—</td>
+                        <td className="px-5 py-3 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <input type="number" min="0" step="any" value={mepCounts[r.id] ?? ""}
+                              onChange={(e) => setMepCounts((p) => ({ ...p, [r.id]: e.target.value }))}
+                              placeholder="—"
+                              className="w-24 px-2 py-1.5 text-sm text-right bg-surface-container-low border-none rounded-xl outline-none focus:ring-2 focus:ring-primary/20" />
+                            <span className="text-xs text-on-surface-variant/50 min-w-6 max-w-20 truncate">{yieldLabel(r)}</span>
+                          </div>
+                        </td>
+                        <td className="px-5 py-3 text-right text-on-surface-variant/30">—</td>
+                        <td className="px-5 py-3 text-right text-on-surface-variant/30">—</td>
+                      </tr>
+                    ))}
+                  </>
+                )}
+                {/* SECTION RECETTES activées via « Ajouter au comptage d'inventaire » */}
+                {countKind === "food" && countableRecipes.length > 0 && (
+                  <>
+                    <tr>
+                      <td colSpan={5} className="bg-surface-container-low/40 px-5 py-2 text-2xs font-bold uppercase tracking-widest text-on-surface-variant/60">
+                        Recettes comptables — converties automatiquement en ingrédients
+                      </td>
+                    </tr>
+                    {countableRecipes.map((r) => (
+                      <tr key={r.id} className="hover:bg-surface-container-low/40 transition-colors">
+                        <td className="px-5 py-3 font-semibold text-on-surface">{r.name}
+                          <span className="block text-2xs text-on-surface-variant/50 font-normal">rendement : {fmtNum(Number(r.yield_portions) || 1)} {yieldLabel(r)}</span>
+                        </td>
+                        <td className="px-5 py-3 text-right text-on-surface-variant/30">—</td>
+                        <td className="px-5 py-3 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <input type="number" min="0" step="any" value={mepCounts[r.id] ?? ""}
+                              onChange={(e) => setMepCounts((p) => ({ ...p, [r.id]: e.target.value }))}
+                              placeholder="—"
+                              className="w-24 px-2 py-1.5 text-sm text-right bg-surface-container-low border-none rounded-xl outline-none focus:ring-2 focus:ring-primary/20" />
+                            <span className="text-xs text-on-surface-variant/50 min-w-6 max-w-20 truncate">{yieldLabel(r)}</span>
+                          </div>
+                        </td>
+                        <td className="px-5 py-3 text-right text-on-surface-variant/30">—</td>
+                        <td className="px-5 py-3 text-right text-on-surface-variant/30">—</td>
+                      </tr>
+                    ))}
+                  </>
+                )}
+                {countKind === "food" && (countableMeps.length > 0 || countableRecipes.length > 0) && (
+                  <tr>
+                    <td colSpan={5} className="bg-surface-container-low/40 px-5 py-2 text-2xs font-bold uppercase tracking-widest text-on-surface-variant/60">
+                      Ingrédients
+                    </td>
+                  </tr>
+                )}
                 {filtered.map((ing) => {
                   const theo = Number(ing.stock_qty ?? 0);
                   const cmup = Number(ing.cmup ?? ing.cost_per_base_unit ?? 0);
@@ -581,6 +738,9 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
                           />
                           <span className="text-xs text-on-surface-variant/50 min-w-6 max-w-20 truncate">{sec ? sec.label : displayUnitLabel(ing.unit)}</span>
                         </div>
+                        {(mepContributions.get(ing.id) ?? 0) > 0 && (
+                          <span className="block text-2xs text-primary mt-1">+ {formatQty(mepContributions.get(ing.id)!, ing.unit)} via MEP/recettes</span>
+                        )}
                       </td>
                       <td className="px-5 py-4 text-right">
                         {diff === null ? <span className="text-on-surface-variant/30">—</span> : (

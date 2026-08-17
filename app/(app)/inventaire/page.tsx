@@ -14,7 +14,7 @@ export default async function InventairePage() {
     .order("category")
     .order("name");
 
-  const [{ data: recentMovements }, { data: inventorySessions }] = await Promise.all([
+  const [{ data: recentMovements }, { data: inventorySessions }, { data: recipes }] = await Promise.all([
     supabase
       .from("stock_movements")
       .select("ingredient_id, movement_type, qty, unit_cost, reference_type, loss_reason, created_at")
@@ -26,6 +26,13 @@ export default async function InventairePage() {
       .select("*, inventory_lines(*)")
       .eq("restaurant_id", restaurant!.id)
       .order("created_at", { ascending: false }),
+    // MEP + recettes comptables : nécessaires pour convertir un comptage de
+    // MEP/recette en équivalents ingrédients (récursif via recipe_lines).
+    supabase
+      .from("recipes")
+      .select("id, name, is_prep, countable_in_inventory, yield_portions, yield_unit, recipe_lines!recipe_id(ingredient_id, sub_recipe_id, quantity, unit)")
+      .eq("restaurant_id", restaurant!.id)
+      .order("name"),
   ]);
 
   // Ensure the "Fournitures" tag exists + load which ingredients carry it.
@@ -38,6 +45,7 @@ export default async function InventairePage() {
       recentMovements={recentMovements ?? []}
       inventorySessions={(inventorySessions ?? []) as any}
       fournitureIds={fournitureIds}
+      recipes={(recipes ?? []) as any}
     />
   );
 }

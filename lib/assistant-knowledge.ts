@@ -66,6 +66,7 @@ Option « Masquer les prix sur le bon de commande » (Paramètres) : cache les p
 # L'INVENTAIRE
 
 Inventaire → « Prise d'inventaire » → créer une fiche (date/heure) → saisir les quantités comptées (dans le conditionnement secondaire si défini, ex. en bouteilles). Enregistrer en brouillon (reprendre plus tard) ou Finaliser : le stock est aligné sur le réel, un manquant devient une perte « Écart inventaire », un surplus un ajustement. Les fiches sont archivées dans « Mes inventaires ».
+La prise d'inventaire a TROIS sections : 1) Mises en place — compte tes MEP préparées (ex. « 4 L de crème d'ail ») : elles sont converties automatiquement en équivalents ingrédients et ajoutées au comptage (mention « +X via MEP » sous les ingrédients concernés) ; 2) Recettes comptables — uniquement les recettes activées via le bouton « Ajouter au comptage d'inventaire » (icône presse-papiers ✓) sur la page Recettes ; 3) Ingrédients — le comptage classique. Ainsi les ingrédients « cachés » dans tes préparations ne sont plus comptés comme des pertes.
 
 # QUESTIONS FRÉQUENTES
 

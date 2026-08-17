@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Trash2, X, ChevronDown, ChevronUp, RefreshCw, Copy, Search, ChefHat, Percent, Coins, Layers } from "lucide-react";
+import { Plus, Trash2, X, ChevronDown, ChevronUp, RefreshCw, Copy, Search, ChefHat, Percent, Coins, Layers, ClipboardCheck } from "lucide-react";
 import clsx from "clsx";
 
 
@@ -26,6 +26,7 @@ type Recipe = {
   total_cost: number;
   menu_price: number | null;
   is_prep: boolean;
+  countable_in_inventory?: boolean;
   allergens?: string[];
   recipe_lines: RecipeLine[];
 };
@@ -749,6 +750,27 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                       className="p-2 rounded-lg text-on-surface-variant/50 hover:bg-surface-container-high hover:text-primary transition disabled:opacity-50">
                       <Copy size={14} />
                     </button>
+                    {/* Recette comptable à l'inventaire (facultatif — les MEP le sont toujours) */}
+                    {!recipe.is_prep && (
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          const next = !recipe.countable_in_inventory;
+                          setRecipes((p) => p.map((r) => r.id === recipe.id ? { ...r, countable_in_inventory: next } : r));
+                          const { error: tErr } = await supabase.from("recipes").update({ countable_in_inventory: next }).eq("id", recipe.id);
+                          if (tErr) {
+                            setRecipes((p) => p.map((r) => r.id === recipe.id ? { ...r, countable_in_inventory: !next } : r));
+                            window.alert(`Impossible de modifier : ${tErr.message}`);
+                          }
+                        }}
+                        title={recipe.countable_in_inventory ? "Retirée du comptage d'inventaire au prochain clic" : "Ajouter au comptage d'inventaire"}
+                        className={clsx("p-2 rounded-lg transition",
+                          recipe.countable_in_inventory
+                            ? "text-primary bg-emerald-50 hover:bg-emerald-100"
+                            : "text-on-surface-variant/50 hover:bg-surface-container-high hover:text-primary")}>
+                        <ClipboardCheck size={14} />
+                      </button>
+                    )}
                     <button onClick={(e) => { e.stopPropagation(); handleDelete(recipe.id); }}
                       disabled={deletingId === recipe.id}
                       title="Supprimer"
