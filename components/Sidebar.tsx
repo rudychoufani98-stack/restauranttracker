@@ -19,6 +19,7 @@ import {
   CreditCard,
   Settings,
   LogOut,
+  Crown,
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -58,7 +59,7 @@ const NAV_GROUPS = [
   },
 ];
 
-export default function Sidebar({ restaurantName }: { restaurantName: string }) {
+export default function Sidebar({ restaurantName, isAdmin = false }: { restaurantName: string; isAdmin?: boolean }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const vue = searchParams.get("vue");
@@ -119,6 +120,15 @@ export default function Sidebar({ restaurantName }: { restaurantName: string }) 
 
       {/* Bottom */}
       <div className="px-3 pb-4 pt-3 border-t border-outline-variant space-y-1">
+        {isAdmin && (
+          <Link
+            href="/admin"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold text-primary hover:bg-emerald-50 transition-all duration-200"
+          >
+            <Crown size={18} strokeWidth={2} />
+            Mes clients
+          </Link>
+        )}
         <Link
           href="/settings"
           className={clsx(
@@ -131,7 +141,12 @@ export default function Sidebar({ restaurantName }: { restaurantName: string }) 
           <Settings size={18} strokeWidth={2} />
           Paramètres
         </Link>
-        <form action={logout}>
+        <form
+          action={logout}
+          onSubmit={(e) => {
+            if (!window.confirm("Es-tu sûr de vouloir te déconnecter ?")) e.preventDefault();
+          }}
+        >
           <button
             type="submit"
             className="flex w-full items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-on-surface-variant hover:bg-red-light hover:text-red transition-all"

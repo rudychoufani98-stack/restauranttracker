@@ -1,22 +1,40 @@
 import { redirect } from "next/navigation";
-import { getCurrentUser, getRestaurant } from "@/lib/auth";
+import { getCurrentUser, getRestaurant, isAppAdmin } from "@/lib/auth";
 import Sidebar from "@/components/Sidebar";
+import { closeRestaurant } from "@/app/admin/actions";
+import { Crown, ArrowLeft } from "lucide-react";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
 
   if (!user) redirect("/login");
 
-  // Load the restaurant for this user (cached — shared with the page below)
+  // Load the restaurant for this user (cached — shared with the page below).
+  // For a super-admin who "opened" a client, this is the CLIENT's restaurant.
   const restaurant = await getRestaurant();
 
   // If no restaurant yet, send to onboarding
   if (!restaurant) redirect("/onboarding");
 
+  const admin = await isAppAdmin();
+  const impersonating = admin && restaurant.owner_id !== user.id;
+
   return (
     <div className="flex min-h-screen bg-[#F9FAFB]">
-      <Sidebar restaurantName={restaurant.name} />
+      <Sidebar restaurantName={restaurant.name} isAdmin={admin} />
       <main className="flex-1 overflow-auto">
+        {impersonating && (
+          <div className="sticky top-0 z-50 bg-primary text-on-primary px-6 py-2.5 flex items-center justify-between gap-3 shadow-lg">
+            <p className="text-sm font-semibold flex items-center gap-2">
+              <Crown size={15} /> Mode admin — tu gères le client : <b>{restaurant.name}</b>
+            </p>
+            <form action={closeRestaurant}>
+              <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide bg-white/15 hover:bg-white/25 rounded-lg transition">
+                <ArrowLeft size={13} /> Revenir à mon compte
+              </button>
+            </form>
+          </div>
+        )}
         {children}
       </main>
     </div>
