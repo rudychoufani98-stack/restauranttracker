@@ -88,11 +88,7 @@ export async function POST(req: NextRequest) {
       reply = gemini ? await askGemini(gemini, history) : await askAnthropic(anthropic!, history);
     } catch (e) {
       console.error("[assistant]", (e as Error).message);
-      // détail temporaire de diagnostic (message d'erreur du fournisseur, jamais la clé)
-      return NextResponse.json(
-        { error: "L'assistant est momentanément indisponible.", detail: (e as Error).message.slice(0, 300) },
-        { status: 502 }
-      );
+      return NextResponse.json({ error: "L'assistant est momentanément indisponible." }, { status: 502 });
     }
 
     return NextResponse.json({ reply: reply || "Désolé, je n'ai pas de réponse — reformule ta question ?" });
