@@ -108,13 +108,8 @@ export default function PertesClient({ restaurantId, ingredients, recentLosses }
     const currentStock = Number(ing.stock_qty ?? 0);
     const newStock = Math.max(0, currentStock - baseQty);
 
-    const { error: upErr } = await supabase
-      .from("ingredients")
-      .update({ stock_qty: newStock })
-      .eq("id", ingredientId);
-    if (upErr) { setError("Erreur lors de la mise à jour du stock."); setSaving(false); return; }
-
-    const { error: movErr } = await supabase.from("stock_movements").insert({
+    // Mouvement d'abord : si la base le refuse, le stock n'a pas été touché.
+    const { data: mov, error: movErr } = await supabase.from("stock_movements").insert({
       restaurant_id: restaurantId,
       ingredient_id: ingredientId,
       movement_type: "loss",
@@ -123,8 +118,18 @@ export default function PertesClient({ restaurantId, ingredients, recentLosses }
       reference_type: "loss",
       loss_reason: reason,
       notes: note || null,
-    });
-    if (movErr) { setError("Erreur lors de l'enregistrement de la perte."); setSaving(false); return; }
+    }).select().single();
+    if (movErr) { setError(`Erreur lors de l'enregistrement de la perte : ${movErr.message}`); setSaving(false); return; }
+
+    const { error: upErr } = await supabase
+      .from("ingredients")
+      .update({ stock_qty: newStock })
+      .eq("id", ingredientId);
+    if (upErr) {
+      // Compensation : retire le mouvement pour ne pas laisser d'écart
+      if (mov?.id) await supabase.from("stock_movements").delete().eq("id", mov.id);
+      setError(`Erreur lors de la mise à jour du stock : ${upErr.message}`); setSaving(false); return;
+    }
 
     // Update local state
     ing.stock_qty = newStock;

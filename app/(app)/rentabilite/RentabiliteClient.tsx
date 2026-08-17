@@ -239,20 +239,33 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
     const { error: lErr } = await supabase.from("sales_lines").insert(linesToInsert);
     if (lErr) { setError(lErr.message); setSaving(false); return; }
 
-    // Trigger stock deductions for sold items
-    await fetch("/api/record-sale-movements", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        restaurantId,
-        periodId,
-        salesLines: linesToInsert.map((l) => ({
-          recipe_id: l.recipe_id ?? undefined,
-          ingredient_id: l.ingredient_id ?? undefined,
-          qty_sold: l.qty_sold,
-        })),
-      }),
-    });
+    // Trigger stock deductions for sold items — surface failures instead of
+    // silently desynchronizing sales and stock.
+    try {
+      const res = await fetch("/api/record-sale-movements", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          restaurantId,
+          periodId,
+          salesLines: linesToInsert.map((l) => ({
+            recipe_id: l.recipe_id ?? undefined,
+            ingredient_id: l.ingredient_id ?? undefined,
+            qty_sold: l.qty_sold,
+          })),
+        }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        setError(`Ventes enregistrées, mais le déstockage a échoué : ${j?.error ?? `erreur ${res.status}`}. Ré-enregistre ce mois pour relancer le déstockage.`);
+        setSaving(false);
+        return;
+      }
+    } catch {
+      setError("Ventes enregistrées, mais le déstockage a échoué (réseau). Ré-enregistre ce mois pour relancer le déstockage.");
+      setSaving(false);
+      return;
+    }
 
     // Rebuild period object for local state
     const newPeriod: Period = {

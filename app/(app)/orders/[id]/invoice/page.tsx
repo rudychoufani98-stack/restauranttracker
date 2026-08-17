@@ -39,6 +39,7 @@ export default async function InvoicePage({ params }: { params: { id: string } }
     .from("invoices")
     .select("*, invoice_lines(ingredient_id, quantity, unit_price)")
     .eq("po_id", params.id)
+    .eq("validated", true) // a draft from a failed attempt was never applied to stock
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();

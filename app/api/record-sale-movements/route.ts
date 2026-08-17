@@ -57,16 +57,19 @@ export async function POST(req: NextRequest) {
     }
 
     // Previous destockage already applied for this period (so re-saving a month
-    // reconciles by delta instead of deducting twice).
+    // reconciles by delta instead of deducting twice). Full rows are kept so
+    // they can be restored if this run fails halfway.
     const prevGross = new Map<string, number>();
+    let prevMoveRows: any[] = [];
     if (periodId) {
       const { data: prevMoves } = await supabase
         .from("stock_movements")
-        .select("ingredient_id, qty")
+        .select("restaurant_id, ingredient_id, movement_type, qty, unit_cost, reference_type, reference_id, created_at")
         .eq("restaurant_id", restaurantId)
         .eq("reference_type", "sale")
         .eq("reference_id", periodId);
-      for (const m of prevMoves ?? []) {
+      prevMoveRows = prevMoves ?? [];
+      for (const m of prevMoveRows) {
         if (m.ingredient_id) prevGross.set(m.ingredient_id, (prevGross.get(m.ingredient_id) ?? 0) + Number(m.qty));
       }
     }
@@ -91,8 +94,10 @@ export async function POST(req: NextRequest) {
       newGross.set(ingredientId, qtyDeductNet / yieldF);
     }
 
-    // Reconcile stock by delta = new − previous, then replace the period's movements.
+    // Compute everything first: new movements + stock patches (with previous
+    // values kept for rollback). No write happens during this pass.
     const movements: any[] = [];
+    const patches: { id: string; newStock: number; prevStock: number }[] = [];
     for (const ingredientId of allIngredientIds) {
       const ing = ingMap.get(ingredientId);
       if (!ing) continue;
@@ -101,9 +106,7 @@ export async function POST(req: NextRequest) {
       const delta = gross - prev; // extra to remove (or add back if negative)
       const currentStock = Number(ing.stock_qty ?? 0);
       const unitCost = Number(ing.cmup ?? ing.cost_per_base_unit ?? 0);
-      const newStock = Math.max(0, currentStock - delta);
-
-      await supabase.from("ingredients").update({ stock_qty: newStock }).eq("id", ingredientId);
+      patches.push({ id: ingredientId, newStock: Math.max(0, currentStock - delta), prevStock: ing.stock_qty });
 
       if (gross > 0) {
         movements.push({
@@ -118,13 +121,34 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Replace the period's previous "sale" movements with the new set.
-    if (periodId && prevGross.size > 0) {
-      await supabase.from("stock_movements").delete()
+    // 1) Replace the period's movements FIRST (stock untouched so far) : if the
+    //    database refuses the new set, the previous ones are restored.
+    if (periodId && prevMoveRows.length > 0) {
+      const { error: delErr } = await supabase.from("stock_movements").delete()
         .eq("restaurant_id", restaurantId).eq("reference_type", "sale").eq("reference_id", periodId);
+      if (delErr) return NextResponse.json({ error: `Mouvements : ${delErr.message}` }, { status: 500 });
     }
     if (movements.length > 0) {
-      await supabase.from("stock_movements").insert(movements);
+      const { error: movErr } = await supabase.from("stock_movements").insert(movements);
+      if (movErr) {
+        if (prevMoveRows.length > 0) await supabase.from("stock_movements").insert(prevMoveRows); // restore
+        return NextResponse.json({ error: `Mouvements : ${movErr.message}` }, { status: 500 });
+      }
+    }
+
+    // 2) Then apply stock updates; on failure, roll back what was applied and
+    //    restore the previous movements so the next run reconciles correctly.
+    const applied: typeof patches = [];
+    for (const p of patches) {
+      const { error: upErr } = await supabase.from("ingredients").update({ stock_qty: p.newStock }).eq("id", p.id);
+      if (upErr) {
+        for (const a of applied) await supabase.from("ingredients").update({ stock_qty: a.prevStock }).eq("id", a.id);
+        await supabase.from("stock_movements").delete()
+          .eq("restaurant_id", restaurantId).eq("reference_type", "sale").eq("reference_id", periodId);
+        if (prevMoveRows.length > 0) await supabase.from("stock_movements").insert(prevMoveRows);
+        return NextResponse.json({ error: `Stock : ${upErr.message}` }, { status: 500 });
+      }
+      applied.push(p);
     }
 
     return NextResponse.json({ ok: true, movements: movements.length });

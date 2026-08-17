@@ -279,7 +279,7 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
     const sessionKind: Kind = (sessions.find((s) => s.id === activeSessionId)?.kind as Kind) ?? countKind;
     setValidatingCount(true);
     const movements: any[] = [];
-    const updates: { id: string; qty: number }[] = [];
+    const updates: { id: string; qty: number; prevQty: number | null }[] = [];
     const sessionLines: InventoryLine[] = [];
 
     for (const ing of localIngredients.filter((i) => matchKind(i.id, sessionKind))) {
@@ -293,30 +293,54 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
         theoretical_qty: theo, counted_qty: real, ecart: diff, cmup, ecart_value: diff * cmup,
       });
       if (finalize && diff !== 0) {
-        updates.push({ id: ing.id, qty: real });
+        updates.push({ id: ing.id, qty: real, prevQty: ing.stock_qty ?? null });
         movements.push(diff < 0
-          ? { restaurant_id: restaurantId, ingredient_id: ing.id, movement_type: "loss", qty: Math.abs(diff), unit_cost: cmup, reference_type: "inventory", loss_reason: "Écart inventaire", notes: `Inventaire : ${theo} → ${real}` }
-          : { restaurant_id: restaurantId, ingredient_id: ing.id, movement_type: "adjustment", qty: diff, unit_cost: cmup, reference_type: "inventory", notes: `Inventaire : ${theo} → ${real}` });
+          ? { restaurant_id: restaurantId, ingredient_id: ing.id, movement_type: "loss", qty: Math.abs(diff), unit_cost: cmup, reference_type: "inventory", reference_id: activeSessionId, loss_reason: "Écart inventaire", notes: `Inventaire : ${theo} → ${real}` }
+          : { restaurant_id: restaurantId, ingredient_id: ing.id, movement_type: "adjustment", qty: diff, unit_cost: cmup, reference_type: "inventory", reference_id: activeSessionId, notes: `Inventaire : ${theo} → ${real}` });
       }
     }
 
     // Replace the session's saved lines with the current count
     await supabase.from("inventory_lines").delete().eq("session_id", activeSessionId);
     if (sessionLines.length > 0) {
-      await supabase.from("inventory_lines").insert(sessionLines.map((l) => ({ session_id: activeSessionId, ...l })));
+      const { error: linesErr } = await supabase.from("inventory_lines").insert(sessionLines.map((l) => ({ session_id: activeSessionId, ...l })));
+      if (linesErr) { setCountDone(null); setValidatingCount(false); window.alert(`Enregistrement des lignes impossible : ${linesErr.message}`); return; }
     }
 
+    // Counts first — the session is only marked "finalized" once stock and
+    // movements are safely written (a mid-flight failure leaves a draft).
     const patch: any = {
       items_counted: sessionLines.length,
       manquant_value: countSummary.manque, surplus_value: countSummary.surplus, net_value: countSummary.net,
     };
-    if (finalize) { patch.status = "finalized"; patch.finalized_at = new Date().toISOString(); }
     await supabase.from("inventory_sessions").update(patch).eq("id", activeSessionId);
 
-    // Apply stock only when finalizing
+    // Apply stock only when finalizing — movements FIRST (atomic insert :
+    // if the DB refuses them, no stock has been touched), then stock with
+    // rollback of already-applied updates on failure.
     if (finalize) {
-      for (const u of updates) await supabase.from("ingredients").update({ stock_qty: u.qty }).eq("id", u.id);
-      if (movements.length > 0) await supabase.from("stock_movements").insert(movements);
+      if (movements.length > 0) {
+        const { error: movErr } = await supabase.from("stock_movements").insert(movements);
+        if (movErr) {
+          setValidatingCount(false);
+          window.alert(`Écriture des mouvements impossible : ${movErr.message}. Rien n'a été appliqué — la fiche reste en brouillon.`);
+          return;
+        }
+      }
+      const applied: typeof updates = [];
+      for (const u of updates) {
+        const { error: upErr } = await supabase.from("ingredients").update({ stock_qty: u.qty }).eq("id", u.id);
+        if (upErr) {
+          for (const a of applied) await supabase.from("ingredients").update({ stock_qty: a.prevQty }).eq("id", a.id);
+          await supabase.from("stock_movements").delete().eq("reference_type", "inventory").eq("reference_id", activeSessionId);
+          setValidatingCount(false);
+          window.alert(`Mise à jour du stock impossible : ${upErr.message}. Les modifications ont été annulées — la fiche reste en brouillon.`);
+          return;
+        }
+        applied.push(u);
+      }
+      patch.status = "finalized"; patch.finalized_at = new Date().toISOString();
+      await supabase.from("inventory_sessions").update({ status: patch.status, finalized_at: patch.finalized_at }).eq("id", activeSessionId);
       setLocalIngredients((prev) => prev.map((i) => { const u = updates.find((x) => x.id === i.id); return u ? { ...i, stock_qty: u.qty } : i; }));
     }
 

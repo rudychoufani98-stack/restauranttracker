@@ -108,27 +108,37 @@ export default function InvoiceClient({ po, deliveryNote, restaurantId, orderCon
     setSaving(true);
     setError(null);
 
-    try {
-      // 1. Create the invoice record (each validation is a new invoice; the delta
-      //    vs the previously applied quantities is what moves the stock).
-      const { data: invoice, error: invErr } = await supabase
-        .from("invoices")
-        .insert({
-          po_id: po.id,
-          restaurant_id: restaurantId,
-          delivery_note_id: deliveryNote?.id ?? null,
-          invoice_number: invoiceNumber || null,
-          invoice_date: invoiceDate,
-          total_ht: total,
-          misc_fees: misc,
-          misc_fees_label: misc > 0 ? (miscLabel.trim() || "Frais divers") : null,
-          validated: true,
-          validated_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
-      if (invErr) throw new Error(invErr.message);
+    // 1. Create the invoice as a DRAFT (validated only once everything is
+    //    written) so a mid-flight failure never leaves an applied-looking
+    //    invoice behind, and never becomes the next delta baseline.
+    const { data: invoice, error: invErr } = await supabase
+      .from("invoices")
+      .insert({
+        po_id: po.id,
+        restaurant_id: restaurantId,
+        delivery_note_id: deliveryNote?.id ?? null,
+        invoice_number: invoiceNumber || null,
+        invoice_date: invoiceDate,
+        total_ht: total,
+        misc_fees: misc,
+        misc_fees_label: misc > 0 ? (miscLabel.trim() || "Frais divers") : null,
+        validated: false,
+        validated_at: null,
+      })
+      .select()
+      .single();
+    if (invErr) { setError(invErr.message); setSaving(false); return; }
 
+    // Best-effort cleanup of everything this attempt created.
+    async function abort(msg: string) {
+      await supabase.from("stock_movements").delete().eq("reference_id", invoice.id).eq("reference_type", "invoice");
+      await supabase.from("invoice_lines").delete().eq("invoice_id", invoice.id);
+      await supabase.from("invoices").delete().eq("id", invoice.id);
+      setError(msg);
+      setSaving(false);
+    }
+
+    try {
       // 2. Previously applied base quantity per ingredient (what the stock already
       //    reflects for this order): the last invoice if any, else the reception.
       const prevBase = new Map<string, number>();
@@ -150,12 +160,16 @@ export default function InvoiceClient({ po, deliveryNote, restaurantId, orderCon
 
       const allIds = Array.from(new Set([...Array.from(prevBase.keys()), ...Array.from(newBase.keys())]));
 
-      // Current stock + cmup for those ingredients.
+      // Current stock + cmup + prices for those ingredients (prev values kept for rollback).
       const { data: currentIngData } = await supabase
-        .from("ingredients").select("id, stock_qty, cmup").in("id", allIds);
+        .from("ingredients").select("id, stock_qty, cmup, pack_price, cost_per_base_unit").in("id", allIds);
       const ingStockMap = new Map((currentIngData ?? []).map((i) => [i.id, i]));
 
+      // 4. Compute EVERYTHING up front — no write yet.
       const movements: any[] = [];
+      const invoiceLines: any[] = [];
+      const priceHistory: any[] = [];
+      const patches: { id: string; patch: any; prev: any }[] = [];
 
       for (const id of allIds) {
         const line = lines.find((l) => l.ingredient_id === id);
@@ -178,25 +192,25 @@ export default function InvoiceClient({ po, deliveryNote, restaurantId, orderCon
 
         const patch: any = { stock_qty: newStock, cmup: newCmup, updated_at: new Date().toISOString() };
         if (line) { patch.pack_price = invoicePrice; patch.cost_per_base_unit = newCostPerBase; }
-        const { error: upErr } = await supabase.from("ingredients").update(patch).eq("id", id);
-        if (upErr) throw new Error(`Stock ingrédient : ${upErr.message}`);
+        patches.push({
+          id, patch,
+          prev: { stock_qty: cur?.stock_qty ?? null, cmup: cur?.cmup ?? null, pack_price: cur?.pack_price ?? null, cost_per_base_unit: cur?.cost_per_base_unit ?? null },
+        });
 
-        // Invoice line (record the billed qty + price)
         if (line) {
-          await supabase.from("invoice_lines").insert({
+          invoiceLines.push({
             invoice_id: invoice.id, ingredient_id: id,
             quantity: parseFloat(line.qty) || 0, unit_price: invoicePrice,
             price_changed: Math.abs(invoicePrice - line.expected_price) > 0.001,
           });
           if (Math.abs(invoicePrice - line.expected_price) > 0.001) {
-            await supabase.from("ingredient_price_history").insert({
+            priceHistory.push({
               ingredient_id: id, old_price: line.expected_price, new_price: invoicePrice,
               source: "invoice", delivery_note_id: deliveryNote?.id ?? null,
             });
           }
         }
 
-        // Stock movement for the reconciliation delta.
         if (Math.abs(delta) > 0.0001) {
           movements.push({
             restaurant_id: restaurantId, ingredient_id: id,
@@ -208,22 +222,43 @@ export default function InvoiceClient({ po, deliveryNote, restaurantId, orderCon
         }
       }
 
+      // 5. Writes that can be cleaned up, BEFORE any stock mutation.
+      if (invoiceLines.length > 0) {
+        const { error: ilErr } = await supabase.from("invoice_lines").insert(invoiceLines);
+        if (ilErr) return abort(`Lignes de facture : ${ilErr.message}. Rien n'a été appliqué — réessaie.`);
+      }
       if (movements.length > 0) {
         const { error: movErr } = await supabase.from("stock_movements").insert(movements);
-        if (movErr) throw new Error(`Mouvements de stock : ${movErr.message}`);
+        if (movErr) return abort(`Mouvements de stock : ${movErr.message}. Rien n'a été appliqué — réessaie.`);
+      }
+      if (priceHistory.length > 0) {
+        await supabase.from("ingredient_price_history").insert(priceHistory); // best-effort (historique)
       }
 
-      // Recalculate recipes using these ingredients.
+      // 6. Stock updates; on failure, restore the ones already applied.
+      const applied: typeof patches = [];
+      for (const p of patches) {
+        const { error: upErr } = await supabase.from("ingredients").update(p.patch).eq("id", p.id);
+        if (upErr) {
+          for (const a of applied) await supabase.from("ingredients").update(a.prev).eq("id", a.id);
+          return abort(`Stock ingrédient : ${upErr.message}. Les modifications ont été annulées — réessaie.`);
+        }
+        applied.push(p);
+      }
+
+      // 7. Everything written: validate the invoice, then the PO.
+      await supabase.from("invoices").update({ validated: true, validated_at: new Date().toISOString() }).eq("id", invoice.id);
+      await supabase.from("purchase_orders").update({ status: "Invoiced" }).eq("id", po.id);
+
+      // Recalculate recipes using these ingredients (best-effort).
       await fetch("/api/recalculate-recipes", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ restaurantId, changedIngredientIds: allIds }),
-      });
+      }).catch(() => {});
 
-      await supabase.from("purchase_orders").update({ status: "Invoiced" }).eq("id", po.id);
       router.push("/orders?invoiced=1");
     } catch (e: any) {
-      setError(e.message);
-      setSaving(false);
+      return abort(e.message);
     }
   }
 
