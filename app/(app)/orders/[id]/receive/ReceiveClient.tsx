@@ -8,7 +8,7 @@ import clsx from "clsx";
 
 type IngredientInfo = { id: string; name: string; unit: string; pack_price: number; cost_per_base_unit: number; pack_quantity: number | null };
 type POLine = { id: string; ingredient_id: string | null; quantity: number; expected_price: number | null; ingredients?: IngredientInfo | null };
-type PO = { id: string; supplier_id: string | null; suppliers?: { name: string; email: string | null } | null; purchase_order_lines: POLine[] };
+type PO = { id: string; status?: string; supplier_id: string | null; suppliers?: { name: string; email: string | null } | null; purchase_order_lines: POLine[] };
 type IngredientOption = { id: string; name: string; unit: string; pack_price: number; pack_quantity: number | null };
 
 type ReceiveLine = {
@@ -131,6 +131,19 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
   async function handleValidate() {
     setValidating(true); setError(null);
 
+    // 0. Garde anti-double réception : une réception déjà validée sur une
+    //    commande qui n'est pas « partiellement reçue » signifie que le stock a
+    //    déjà été ajouté — re-valider le compterait une seconde fois.
+    const { data: priorDNs } = await supabase
+      .from("delivery_notes").select("id").eq("po_id", po.id).eq("validated", true);
+    if ((priorDNs?.length ?? 0) > 0 && po.status !== "Partially received") {
+      const goOn = window.confirm(
+        "⚠️ Une réception a DÉJÀ été validée pour cette commande : le stock a déjà été ajouté.\n\n" +
+        "Continuer ajouterait ces quantités une DEUXIÈME fois au stock.\n\nContinuer quand même ?"
+      );
+      if (!goOn) { setValidating(false); return; }
+    }
+
     // 1. Upload BL file if present.
     // Store the storage PATH (not a public URL) — the "invoices" bucket must be
     // private. Generate a short-lived signed URL on demand when viewing the file.
@@ -144,35 +157,48 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
       }
     }
 
-    // 2. Create delivery note
+    // 2. Create delivery note as a DRAFT (validated only at the very end, once
+    //    stock + movements are safely written) so a mid-flight failure never
+    //    leaves a "validated" reception with no stock behind it.
     const { data: dn, error: dnErr } = await supabase.from("delivery_notes").insert({
       po_id: po.id,
       restaurant_id: restaurantId,
       bl_number: blNumber.trim() || null,
       bl_pdf_url: blPdfUrl,
-      validated: true,
-      validated_at: new Date().toISOString(),
+      validated: false,
+      validated_at: null,
     }).select().single();
 
     if (dnErr) { setError(dnErr.message); setValidating(false); return; }
 
-    // 3. Insert delivery note lines. Includes lines added at reception
-    //    (substitutes / extras). Skip un-chosen adds.
-    for (const line of lines) {
-      if (!line.ingredient_id) continue;
-      const qtyReceived = parseFloat(line.qty_received) || 0;
-      await supabase.from("delivery_note_lines").insert({
-        delivery_note_id: dn.id,
-        ingredient_id: line.ingredient_id,
-        quantity_received: qtyReceived,
-        actual_price: line.expected_price, // expected price for now; invoice will adjust
-        price_changed: false,
-      });
+    // Best-effort cleanup when a later step fails: remove what this attempt created.
+    async function abort(msg: string) {
+      await supabase.from("stock_movements").delete().eq("reference_id", dn.id).eq("reference_type", "delivery");
+      await supabase.from("delivery_note_lines").delete().eq("delivery_note_id", dn.id);
+      await supabase.from("delivery_notes").delete().eq("id", dn.id);
+      setError(msg);
+      setValidating(false);
     }
 
-    // 4. Update stock + CMUP right away (Option B). The invoice step later only
-    //    ADJUSTS prices, it does not re-add these quantities. Uses the expected
-    //    price; base qty = qté reçue × conditionnement (×1000 for kg/L).
+    // 3. Insert delivery note lines (one batch). Includes lines added at
+    //    reception (substitutes / extras). Skip un-chosen adds.
+    const dnLines = lines
+      .filter((l) => l.ingredient_id)
+      .map((l) => ({
+        delivery_note_id: dn.id,
+        ingredient_id: l.ingredient_id,
+        quantity_received: parseFloat(l.qty_received) || 0,
+        actual_price: l.expected_price, // expected price for now; invoice will adjust
+        price_changed: false,
+      }));
+    if (dnLines.length > 0) {
+      const { error: dlErr } = await supabase.from("delivery_note_lines").insert(dnLines);
+      if (dlErr) return abort(`Enregistrement des lignes impossible : ${dlErr.message}`);
+    }
+
+    // 4. Stock + CMUP. Movements are written FIRST (single insert) : if the
+    //    database refuses them, no stock has been touched yet. Stock updates
+    //    follow, with rollback of already-applied ones on failure.
     const stockedLines = lines.filter((l) => l.ingredient_id && (parseFloat(l.qty_received) || 0) > 0);
     const ingredientIds = stockedLines.map((l) => l.ingredient_id);
     if (ingredientIds.length > 0) {
@@ -182,7 +208,9 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
         .in("id", ingredientIds);
       const ingStockMap = new Map((currentIngData ?? []).map((i) => [i.id, i]));
 
+      // Compute everything up front (movements + per-ingredient patches).
       const movements: any[] = [];
+      const patches: { id: string; newStock: number; newCmup: number; prevStock: number | null; prevCmup: number | null }[] = [];
       for (const line of stockedLines) {
         const qtyReceived = parseFloat(line.qty_received) || 0;
         const packQty = line.pack_quantity || 1;
@@ -199,13 +227,7 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
           ? (currentStock * currentCmup + receivedBaseQty * costPerBase) / newStock
           : costPerBase;
 
-        const { error: updErr } = await supabase.from("ingredients").update({
-          stock_qty: newStock,
-          cmup: newCmup,
-          updated_at: new Date().toISOString(),
-        }).eq("id", line.ingredient_id);
-        if (updErr) { setError(`Mise à jour du stock impossible : ${updErr.message}`); setValidating(false); return; }
-
+        patches.push({ id: line.ingredient_id, newStock, newCmup, prevStock: current?.stock_qty ?? null, prevCmup: current?.cmup ?? null });
         movements.push({
           restaurant_id: restaurantId,
           ingredient_id: line.ingredient_id,
@@ -216,13 +238,29 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
           reference_id: dn.id,
         });
       }
-      if (movements.length > 0) {
-        const { error: movErr } = await supabase.from("stock_movements").insert(movements);
-        if (movErr) { setError(`Enregistrement des mouvements impossible : ${movErr.message}`); setValidating(false); return; }
+
+      // 4a. Movements first — single atomic insert, stock untouched if it fails.
+      const { error: movErr } = await supabase.from("stock_movements").insert(movements);
+      if (movErr) return abort(`Enregistrement des mouvements impossible : ${movErr.message}. Rien n'a été appliqué — corrige puis réessaie.`);
+
+      // 4b. Then stock updates; on failure, restore the ones already applied.
+      const applied: typeof patches = [];
+      for (const p of patches) {
+        const { error: updErr } = await supabase.from("ingredients").update({
+          stock_qty: p.newStock, cmup: p.newCmup, updated_at: new Date().toISOString(),
+        }).eq("id", p.id);
+        if (updErr) {
+          for (const a of applied) {
+            await supabase.from("ingredients").update({ stock_qty: a.prevStock, cmup: a.prevCmup }).eq("id", a.id);
+          }
+          return abort(`Mise à jour du stock impossible : ${updErr.message}. Les modifications ont été annulées — réessaie.`);
+        }
+        applied.push(p);
       }
     }
 
-    // 5. Update PO status — partial if any ORDERED line received less than ordered
+    // 5. Everything is written: mark the delivery note validated, then the PO.
+    await supabase.from("delivery_notes").update({ validated: true, validated_at: new Date().toISOString() }).eq("id", dn.id);
     const isPartial = lines.some((l) => l.po_line_id && parseFloat(l.qty_received) < l.qty_ordered);
     await supabase.from("purchase_orders").update({
       status: isPartial ? "Partially received" : "Received",
