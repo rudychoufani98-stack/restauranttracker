@@ -344,7 +344,7 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
                       );
                     })()
                   ) : (
-                    <p className={clsx("text-sm font-medium truncate", isZero ? "text-gray-400 line-through" : "text-gray-900")}>{line.ingredient_name}</p>
+                    <p className={clsx("text-[15px] font-bold truncate", isZero ? "text-gray-400 line-through" : "text-gray-900")}>{line.ingredient_name}</p>
                   )}
                   <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                     {line.ingredient_id && condDetail(line.ingredient_id) && (

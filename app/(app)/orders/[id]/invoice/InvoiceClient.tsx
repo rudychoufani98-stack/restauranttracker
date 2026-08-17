@@ -320,8 +320,11 @@ export default function InvoiceClient({ po, deliveryNote, restaurantId, orderCon
             const type = condType(line.ingredient_id, line.unit);
             return (
               <div key={i} className={`px-5 py-4 ${qty === 0 ? "bg-gray-50/60" : ""}`}>
-                <div className="flex items-center justify-between mb-2">
-                  <span className={`font-medium text-sm ${qty === 0 ? "text-gray-400 line-through" : "text-gray-900"}`}>{line.ingredient_name}</span>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${qty === 0 ? "bg-gray-300" : "bg-emerald-500"}`} />
+                    <span className={`text-base font-bold ${qty === 0 ? "text-gray-400 line-through" : "text-gray-900"}`}>{line.ingredient_name}</span>
+                  </div>
                   {qty === 0 && <span className="text-2xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">Annulée</span>}
                 </div>
                 <div className="flex items-end gap-3">
