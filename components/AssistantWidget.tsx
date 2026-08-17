@@ -84,7 +84,7 @@ export default function AssistantWidget() {
                     ? "bg-primary text-on-primary rounded-br-md"
                     : "bg-surface-container-lowest border border-outline-variant/20 text-on-surface rounded-bl-md"
                 )}>
-                  {m.content}
+                  {m.role === "assistant" ? m.content.replace(/\*\*/g, "").replace(/^#+\s*/gm, "") : m.content}
                 </div>
               </div>
             ))}
