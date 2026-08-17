@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { buildOrderMailto, defaultPackType } from "@/lib/order-email";
+import { unitShort } from "@/lib/ingredient-helpers";
 import { ArrowLeft, Plus, Minus, Trash2, Loader2, Check, Search, ShoppingCart, Package, Send } from "lucide-react";
 import clsx from "clsx";
 
@@ -41,7 +42,7 @@ const packTypeOf = (a: Article | null) => a?.pack_type || "colis";
 function condLabel(a: Article): string {
   if (a.pack_label) return a.pack_label;
   const u = Number(a.pack_units ?? 1), s = Number(a.unit_size ?? 0);
-  return u > 1 ? `${u} × ${s} ${a.unit}` : `${s} ${a.unit}`;
+  return u > 1 ? `${u} × ${s} ${unitShort(a.unit ?? "")}` : `${s} ${unitShort(a.unit ?? "")}`;
 }
 
 type CartLine = { quantity: number; price: string };

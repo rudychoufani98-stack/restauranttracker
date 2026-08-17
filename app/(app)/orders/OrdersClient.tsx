@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { buildOrderMailto, defaultPackType } from "@/lib/order-email";
-import { Plus, Trash2, X, Send, Download, ChevronDown, ChevronUp, Zap, Check, Pencil, Truck, Search, TrendingUp, Hourglass, Star, ArrowRight } from "lucide-react";
+import { unitShort } from "@/lib/ingredient-helpers";
+import { Plus, Trash2, X, Send, Download, ChevronDown, ChevronUp, Zap, Check, Pencil, Truck, Search, TrendingUp, Hourglass, Star, ArrowRight, Ban } from "lucide-react";
 import clsx from "clsx";
 
 const toBase = (qty: number, unit: string) => (unit === "kg" || unit === "l" ? qty * 1000 : qty);
@@ -31,6 +32,7 @@ const STATUS_FILTERS: { key: string; label: string; match: (s: string) => boolea
   { key: "Sent", label: "Envoyée", match: (s) => s === "Sent" },
   { key: "received", label: "Reçue", match: (s) => s === "Received" || s === "Partially received" },
   { key: "Invoiced", label: "Facturée", match: (s) => s === "Invoiced" },
+  { key: "Cancelled", label: "Annulée", match: (s) => s === "Cancelled" },
 ];
 
 // Date period presets for the orders filter.
@@ -119,7 +121,7 @@ const packTypeOf = (a: Article) => a.pack_type || "colis";
 function condLabel(a: Article): string {
   if (a.pack_label) return a.pack_label;
   const u = Number(a.pack_units ?? 1), s = Number(a.unit_size ?? 0);
-  return u > 1 ? `${u} × ${s} ${a.unit}` : `${s} ${a.unit}`;
+  return u > 1 ? `${u} × ${s} ${unitShort(a.unit ?? "")}` : `${s} ${unitShort(a.unit ?? "")}`;
 }
 type Supplier = { id: string; name: string; email: string | null; min_order_amount?: number | null; customer_reference?: string | null };
 type POLine = { id?: string; ingredient_id: string | null; quantity: number; expected_price: number | null; ingredients?: { name: string; unit: string } | null };
@@ -159,7 +161,8 @@ function buildTimeline(o: PO, events: OrderEvent[]): TimelineItem[] {
   }));
   for (const ev of events) {
     if (ev.po_id !== o.id) continue;
-    items.push({ label: ev.type === "edited" ? "Commande modifiée" : ev.type, detail: ev.detail, date: ev.created_at, color: "bg-amber-500" });
+    const label = ev.type === "edited" ? "Commande modifiée" : ev.type === "cancelled" ? "Commande annulée" : ev.type;
+    items.push({ label, detail: ev.detail, date: ev.created_at, color: ev.type === "cancelled" ? "bg-red-500" : "bg-amber-500" });
   }
   return items.sort((a, b) => a.date.localeCompare(b.date));
 }
@@ -346,12 +349,96 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
     }
   }
 
+  // Annule une commande sans la supprimer du tableau (statut « Annulée »).
+  // Si du stock avait été appliqué (réception/facture), il est retiré par
+  // écart — mouvements écrits d'abord, rollback en cas d'échec.
+  async function handleCancel(po: PO) {
+    const applied = po.status === "Received" || po.status === "Partially received" || po.status === "Invoiced";
+    const msg = applied
+      ? `Annuler la commande « ${po.suppliers?.name ?? ""} » ?\n\nElle a été ${po.status === "Invoiced" ? "facturée" : "réceptionnée"} : les quantités ajoutées au stock seront RETIRÉES. La commande restera visible avec le statut « Annulée ».`
+      : `Annuler la commande « ${po.suppliers?.name ?? ""} » ?\n\nElle restera visible avec le statut « Annulée ». Aucun stock n'a été touché.`;
+    if (!window.confirm(msg)) return;
+    setSending(po.id);
+
+    try {
+      if (applied) {
+        // Quantités déjà appliquées au stock : la dernière facture validée,
+        // sinon les lignes des bons de livraison validés.
+        const prevBase = new Map<string, number>();
+        const baseFactorOf = (ingredientId: string) => {
+          const ing = ingredients.find((i) => i.id === ingredientId);
+          const pack = Number(ing?.pack_quantity ?? 1) || 1;
+          return ing && (ing.unit === "kg" || ing.unit === "l") ? pack * 1000 : pack;
+        };
+        const { data: inv } = await supabase
+          .from("invoices")
+          .select("id, invoice_lines(ingredient_id, quantity)")
+          .eq("po_id", po.id).eq("validated", true)
+          .order("created_at", { ascending: false }).limit(1).maybeSingle();
+        if (inv) {
+          for (const l of (inv as any).invoice_lines ?? []) {
+            if (l.ingredient_id) prevBase.set(l.ingredient_id, (prevBase.get(l.ingredient_id) ?? 0) + Number(l.quantity ?? 0) * baseFactorOf(l.ingredient_id));
+          }
+        } else {
+          const { data: dns } = await supabase
+            .from("delivery_notes")
+            .select("id, validated, delivery_note_lines(ingredient_id, quantity_received)")
+            .eq("po_id", po.id).eq("validated", true);
+          for (const dn of dns ?? []) {
+            for (const l of (dn as any).delivery_note_lines ?? []) {
+              if (l.ingredient_id) prevBase.set(l.ingredient_id, (prevBase.get(l.ingredient_id) ?? 0) + Number(l.quantity_received ?? 0) * baseFactorOf(l.ingredient_id));
+            }
+          }
+        }
+
+        const ids = Array.from(prevBase.keys()).filter((id) => (prevBase.get(id) ?? 0) > 0);
+        if (ids.length > 0) {
+          const { data: cur } = await supabase.from("ingredients").select("id, stock_qty, cmup, cost_per_base_unit").in("id", ids);
+          const curMap = new Map((cur ?? []).map((i) => [i.id, i]));
+
+          const movements = ids.map((id) => ({
+            restaurant_id: restaurantId, ingredient_id: id,
+            movement_type: "adjustment", qty: prevBase.get(id)!,
+            unit_cost: Number((curMap.get(id) as any)?.cmup ?? (curMap.get(id) as any)?.cost_per_base_unit ?? 0),
+            reference_type: "adjustment", reference_id: po.id,
+            notes: `Annulation commande ${po.order_number ?? ""} : stock retiré`,
+          }));
+          const { error: movErr } = await supabase.from("stock_movements").insert(movements);
+          if (movErr) { window.alert(`Annulation impossible : ${movErr.message}`); setSending(null); return; }
+
+          const done: string[] = [];
+          for (const id of ids) {
+            const prevStock = Number((curMap.get(id) as any)?.stock_qty ?? 0);
+            const { error: upErr } = await supabase.from("ingredients")
+              .update({ stock_qty: Math.max(0, prevStock - prevBase.get(id)!) }).eq("id", id);
+            if (upErr) {
+              for (const d of done) await supabase.from("ingredients").update({ stock_qty: (curMap.get(d) as any)?.stock_qty ?? 0 }).eq("id", d);
+              await supabase.from("stock_movements").delete().eq("reference_type", "adjustment").eq("reference_id", po.id);
+              window.alert(`Annulation impossible : ${upErr.message}. Rien n'a été modifié.`);
+              setSending(null); return;
+            }
+            done.push(id);
+          }
+        }
+      }
+
+      await supabase.from("purchase_orders").update({ status: "Cancelled" }).eq("id", po.id);
+      supabase.from("order_events").insert({
+        restaurant_id: restaurantId, po_id: po.id, type: "cancelled",
+        detail: applied ? "Stock retiré" : null,
+      }).then(() => {}, () => {});
+      setOrders((p) => p.map((o) => o.id === po.id ? { ...o, status: "Cancelled" } : o));
+    } finally {
+      setSending(null);
+    }
+  }
+
   async function handleDelete(id: string) {
     const o = orders.find((x) => x.id === id);
     // Only draft orders may be deleted. Sent/received/invoiced orders have (or
     // will have) affected stock — they can only be corrected via the invoice.
     if (o && o.status !== "Draft") {
-      window.alert("Cette commande a déjà été envoyée : elle ne peut pas être supprimée. Pour l'annuler, va dans « Facturer » et mets les quantités à 0 — le stock sera réajusté.");
+      window.alert("Cette commande a déjà été envoyée : elle ne peut pas être supprimée. Utilise le bouton « Annuler » (⦸) — elle restera visible avec le statut « Annulée » et le stock sera réajusté si besoin.");
       return;
     }
     const label = o?.suppliers?.name ? `la commande « ${o.suppliers.name} »` : "cette commande";
@@ -377,7 +464,7 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
   const curKey = monthKey(now);
   const lastKey = monthKey(new Date(now.getFullYear(), now.getMonth() - 1, 1));
   const spendIn = (key: string) =>
-    orders.filter((o) => receptionDate(o).slice(0, 7) === key).reduce((s, o) => s + Number(o.expected_total ?? 0), 0);
+    orders.filter((o) => o.status !== "Cancelled" && receptionDate(o).slice(0, 7) === key).reduce((s, o) => s + Number(o.expected_total ?? 0), 0);
   const spendThis = spendIn(curKey);
   const spendLast = spendIn(lastKey);
   const spendDelta = spendLast > 0 ? Math.round(((spendThis - spendLast) / spendLast) * 100) : null;
@@ -389,6 +476,7 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
 
   const supplierTally = new Map<string, { name: string; count: number }>();
   for (const o of orders) {
+    if (o.status === "Cancelled") continue;
     const id = o.supplier_id ?? "?";
     const e = supplierTally.get(id) ?? { name: o.suppliers?.name ?? "Fournisseur inconnu", count: 0 };
     e.count += 1;
@@ -810,6 +898,14 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
                                     {order.status === "Draft" && (
                                       <button onClick={() => handleDelete(order.id)} title="Supprimer le brouillon"
                                         className="p-1.5 text-on-surface-variant/50 hover:text-red hover:bg-red-light rounded-lg transition"><Trash2 size={14} /></button>
+                                    )}
+                                    {/* Annulation : la commande reste visible avec le statut « Annulée » */}
+                                    {order.status !== "Draft" && order.status !== "Cancelled" && (
+                                      <button onClick={() => handleCancel(order)} disabled={sending === order.id}
+                                        title={order.status === "Sent" ? "Annuler la commande" : "Annuler (le stock reçu sera retiré)"}
+                                        className="p-1.5 text-on-surface-variant/50 hover:text-red hover:bg-red-light rounded-lg transition disabled:opacity-40">
+                                        <Ban size={14} />
+                                      </button>
                                     )}
                                     {isExpanded ? <ChevronUp size={16} className="text-on-surface-variant/40" /> : <ChevronDown size={16} className="text-on-surface-variant/40" />}
                                   </div>

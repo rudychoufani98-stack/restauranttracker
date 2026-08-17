@@ -20,6 +20,7 @@ import {
   Settings,
   LogOut,
   Crown,
+  FileSpreadsheet,
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -55,6 +56,7 @@ const NAV_GROUPS = [
     items: [
       { href: "/caisse",      label: "Caisse",   icon: CreditCard },
       { href: "/rentabilite", label: "Ventes & marges", icon: TrendingUp },
+      { href: "/exports",     label: "Exports Excel", icon: FileSpreadsheet },
     ],
   },
 ];

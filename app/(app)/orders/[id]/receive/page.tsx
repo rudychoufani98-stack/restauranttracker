@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import ReceiveClient from "./ReceiveClient";
+import { unitShort } from "@/lib/ingredient-helpers";
 
 export default async function ReceivePage({ params }: { params: { id: string } }) {
   const supabase = createClient();
@@ -37,7 +38,7 @@ export default async function ReceivePage({ params }: { params: { id: string } }
     const u = a.unit ?? "";
     orderCond[a.ingredient_id] = {
       type: a.pack_type || "colis",
-      detail: a.pack_label || (size > 0 ? (units > 1 ? `${units} × ${size} ${u}` : `${size} ${u}`) : ""),
+      detail: a.pack_label || (size > 0 ? (units > 1 ? `${units} × ${size} ${unitShort(u)}` : `${size} ${unitShort(u)}`) : ""),
     };
   }
 

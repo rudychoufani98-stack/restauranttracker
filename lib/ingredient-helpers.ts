@@ -2,6 +2,15 @@
 
 export const UNITS = ["g", "kg", "ml", "l", "unit"];
 
+// L'interface ne propose QUE ces trois unités (l'app parle toujours en
+// kg / L / pièce — les g/ml restent internes au stockage). Les anciens
+// produits en « g »/« ml » sont convertis par supabase/unites_kg_l.sql.
+export const UNIT_OPTIONS = [
+  { value: "kg", label: "kg" },
+  { value: "l", label: "L" },
+  { value: "unit", label: "pièce" },
+];
+
 // Common EU VAT rates — user can type any value too
 export const VAT_PRESETS = [
   { label: "0% — Exonéré", value: "0" },
@@ -34,6 +43,13 @@ export function calcCostPerBase(packPrice: number, packUnits: number, unitSize: 
 
 export function baseUnitLabel(unit: string): string {
   return unit === "kg" ? "g" : unit === "l" ? "ml" : unit;
+}
+
+// Libellé FIDÈLE de l'unité telle quelle (sans conversion) : « pièce » au
+// lieu de « unit », « L » au lieu de « l » — g/ml restent g/ml (anciens
+// produits non migrés) pour ne jamais mentir sur la taille affichée.
+export function unitShort(unit: string): string {
+  return unit === "unit" || unit === "piece" ? "pièce" : unit === "l" ? "L" : unit;
 }
 
 // Friendly display unit: weights → kg, volumes → L, else the unit itself.

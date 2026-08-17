@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { ArrowLeft, Check, Plus, Trash2, Loader2, Package, Boxes, GitMerge, Pencil, ChefHat, Soup, Link2 } from "lucide-react";
 import clsx from "clsx";
 import {
-  UNITS, VAT_PRESETS, ALLERGENS, packTotal, calcCostPerBase,
+  UNIT_OPTIONS, VAT_PRESETS, ALLERGENS, packTotal, calcCostPerBase, unitShort,
   displayUnitLabel, perDisplayUnit, priceTTC,
   qtyToDisplay, qtyFromDisplay, fmtNum,
 } from "@/lib/ingredient-helpers";
@@ -273,7 +273,9 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Unité d'usage</label>
             <select value={unit} onChange={(e) => setUnit(e.target.value)} className={inputCls}>
-              {UNITS.map((u) => <option key={u}>{u}</option>)}
+              {UNIT_OPTIONS.map((u) => <option key={u.value} value={u.value}>{u.label}</option>)}
+              {/* Ancien produit pas encore migré (g/ml) : on montre son unité réelle, convertie à l'enregistrement du script de migration */}
+              {!UNIT_OPTIONS.some((u) => u.value === unit) && <option value={unit}>{unit} (ancien format)</option>}
             </select>
             <p className="text-2xs text-gray-400 mt-1">recettes & inventaires dans cette unité</p>
           </div>
@@ -351,7 +353,7 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
                     <input type="number" min="1" step="any" value={a.pack_units} onChange={(e) => updateArticle(i, "pack_units", e.target.value)} placeholder="1" className="w-16 px-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500" />
                     <span className="text-gray-400 pb-2">×</span>
                     <input type="number" min="0" step="any" value={a.unit_size} onChange={(e) => updateArticle(i, "unit_size", e.target.value)} placeholder="18" className="w-20 px-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500" />
-                    <span className="text-sm text-gray-500 pb-2">{unit}</span>
+                    <span className="text-sm text-gray-500 pb-2">{unitShort(unit)}</span>
                   </div>
 
                   <div className="flex flex-wrap gap-2">
@@ -368,7 +370,7 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
 
                   {cpb > 0 && (
                     <p className="text-xs text-gray-500">
-                      1 {a.pack_type || "colis"} = <b>{packTotal(parseFloat(a.pack_units) || 1, parseFloat(a.unit_size) || 0)} {unit}</b> · TTC €{ttc.toFixed(2)} ·
+                      1 {a.pack_type || "colis"} = <b>{packTotal(parseFloat(a.pack_units) || 1, parseFloat(a.unit_size) || 0)} {unitShort(unit)}</b> · TTC €{ttc.toFixed(2)} ·
                       <span className="text-emerald-600 font-medium"> €{cpb.toFixed(2)}/{uLabel}</span>
                     </p>
                   )}

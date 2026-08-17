@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { PurchaseOrderPDF } from "@/lib/pdf/PurchaseOrderPDF";
 import { defaultPackType } from "@/lib/order-email";
+import { unitShort } from "@/lib/ingredient-helpers";
 import React from "react";
 
 export async function GET(
@@ -76,7 +77,7 @@ export async function GET(
       const packDetail = art?.pack_label
         ? art.pack_label
         : unitSize > 0
-          ? (packUnits > 1 ? `${packUnits} × ${unitSize} ${baseUnit}` : `${unitSize} ${baseUnit}`)
+          ? (packUnits > 1 ? `${packUnits} × ${unitSize} ${unitShort(baseUnit)}` : `${unitSize} ${unitShort(baseUnit)}`)
           : "";
       return {
         name: ing?.name ?? "—",

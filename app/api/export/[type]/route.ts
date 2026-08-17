@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getRestaurant } from "@/lib/auth";
 import {
   newWorkbook, addTitle, styleHeader, styleSubtotal, autoWidth,
   workbookToResponse, FMT, todayStamp,
@@ -17,23 +18,23 @@ export async function GET(req: NextRequest, { params }: { params: { type: string
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return new Response("Non autorisé", { status: 401 });
 
-    const { data: restaurant } = await supabase
-      .from("restaurants")
-      .select("id, name")
-      .eq("owner_id", user.id)
-      .single();
+    // Suit le restaurant réellement ouvert (client ouvert par l'admin inclus)
+    const restaurant = await getRestaurant();
     if (!restaurant) return new Response("Accès refusé", { status: 403 });
 
     const stamp = todayStamp();
     const dateLabel = new Date().toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" });
 
-    if (params.type === "inventaire") {
-      return await exportInventaire(supabase, restaurant, stamp, dateLabel);
+    switch (params.type) {
+      case "inventaire": return await exportInventaire(supabase, restaurant, stamp, dateLabel);
+      case "achats":     return await exportAchats(supabase, restaurant, stamp, dateLabel);
+      case "recettes":   return await exportRecettes(supabase, restaurant, stamp, dateLabel);
+      case "commandes":  return await exportCommandes(supabase, restaurant, stamp, dateLabel);
+      case "pertes":     return await exportPertes(supabase, restaurant, stamp, dateLabel);
+      case "ventes":     return await exportVentes(supabase, restaurant, stamp, dateLabel);
+      case "mouvements": return await exportMouvements(supabase, restaurant, stamp, dateLabel);
+      default: return new Response("Type d'export inconnu", { status: 404 });
     }
-    if (params.type === "achats") {
-      return await exportAchats(supabase, restaurant, stamp, dateLabel);
-    }
-    return new Response("Type d'export inconnu", { status: 404 });
   } catch (e) {
     console.error("[export] error:", (e as Error).message);
     return new Response("Erreur serveur", { status: 500 });
@@ -155,4 +156,215 @@ async function exportAchats(supabase: any, restaurant: any, stamp: string, dateL
   }
 
   return workbookToResponse(wb, `Achats_${stamp}.xlsx`);
+}
+
+// ── Fiches techniques & food cost ──────────────────────────────────────
+async function exportRecettes(supabase: any, restaurant: any, stamp: string, dateLabel: string) {
+  const { data: recipes } = await supabase
+    .from("recipes")
+    .select("name, category, total_cost, menu_price, yield_portions")
+    .eq("restaurant_id", restaurant.id)
+    .order("category").order("name");
+
+  const wb = newWorkbook();
+  const ws = wb.addWorksheet("Recettes");
+  const headers = ["Catégorie", "Recette", "Rendement (portions)", "Coût total", "Coût / portion", "Prix vente", "Food cost %", "Marge / portion"];
+  autoWidth(ws, [20, 32, 18, 13, 14, 12, 12, 15]);
+
+  const r = addTitle(ws, `Fiches techniques & food cost — ${restaurant.name}`, `Au ${dateLabel} · coûts valorisés au CMUP actuel`, headers.length);
+  ws.getRow(r).values = headers;
+  styleHeader(ws, r);
+
+  for (const rec of recipes ?? []) {
+    const portions = Number(rec.yield_portions) || 1;
+    const cpp = Number(rec.total_cost ?? 0) / portions;
+    const price = Number(rec.menu_price ?? 0);
+    const row = ws.addRow([
+      rec.category || "Autre", rec.name, portions,
+      Number(rec.total_cost ?? 0), cpp,
+      price > 0 ? price : "—",
+      price > 0 ? cpp / price : "—",
+      price > 0 ? price - cpp : "—",
+    ]);
+    row.getCell(4).numFmt = FMT.eur;
+    row.getCell(5).numFmt = FMT.eur;
+    if (price > 0) { row.getCell(6).numFmt = FMT.eur; row.getCell(7).numFmt = "0.0%"; row.getCell(8).numFmt = FMT.eur; }
+  }
+  return workbookToResponse(wb, `Recettes_${stamp}.xlsx`);
+}
+
+// ── Commandes fournisseurs (une ligne par produit commandé) ────────────
+async function exportCommandes(supabase: any, restaurant: any, stamp: string, dateLabel: string) {
+  const STATUS_FR: Record<string, string> = {
+    Draft: "Brouillon", Sent: "Envoyée", "Partially received": "Partiellement reçue",
+    Received: "Reçue", Invoiced: "Facturée", Cancelled: "Annulée",
+  };
+  const { data: orders } = await supabase
+    .from("purchase_orders")
+    .select("order_number, status, created_at, expected_total, suppliers(name), purchase_order_lines(quantity, expected_price, ingredients(name))")
+    .eq("restaurant_id", restaurant.id)
+    .order("created_at", { ascending: false });
+
+  const wb = newWorkbook();
+  const ws = wb.addWorksheet("Commandes");
+  const headers = ["N° commande", "Fournisseur", "Statut", "Date", "Produit", "Quantité", "Prix / colis", "Sous-total"];
+  autoWidth(ws, [16, 22, 16, 12, 30, 10, 12, 13]);
+
+  const r = addTitle(ws, `Commandes fournisseurs — ${restaurant.name}`, `Au ${dateLabel} · une ligne par produit commandé`, headers.length);
+  ws.getRow(r).values = headers;
+  styleHeader(ws, r);
+
+  let grandTotal = 0;
+  for (const o of orders ?? []) {
+    const date = new Date(o.created_at).toLocaleDateString("fr-FR");
+    for (const l of o.purchase_order_lines ?? []) {
+      const sub = Number(l.quantity ?? 0) * Number(l.expected_price ?? 0);
+      const row = ws.addRow([
+        o.order_number ?? "—", o.suppliers?.name ?? "—", STATUS_FR[o.status] ?? o.status, date,
+        l.ingredients?.name ?? "—", Number(l.quantity ?? 0), Number(l.expected_price ?? 0), sub,
+      ]);
+      row.getCell(7).numFmt = FMT.eur;
+      row.getCell(8).numFmt = FMT.eur;
+    }
+    grandTotal += Number(o.expected_total ?? 0);
+  }
+  const total = ws.addRow(["", "TOTAL COMMANDES", "", "", "", "", "", grandTotal]);
+  total.eachCell((c: any) => { c.font = { bold: true, size: 11 }; });
+  total.getCell(8).numFmt = FMT.eur;
+  return workbookToResponse(wb, `Commandes_${stamp}.xlsx`);
+}
+
+// ── Pertes & gaspillage ────────────────────────────────────────────────
+async function exportPertes(supabase: any, restaurant: any, stamp: string, dateLabel: string) {
+  const { data: losses } = await supabase
+    .from("stock_movements")
+    .select("created_at, qty, unit_cost, loss_reason, notes, ingredients(name, unit)")
+    .eq("restaurant_id", restaurant.id)
+    .eq("movement_type", "loss")
+    .order("created_at", { ascending: false });
+
+  const wb = newWorkbook();
+  const ws = wb.addWorksheet("Pertes");
+  const headers = ["Date", "Ingrédient", "Cause", "Quantité", "Unité", "Valeur", "Note"];
+  autoWidth(ws, [12, 30, 20, 12, 8, 13, 30]);
+
+  const r = addTitle(ws, `Pertes & gaspillage — ${restaurant.name}`, `Au ${dateLabel} · valorisées au CMUP du moment`, headers.length);
+  ws.getRow(r).values = headers;
+  styleHeader(ws, r);
+
+  let total = 0;
+  for (const m of losses ?? []) {
+    const u = m.ingredients?.unit ?? "unit";
+    const value = Number(m.qty ?? 0) * Number(m.unit_cost ?? 0);
+    total += value;
+    const row = ws.addRow([
+      new Date(m.created_at).toLocaleDateString("fr-FR"),
+      m.ingredients?.name ?? "—", m.loss_reason ?? "—",
+      qtyDisplay(Number(m.qty ?? 0), u), displayUnit(u), value, m.notes ?? "",
+    ]);
+    row.getCell(4).numFmt = FMT.qty;
+    row.getCell(6).numFmt = FMT.eur;
+  }
+  const tr = ws.addRow(["", "TOTAL PERTES", "", "", "", total, ""]);
+  tr.eachCell((c: any) => { c.font = { bold: true, size: 11 }; });
+  tr.getCell(6).numFmt = FMT.eur;
+  return workbookToResponse(wb, `Pertes_${stamp}.xlsx`);
+}
+
+// ── Ventes & marges (une ligne par plat vendu, par mois et canal) ──────
+async function exportVentes(supabase: any, restaurant: any, stamp: string, dateLabel: string) {
+  const [{ data: periods }, { data: recipes }, { data: products }] = await Promise.all([
+    supabase.from("sales_periods")
+      .select("month, channel, sales_lines(qty_sold, recipe_id, ingredient_id)")
+      .eq("restaurant_id", restaurant.id)
+      .order("month", { ascending: false }),
+    supabase.from("recipes").select("id, name, total_cost, menu_price, yield_portions").eq("restaurant_id", restaurant.id),
+    supabase.from("ingredients").select("id, name, selling_price, pack_price").eq("restaurant_id", restaurant.id).not("selling_price", "is", null),
+  ]);
+  const recMap = new Map((recipes ?? []).map((x: any) => [x.id, x]));
+  const prodMap = new Map((products ?? []).map((x: any) => [x.id, x]));
+
+  const wb = newWorkbook();
+  const ws = wb.addWorksheet("Ventes");
+  const headers = ["Mois", "Canal", "Article", "Qté vendue", "Prix vente", "CA", "Coût matière", "Marge", "Food cost %"];
+  autoWidth(ws, [12, 12, 32, 11, 11, 13, 13, 13, 12]);
+
+  const r = addTitle(ws, `Ventes & marges — ${restaurant.name}`, `Au ${dateLabel} · coûts valorisés au CMUP actuel · hors commissions de livraison`, headers.length);
+  ws.getRow(r).values = headers;
+  styleHeader(ws, r);
+
+  const CHANNEL_FR: Record<string, string> = { dine_in: "Sur place", delivery: "Livraison" };
+  let totCA = 0, totCost = 0;
+  for (const p of periods ?? []) {
+    for (const l of p.sales_lines ?? []) {
+      let name = "—", price = 0, cost = 0;
+      if (l.recipe_id && recMap.has(l.recipe_id)) {
+        const rec: any = recMap.get(l.recipe_id);
+        name = rec.name; price = Number(rec.menu_price ?? 0);
+        cost = Number(rec.total_cost ?? 0) / (Number(rec.yield_portions) || 1);
+      } else if (l.ingredient_id && prodMap.has(l.ingredient_id)) {
+        const prod: any = prodMap.get(l.ingredient_id);
+        name = prod.name; price = Number(prod.selling_price ?? 0); cost = Number(prod.pack_price ?? 0);
+      } else continue;
+      const qty = Number(l.qty_sold ?? 0);
+      const ca = qty * price, cm = qty * cost;
+      totCA += ca; totCost += cm;
+      const row = ws.addRow([
+        p.month, CHANNEL_FR[p.channel] ?? p.channel, name, qty, price, ca, cm, ca - cm,
+        price > 0 ? cost / price : "—",
+      ]);
+      row.getCell(5).numFmt = FMT.eur; row.getCell(6).numFmt = FMT.eur;
+      row.getCell(7).numFmt = FMT.eur; row.getCell(8).numFmt = FMT.eur;
+      if (price > 0) row.getCell(9).numFmt = "0.0%";
+    }
+  }
+  const tr = ws.addRow(["", "TOTAL", "", "", "", totCA, totCost, totCA - totCost, totCA > 0 ? totCost / totCA : "—"]);
+  tr.eachCell((c: any) => { c.font = { bold: true, size: 11 }; });
+  tr.getCell(6).numFmt = FMT.eur; tr.getCell(7).numFmt = FMT.eur; tr.getCell(8).numFmt = FMT.eur;
+  if (totCA > 0) tr.getCell(9).numFmt = "0.0%";
+  return workbookToResponse(wb, `Ventes_${stamp}.xlsx`);
+}
+
+// ── Mouvements de stock (journal complet) ──────────────────────────────
+async function exportMouvements(supabase: any, restaurant: any, stamp: string, dateLabel: string) {
+  const { data: moves } = await supabase
+    .from("stock_movements")
+    .select("created_at, movement_type, reference_type, qty, unit_cost, loss_reason, notes, ingredients(name, unit)")
+    .eq("restaurant_id", restaurant.id)
+    .order("created_at", { ascending: false });
+
+  const TYPE_FR: Record<string, string> = {
+    "delivery": "Réception", "invoice": "Ajust. facture", "sale": "Vente (déstockage)",
+    "loss": "Perte", "inventory": "Écart inventaire", "adjustment": "Ajustement", "purchase": "Achat", "manual": "Manuel",
+  };
+  const SIGN: Record<string, number> = { in: 1, out: -1, loss: -1, adjustment: 1 };
+
+  const wb = newWorkbook();
+  const ws = wb.addWorksheet("Mouvements");
+  const headers = ["Date", "Ingrédient", "Opération", "Sens", "Quantité", "Unité", "Coût unitaire", "Valeur", "Note"];
+  autoWidth(ws, [12, 30, 18, 8, 12, 8, 13, 13, 28]);
+
+  const r = addTitle(ws, `Journal des mouvements de stock — ${restaurant.name}`, `Au ${dateLabel} · toutes les entrées/sorties tracées`, headers.length);
+  ws.getRow(r).values = headers;
+  styleHeader(ws, r);
+
+  for (const m of moves ?? []) {
+    const u = m.ingredients?.unit ?? "unit";
+    const sign = SIGN[m.movement_type] ?? 1;
+    const perDisp = ["g", "kg", "ml", "l"].includes(u) ? Number(m.unit_cost ?? 0) * 1000 : Number(m.unit_cost ?? 0);
+    const row = ws.addRow([
+      new Date(m.created_at).toLocaleDateString("fr-FR"),
+      m.ingredients?.name ?? "—",
+      TYPE_FR[m.reference_type] ?? m.reference_type,
+      sign > 0 ? "+" : "−",
+      qtyDisplay(Number(m.qty ?? 0), u), displayUnit(u),
+      perDisp,
+      Number(m.qty ?? 0) * Number(m.unit_cost ?? 0),
+      m.loss_reason ?? m.notes ?? "",
+    ]);
+    row.getCell(5).numFmt = FMT.qty;
+    row.getCell(7).numFmt = FMT.eur;
+    row.getCell(8).numFmt = FMT.eur;
+  }
+  return workbookToResponse(wb, `Mouvements_${stamp}.xlsx`);
 }

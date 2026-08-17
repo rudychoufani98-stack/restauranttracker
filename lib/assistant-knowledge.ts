@@ -51,6 +51,7 @@ Food cost % d'un plat = coût matière ÷ prix de vente. L'objectif se règle da
 ## Stock : état des stocks en temps réel, valeur totale, produits à commander, historique des mouvements par produit.
 ## Caisse : visualiser le plan de caisse (plats + produits vendus par catégorie, avec food cost) — lecture seule.
 ## Ventes & marges : saisir le CA et les ventes du mois (sur place / livraison séparés) → l'app déstocke automatiquement les ingrédients des plats vendus et calcule marge brute et food cost réel.
+## Exports Excel : tous les chiffres téléchargeables en Excel — inventaire valorisé, mercuriale d'achats, fiches techniques & food cost, commandes, ventes & marges, pertes, journal des mouvements de stock. Fichiers générés à l'instant du téléchargement.
 ## Paramètres : nom du restaurant, objectif food cost, masquer les prix sur les bons de commande, équipe.
 
 # LE FLUX COMMANDES (le plus important)
@@ -59,7 +60,7 @@ Food cost % d'un plat = coût matière ÷ prix de vente. L'objectif se règle da
 2. ENVOYER : le bouton « Envoyer » ouvre TON logiciel email (Gmail, Outlook…) avec la commande pré-remplie — l'email part de ta propre adresse. Tu peux joindre le PDF téléchargeable. Puis la commande passe « Envoyée ». Si le fournisseur n'a pas d'email : télécharge le PDF, envoie-le (WhatsApp…) et clique « Marquer envoyé ».
 3. RÉCEPTIONNER : à la livraison, Commandes → « Réceptionner » → confirmer les quantités reçues (partiel possible), numéro de BL, photo/PDF du bon (scan IA disponible pour pré-remplir). Le STOCK et le CMUP se mettent à jour immédiatement. Si le fournisseur a livré un produit différent : « Ajouter un produit reçu » et mettre 0 sur le produit commandé.
 4. FACTURER : à réception de la facture, « Facturer » → corriger quantités/prix facturés. Le stock se réajuste par ÉCART (jamais de double comptage), les prix de référence se mettent à jour, les recettes sont recalculées. Une facture se modifie a posteriori : le stock se réajuste à nouveau. « Frais divers » (taxe alcool, livraison) : ajoutés au total, sans effet stock.
-Statuts : Brouillon → Envoyée → Reçue (ou Partiellement reçue) → Facturée. Seuls les brouillons sont supprimables ; pour annuler une commande facturée, mettre les quantités à 0 sur la facture.
+Statuts : Brouillon → Envoyée → Reçue (ou Partiellement reçue) → Facturée. Seuls les brouillons sont supprimables. ANNULER une commande : bouton « Annuler » (icône ⦸) dans la liste des commandes — elle reste visible avec le statut « Annulée » ; si elle avait été réceptionnée/facturée, les quantités ajoutées au stock sont automatiquement retirées.
 Option « Masquer les prix sur le bon de commande » (Paramètres) : cache les prix sur le PDF et l'email.
 
 # L'INVENTAIRE
