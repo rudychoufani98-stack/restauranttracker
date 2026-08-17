@@ -78,10 +78,12 @@ export default function Sidebar({ restaurantName, isAdmin = false }: { restauran
 
   return (
     <aside className="w-64 shrink-0 flex flex-col h-screen sticky top-0 bg-surface-container-lowest border-r border-outline-variant">
-      {/* Brand — Amaly wordmark (clic → accueil) */}
+      {/* Brand — logo + wordmark Amaly (clic → accueil) */}
       <div className="px-5 pt-6 pb-5">
-        <Link href="/dashboard" aria-label="Accueil">
-          <p className="text-[32px] leading-none font-extrabold text-primary tracking-tight hover:opacity-80 transition">
+        <Link href="/dashboard" aria-label="Accueil" className="flex items-center gap-2.5 hover:opacity-80 transition">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-amaly.svg" alt="" className="w-9 h-9 shrink-0" />
+          <p className="text-[32px] leading-none font-extrabold text-primary tracking-tight">
             Amaly
           </p>
         </Link>

@@ -57,7 +57,11 @@ export default async function AdminPage() {
             <p className="text-xs font-semibold text-primary uppercase tracking-widest mb-1 flex items-center gap-1.5">
               <Crown size={13} /> Super-admin
             </p>
-            <h1 className="text-3xl font-extrabold text-primary tracking-tight">Mes clients</h1>
+            <div className="flex items-center gap-3">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/logo-amaly.svg" alt="" className="w-9 h-9" />
+              <h1 className="text-3xl font-extrabold text-primary tracking-tight">Mes clients</h1>
+            </div>
             <p className="text-sm text-on-surface-variant/70 mt-1">
               {stats.length} projet{stats.length !== 1 ? "s" : ""} sur la plateforme — vue d&apos;ensemble. Clique « Ouvrir » pour entrer dans l&apos;interface d&apos;un client (un bandeau te rappellera chez qui tu es).
             </p>
