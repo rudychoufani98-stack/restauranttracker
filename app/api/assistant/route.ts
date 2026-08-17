@@ -12,10 +12,10 @@ const MAX_MESSAGE_LEN = 2000;
 
 async function askGemini(apiKey: string, history: { role: string; content: string }[]) {
   const res = await fetch(
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + apiKey,
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey.trim() },
       body: JSON.stringify({
         system_instruction: { parts: [{ text: ASSISTANT_SYSTEM_PROMPT }] },
         contents: history.map((m) => ({
