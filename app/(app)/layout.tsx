@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { getCurrentUser, getRestaurant, isAppAdmin, ADMIN_RESTAURANT_COOKIE } from "@/lib/auth";
 import Sidebar from "@/components/Sidebar";
+import AssistantWidget from "@/components/AssistantWidget";
 import { closeRestaurant } from "@/app/admin/actions";
 import { Crown, ArrowLeft } from "lucide-react";
 
@@ -44,6 +45,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         )}
         {children}
       </main>
+      <AssistantWidget />
     </div>
   );
 }
