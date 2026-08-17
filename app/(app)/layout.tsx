@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
-import { getCurrentUser, getRestaurant, isAppAdmin } from "@/lib/auth";
+import { cookies } from "next/headers";
+import { getCurrentUser, getRestaurant, isAppAdmin, ADMIN_RESTAURANT_COOKIE } from "@/lib/auth";
 import Sidebar from "@/components/Sidebar";
 import { closeRestaurant } from "@/app/admin/actions";
 import { Crown, ArrowLeft } from "lucide-react";
@@ -9,6 +10,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   if (!user) redirect("/login");
 
+  // Un super-admin vit dans son panel : il n'entre dans l'interface d'un
+  // restaurant (Amaly compris) qu'après avoir explicitement « ouvert » un
+  // client depuis /admin.
+  const admin = await isAppAdmin();
+  const openedClient = cookies().get(ADMIN_RESTAURANT_COOKIE)?.value ?? null;
+  if (admin && !openedClient) redirect("/admin");
+
   // Load the restaurant for this user (cached — shared with the page below).
   // For a super-admin who "opened" a client, this is the CLIENT's restaurant.
   const restaurant = await getRestaurant();
@@ -16,8 +24,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // If no restaurant yet, send to onboarding
   if (!restaurant) redirect("/onboarding");
 
-  const admin = await isAppAdmin();
-  const impersonating = admin && restaurant.owner_id !== user.id;
+  const impersonating = admin && !!openedClient;
 
   return (
     <div className="flex min-h-screen bg-[#F9FAFB]">

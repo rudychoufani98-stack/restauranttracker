@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser, isAppAdmin, ADMIN_RESTAURANT_COOKIE } from "@/lib/auth";
 import { openRestaurant, closeRestaurant } from "./actions";
@@ -21,21 +20,29 @@ export default async function AdminPage() {
 
   const openId = cookies().get(ADMIN_RESTAURANT_COOKIE)?.value ?? null;
 
-  // Stats par client (volumes faibles : quelques requêtes par restaurant)
+  // Vision globale par projet (volumes faibles : quelques requêtes par client)
+  const monthStart = new Date();
+  monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
   const stats = await Promise.all(
     (restaurants ?? []).map(async (r) => {
-      const [ing, orders, recipes, lastOrder] = await Promise.all([
+      const [ing, orders, recipes, lastOrder, stockRows, monthOrders] = await Promise.all([
         supabase.from("ingredients").select("id", { count: "exact", head: true }).eq("restaurant_id", r.id),
         supabase.from("purchase_orders").select("id", { count: "exact", head: true }).eq("restaurant_id", r.id),
         supabase.from("recipes").select("id", { count: "exact", head: true }).eq("restaurant_id", r.id),
         supabase.from("purchase_orders").select("created_at").eq("restaurant_id", r.id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+        supabase.from("ingredients").select("stock_qty, cmup, cost_per_base_unit").eq("restaurant_id", r.id),
+        supabase.from("purchase_orders").select("expected_total").eq("restaurant_id", r.id).gte("created_at", monthStart.toISOString()),
       ]);
+      const stockValue = (stockRows.data ?? []).reduce((s, i: any) => s + Number(i.stock_qty ?? 0) * Number(i.cmup ?? i.cost_per_base_unit ?? 0), 0);
+      const monthSpend = (monthOrders.data ?? []).reduce((s, o: any) => s + Number(o.expected_total ?? 0), 0);
       return {
         ...r,
         nIngredients: ing.count ?? 0,
         nOrders: orders.count ?? 0,
         nRecipes: recipes.count ?? 0,
         lastActivity: lastOrder.data?.created_at ?? null,
+        stockValue,
+        monthSpend,
         isMine: r.owner_id === user.id,
       };
     })
@@ -52,22 +59,16 @@ export default async function AdminPage() {
             </p>
             <h1 className="text-3xl font-extrabold text-primary tracking-tight">Mes clients</h1>
             <p className="text-sm text-on-surface-variant/70 mt-1">
-              {stats.length} restaurant{stats.length !== 1 ? "s" : ""} sur la plateforme. Ouvre un client pour gérer son interface — un bandeau te rappellera chez qui tu es.
+              {stats.length} projet{stats.length !== 1 ? "s" : ""} sur la plateforme — vue d&apos;ensemble. Clique « Ouvrir » pour entrer dans l&apos;interface d&apos;un client (un bandeau te rappellera chez qui tu es).
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            {openId && (
-              <form action={closeRestaurant}>
-                <button className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-on-surface-variant border border-outline-variant/40 rounded-xl hover:bg-surface-container-low transition">
-                  <ArrowLeft size={15} /> Revenir à mon compte
-                </button>
-              </form>
-            )}
-            <Link href="/dashboard"
-              className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-on-primary bg-primary rounded-xl hover:bg-primary-container transition">
-              Mon app <ArrowRight size={15} />
-            </Link>
-          </div>
+          {openId && (
+            <form action={closeRestaurant}>
+              <button className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-on-surface-variant border border-outline-variant/40 rounded-xl hover:bg-surface-container-low transition">
+                <ArrowLeft size={15} /> Fermer le client ouvert
+              </button>
+            </form>
+          )}
         </div>
 
         {/* Clients list */}
@@ -80,18 +81,20 @@ export default async function AdminPage() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h2 className="text-lg font-semibold text-on-surface">{r.name}</h2>
-                  {r.isMine && <span className="inline-flex px-2 py-0.5 rounded-full bg-emerald-50 text-primary text-2xs font-bold uppercase tracking-wide">Ton restaurant</span>}
+                  {r.isMine && <span className="inline-flex px-2 py-0.5 rounded-full bg-emerald-50 text-primary text-2xs font-bold uppercase tracking-wide">Client n°1</span>}
                   {openId === r.id && <span className="inline-flex px-2 py-0.5 rounded-full bg-primary text-on-primary text-2xs font-bold uppercase tracking-wide">Ouvert actuellement</span>}
                 </div>
                 <p className="text-2xs text-on-surface-variant/60 mt-0.5">
                   Client depuis le {new Date(r.created_at).toLocaleDateString("fr-FR")}
                   {r.lastActivity && <> · dernière commande le {new Date(r.lastActivity).toLocaleDateString("fr-FR")}</>}
                 </p>
-              </div>
-              <div className="flex items-center gap-5 text-sm text-on-surface-variant/80 shrink-0">
-                <span className="flex items-center gap-1.5" title="Ingrédients"><Package size={15} className="text-on-surface-variant/50" /> {r.nIngredients}</span>
-                <span className="flex items-center gap-1.5" title="Recettes"><ChefHat size={15} className="text-on-surface-variant/50" /> {r.nRecipes}</span>
-                <span className="flex items-center gap-1.5" title="Commandes"><ShoppingCart size={15} className="text-on-surface-variant/50" /> {r.nOrders}</span>
+                <div className="flex items-center gap-4 mt-2 text-sm text-on-surface-variant/80 flex-wrap">
+                  <span className="font-semibold text-primary tabular-nums" title="Valeur du stock">Stock : €{r.stockValue.toFixed(0)}</span>
+                  <span className="tabular-nums" title="Dépenses du mois (commandes)">Achats ce mois : €{r.monthSpend.toFixed(0)}</span>
+                  <span className="flex items-center gap-1.5" title="Ingrédients"><Package size={14} className="text-on-surface-variant/50" /> {r.nIngredients}</span>
+                  <span className="flex items-center gap-1.5" title="Recettes"><ChefHat size={14} className="text-on-surface-variant/50" /> {r.nRecipes}</span>
+                  <span className="flex items-center gap-1.5" title="Commandes"><ShoppingCart size={14} className="text-on-surface-variant/50" /> {r.nOrders}</span>
+                </div>
               </div>
               <form action={openRestaurant} className="shrink-0">
                 <input type="hidden" name="restaurant_id" value={r.id} />
