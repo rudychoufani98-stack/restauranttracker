@@ -4,9 +4,10 @@ import { useState, useMemo } from "react";
 import { ChefHat, Package, AlertTriangle, ArrowRight } from "lucide-react";
 import clsx from "clsx";
 import Link from "next/link";
+import { perDisplayUnit } from "@/lib/ingredient-helpers";
 
 type Recipe  = { id: string; name: string; category: string; total_cost: number; menu_price: number | null; yield_portions: number; allergens: string[] | null };
-type Product = { id: string; name: string; category: string; pack_price: number; cmup?: number | null; cost_per_base_unit?: number | null; selling_price: number | null; allergens: string[] | null };
+type Product = { id: string; name: string; category: string; pack_price: number; cmup?: number | null; cost_per_base_unit?: number | null; selling_price: number | null; unit?: string; allergens: string[] | null };
 
 type Touch = {
   id: string;
@@ -47,7 +48,8 @@ export default function CaisseClient({ recipes, products, categoryOrder }: Props
       category: p.category || "Autre",
       price: p.selling_price,
       type: "product",
-      cost: Number(p.cmup ?? p.cost_per_base_unit ?? 0),
+      // CMUP ramené à l'unité de vente (pièce, ou kg/L pour un produit au poids)
+      cost: perDisplayUnit(Number(p.cmup ?? p.cost_per_base_unit ?? 0), p.unit ?? "unit"),
       allergens: p.allergens ?? [],
       linked: true,
     }));

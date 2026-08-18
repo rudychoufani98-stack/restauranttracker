@@ -22,6 +22,7 @@ type Ingredient = {
   suppliers?: { name: string } | null;
   secondary_unit_label?: string | null;
   secondary_unit_size?: number | null;
+  yield_pct?: number | null;
 };
 
 // Conditionnement secondaire (ex. « 1 bouteille = 0,75 L ») : si défini,
@@ -203,11 +204,16 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
       const yieldBase = toBase(v, recipeMap.get(rid)?.yield_unit ?? "portion");
       const perYieldBase = ingredientsPerYieldBase(rid, recipeMap, new Map(), new Set());
       for (const [ingId, qty] of Array.from(perYieldBase.entries())) {
-        map.set(ingId, (map.get(ingId) ?? 0) + qty * yieldBase);
+        // Les recettes indiquent des quantités NETTES ; le stock théorique a été
+        // débité en BRUT (net ÷ rendement) — l'équivalent doit l'être aussi,
+        // sinon les parures ressortent en faux « écart d'inventaire ».
+        const y = Number(localIngredients.find((i) => i.id === ingId)?.yield_pct ?? 100);
+        const yf = y > 0 ? y / 100 : 1;
+        map.set(ingId, (map.get(ingId) ?? 0) + (qty * yieldBase) / yf);
       }
     }
     return map;
-  }, [mepCounts, recipeMap, countKind]);
+  }, [mepCounts, recipeMap, countKind, localIngredients]);
 
   // ---- Prise d'inventaire (écart théorique vs réel) ----
   // La saisie se fait dans le conditionnement secondaire s'il existe
@@ -295,7 +301,12 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
       if (isNaN(v) || v <= 0) continue;
       const yieldBase = toBase(v, recipeMap.get(rid)?.yield_unit ?? "portion");
       const per = ingredientsPerYieldBase(rid, recipeMap, new Map(), new Set());
-      for (const [ingId, qty] of Array.from(per.entries())) contrib.set(ingId, (contrib.get(ingId) ?? 0) + qty * yieldBase);
+      for (const [ingId, qty] of Array.from(per.entries())) {
+        // Même règle brut/net que mepContributions (rendement inclus)
+        const y = Number(localIngredients.find((i) => i.id === ingId)?.yield_pct ?? 100);
+        const yf = y > 0 ? y / 100 : 1;
+        contrib.set(ingId, (contrib.get(ingId) ?? 0) + (qty * yieldBase) / yf);
+      }
     }
 
     // 2) Lignes ingrédients : champ = total sauvegardé − part venue des MEP

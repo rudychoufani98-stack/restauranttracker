@@ -37,12 +37,17 @@ export function calcRecipeCost(
   recipeCosts: Map<string, number> = new Map(),
   visited: Set<string> = new Set()
 ): number {
+  // Memo AVANT le garde-cycle : un total déjà calculé proprement est fiable.
+  if (recipeCosts.has(recipeId)) return recipeCosts.get(recipeId)!;
+  // Cycle (A contient B qui contient A) : on coupe la branche à 0 et surtout
+  // on NE mémorise PAS le total tronqué — sinon la valeur empoisonnée serait
+  // persistée et réutilisée par tous les autres parents.
   if (visited.has(recipeId)) return 0;
   visited.add(recipeId);
-  if (recipeCosts.has(recipeId)) return recipeCosts.get(recipeId)!;
   const recipe = recipes.find((r) => r.id === recipeId);
   if (!recipe) return 0;
   let total = 0;
+  let sawCycle = false;
   for (const line of recipe.recipe_lines) {
     if (line.ingredient_id) {
       const ing = ingMap.get(line.ingredient_id);
@@ -52,13 +57,14 @@ export function calcRecipeCost(
       if (line.unit === "l" && (ing.unit === "ml" || ing.unit === "l")) qty = line.quantity * 1000;
       total += unitCost(ing) * (qty / yieldFactor(ing));
     } else if (line.sub_recipe_id) {
+      if (visited.has(line.sub_recipe_id)) { sawCycle = true; continue; }
       const subCost = calcRecipeCost(line.sub_recipe_id, recipes, ingMap, recipeCosts, new Set(visited));
       const sub = recipes.find((r) => r.id === line.sub_recipe_id);
       if (!sub) continue;
       total += subCost * (toBase(line.quantity, line.unit) / yieldInBase(sub));
     }
   }
-  recipeCosts.set(recipeId, total);
+  if (!sawCycle) recipeCosts.set(recipeId, total);
   return total;
 }
 

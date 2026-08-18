@@ -4,6 +4,7 @@ import { useState, useMemo, Fragment } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Plus, Check, Loader2, ChevronDown, ChevronUp, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import clsx from "clsx";
+import { perDisplayUnit } from "@/lib/ingredient-helpers";
 
 type Recipe = {
   id: string;
@@ -58,6 +59,13 @@ function monthLabel(month: string) {
   return date.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
 }
 
+// Coût d'UNE unité vendue d'un produit revendu tel quel : CMUP ramené à
+// l'unité de vente (pièce, ou kg/L pour un produit au poids/volume) — même
+// base que le prix de vente.
+function resaleUnitCost(p: SimpleProduct): number {
+  return perDisplayUnit(Number(p.cmup ?? p.cost_per_base_unit ?? 0), p.unit ?? "unit");
+}
+
 function calcPeriodStats(period: Period, recipes: Recipe[], simpleProducts: SimpleProduct[]) {
   let ca = 0, coutMatiere = 0;
   for (const line of period.sales_lines) {
@@ -71,7 +79,7 @@ function calcPeriodStats(period: Period, recipes: Recipe[], simpleProducts: Simp
       const prod = simpleProducts.find((p) => p.id === line.ingredient_id);
       if (!prod) continue;
       ca += line.qty_sold * prod.selling_price;
-      coutMatiere += line.qty_sold * Number(prod.cmup ?? prod.cost_per_base_unit ?? 0);
+      coutMatiere += line.qty_sold * resaleUnitCost(prod);
     }
   }
   // Commission plateforme sur le CA des ventes en livraison.
@@ -116,7 +124,7 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
       .map((r) => ({ key: r.id, name: r.name, category: r.category || "Autre", price: Number(r.menu_price), cost: r.total_cost / (r.yield_portions || 1), resale: false }));
     const fromP = simpleProducts
       .filter((p) => p.selling_price && p.selling_price > 0)
-      .map((p) => ({ key: `__sp__${p.id}`, name: p.name, category: p.category || "Autre", price: Number(p.selling_price), cost: Number(p.cmup ?? p.cost_per_base_unit ?? 0), resale: true }));
+      .map((p) => ({ key: `__sp__${p.id}`, name: p.name, category: p.category || "Autre", price: Number(p.selling_price), cost: resaleUnitCost(p), resale: true }));
     return [...fromR, ...fromP];
   }, [recipes, simpleProducts]);
 
@@ -146,7 +154,7 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
         const prod = simpleProducts.find((p) => p.id === prodId);
         if (!prod) continue;
         ca += qty * prod.selling_price;
-        cout += qty * Number(prod.cmup ?? prod.cost_per_base_unit ?? 0);
+        cout += qty * resaleUnitCost(prod);
         couverts += qty;
       } else {
         const recipe = recipes.find((r) => r.id === dl.recipe_id);
@@ -157,8 +165,10 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
         couverts += qty;
       }
     }
-    return { ca, cout, margeB: ca - cout, foodCostPct: ca > 0 ? (cout / ca) * 100 : null, couverts };
-  }, [draftLines, recipes, simpleProducts]);
+    // Même règle que calcPeriodStats : commission plateforme déduite en livraison.
+    const commission = saleChannel === "delivery" ? ca * DELIVERY_COMMISSION_PCT : 0;
+    return { ca, cout, margeB: ca - commission - cout, foodCostPct: ca > 0 ? (cout / ca) * 100 : null, couverts };
+  }, [draftLines, recipes, simpleProducts, saleChannel]);
 
   // Build the draft quantities for a given month + channel, pre-filled from the
   // existing saved period if any (so each channel keeps its own numbers).
@@ -292,7 +302,7 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
     const s1 = calcPeriodStats(periods[1], recipes, simpleProducts);
     if (s1.margeB === 0) return null;
     return ((s0.margeB - s1.margeB) / Math.abs(s1.margeB)) * 100;
-  }, [periods, recipes]);
+  }, [periods, recipes, simpleProducts]);
 
   const pricedRecipes = recipes.filter((r) => r.menu_price && r.menu_price > 0);
 
@@ -768,18 +778,31 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
                                         {period.sales_lines
                                           .filter((l) => l.qty_sold > 0)
                                           .map((line) => {
-                                            const recipe = recipes.find((r) => r.id === line.recipe_id);
-                                            if (!recipe || !recipe.menu_price) return null;
-                                            const cpp = recipe.total_cost / (recipe.yield_portions || 1);
-                                            const lineCA = line.qty_sold * recipe.menu_price;
-                                            const lineCout = line.qty_sold * cpp;
+                                            // Plat (recette) OU produit revendu tel quel — les deux
+                                            // comptent dans le total, donc les deux doivent s'afficher.
+                                            let itemName = "", itemPrice = 0, itemCost = 0;
+                                            if (line.recipe_id) {
+                                              const recipe = recipes.find((r) => r.id === line.recipe_id);
+                                              if (!recipe || !recipe.menu_price) return null;
+                                              itemName = recipe.name;
+                                              itemPrice = Number(recipe.menu_price);
+                                              itemCost = recipe.total_cost / (recipe.yield_portions || 1);
+                                            } else if (line.ingredient_id) {
+                                              const prod = simpleProducts.find((p) => p.id === line.ingredient_id);
+                                              if (!prod) return null;
+                                              itemName = prod.name;
+                                              itemPrice = Number(prod.selling_price);
+                                              itemCost = resaleUnitCost(prod);
+                                            } else return null;
+                                            const lineCA = line.qty_sold * itemPrice;
+                                            const lineCout = line.qty_sold * itemCost;
                                             const lineMarge = lineCA - lineCout;
-                                            const lineFCP = (lineCout / lineCA) * 100;
+                                            const lineFCP = lineCA > 0 ? (lineCout / lineCA) * 100 : 0;
                                             return (
-                                              <tr key={line.recipe_id}>
-                                                <td className="py-1.5 text-on-surface-variant font-medium">{recipe.name}</td>
+                                              <tr key={line.recipe_id ?? line.ingredient_id}>
+                                                <td className="py-1.5 text-on-surface-variant font-medium">{itemName}</td>
                                                 <td className="text-right text-on-surface-variant/70 tabular-nums">{line.qty_sold}</td>
-                                                <td className="text-right text-on-surface-variant/70 tabular-nums">€{Number(recipe.menu_price).toFixed(2)}</td>
+                                                <td className="text-right text-on-surface-variant/70 tabular-nums">€{itemPrice.toFixed(2)}</td>
                                                 <td className="text-right text-on-surface tabular-nums">€{lineCA.toFixed(2)}</td>
                                                 <td className="text-right text-red tabular-nums">€{lineCout.toFixed(2)}</td>
                                                 <td className="text-right font-medium text-primary tabular-nums">€{lineMarge.toFixed(2)}</td>

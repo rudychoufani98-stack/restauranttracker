@@ -109,8 +109,15 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
 
   const yPct = parseFloat(yieldPct) || 100;
 
+  // Ancien produit en g/ml qu'on passe en kg/L : les tailles saisies étaient
+  // en g/ml → ÷1000 pour rester honnête (1000 g → 1 kg). Partagé entre
+  // l'aperçu live et la sauvegarde pour que les deux affichent le même coût.
+  const legacyRescale =
+    (ingredient.unit === "g" && unit === "kg") || (ingredient.unit === "ml" && unit === "l") ? 1000 : 1;
+  const sizeOf = (a: Article) => (parseFloat(a.unit_size) || 0) / legacyRescale;
+
   // €/display-unit of an article (for the live "revient à" hint)
-  const articleGross = (a: Article) => calcCostPerBase(parseFloat(a.pack_price) || 0, parseFloat(a.pack_units) || 1, parseFloat(a.unit_size) || 0, unit);
+  const articleGross = (a: Article) => calcCostPerBase(parseFloat(a.pack_price) || 0, parseFloat(a.pack_units) || 1, sizeOf(a), unit);
 
   function toggleAllergen(a: string) {
     setAllergens((p) => p.includes(a) ? p.filter((x) => x !== a) : [...p, a]);
@@ -135,11 +142,6 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
     const secSizeNum = parseFloat(secSize) || 0;
     if (secLabel.trim() && secSizeNum <= 0) return setError("Conditionnement secondaire : indique sa taille (ex. 0,75).");
     if (!secLabel.trim() && secSizeNum > 0) return setError("Conditionnement secondaire : indique son nom (ex. bouteille).");
-    // Ancien produit en g/ml qu'on passe en kg/L : les tailles saisies étaient
-    // en g/ml → on les divise par 1000 pour rester honnête (1000 g → 1 kg).
-    const legacyRescale =
-      (ingredient.unit === "g" && unit === "kg") || (ingredient.unit === "ml" && unit === "l") ? 1000 : 1;
-    const sizeOf = (a: Article) => (parseFloat(a.unit_size) || 0) / legacyRescale;
     const validArticles = articles.filter((a) => parseFloat(a.pack_price) >= 0 && sizeOf(a) > 0);
     setSaving(true);
 
@@ -203,7 +205,7 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
     if (src.supplier_id) {
       await supabase.from("ingredient_suppliers").insert({
         ingredient_id: targetId, supplier_id: src.supplier_id, supplier_reference: src.supplier_reference,
-        pack_units: src.pack_units ?? 1, unit_size: src.unit_size ?? 1, unit: src.unit,
+        pack_units: src.pack_units ?? 1, unit_size: src.unit_size ?? src.pack_quantity ?? 1, unit: src.unit,
         pack_price: src.pack_price ?? 0, vat_rate: src.vat_rate ?? 0,
       });
     }
@@ -375,7 +377,7 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
 
                   {cpb > 0 && (
                     <p className="text-xs text-gray-500">
-                      1 {a.pack_type || "colis"} = <b>{packTotal(parseFloat(a.pack_units) || 1, parseFloat(a.unit_size) || 0)} {unitShort(unit)}</b> · TTC €{ttc.toFixed(2)} ·
+                      1 {a.pack_type || "colis"} = <b>{fmtNum(packTotal(parseFloat(a.pack_units) || 1, sizeOf(a)))} {unitShort(unit)}</b> · TTC €{ttc.toFixed(2)} ·
                       <span className="text-emerald-600 font-medium"> €{cpb.toFixed(2)}/{uLabel}</span>
                     </p>
                   )}

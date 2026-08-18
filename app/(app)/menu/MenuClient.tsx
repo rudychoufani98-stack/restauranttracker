@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Pencil, Check, X, Gauge, AlertTriangle, TrendingDown } from "lucide-react";
 import clsx from "clsx";
+import { perDisplayUnit } from "@/lib/ingredient-helpers";
 
 type Recipe = {
   id: string;
@@ -30,7 +31,7 @@ type MenuItem = {
   name: string;
   category: string;
   type: "recipe" | "product";
-  cost: number; // cost per portion (recipe) or pack price (product)
+  cost: number; // coût d'une portion (recette) ou d'une unité vendue (produit, au CMUP)
   price: number | null; // menu_price / selling_price
 };
 
@@ -77,7 +78,8 @@ export default function MenuClient({ restaurantId: _restaurantId, targetFoodCost
       name: p.name,
       category: p.category || "Autre",
       type: "product",
-      cost: Number(p.cmup ?? p.cost_per_base_unit ?? 0),
+      // CMUP ramené à l'unité de vente (pièce, ou kg/L pour un produit au poids)
+      cost: perDisplayUnit(Number(p.cmup ?? p.cost_per_base_unit ?? 0), p.unit ?? "unit"),
       price: p.selling_price ?? null,
     }));
     return [...fromRecipes, ...fromProducts];
@@ -107,7 +109,8 @@ export default function MenuClient({ restaurantId: _restaurantId, targetFoodCost
     const offTarget = priced.filter((it) => (foodCostPct(it) ?? 0) > targetFoodCostPct).length;
     const worst = priced.reduce((w, it) => ((foodCostPct(it) ?? 0) > (foodCostPct(w) ?? 0) ? it : w), priced[0]);
     return { avgFoodCost, offTarget, worst, pricedCount: priced.length };
-  }, [items]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, targetFoodCostPct]);
 
   // Filter + group by category
   const grouped = useMemo(() => {

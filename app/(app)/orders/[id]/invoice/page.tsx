@@ -25,14 +25,16 @@ export default async function InvoicePage({ params }: { params: { id: string } }
 
   if (!po) return notFound();
 
-  // Load the most recent delivery note for this PO (to get received quantities)
-  const { data: deliveryNote } = await supabase
+  // TOUTES les réceptions VALIDÉES de cette commande (une réception partielle
+  // suivie d'une seconde : le stock reflète la somme, la facture doit partir
+  // de la même base). Un brouillon jamais validé n'a pas touché le stock.
+  const { data: deliveryNotes } = await supabase
     .from("delivery_notes")
     .select("*, delivery_note_lines(*, ingredients(id, name, unit, pack_price, cost_per_base_unit, pack_quantity))")
     .eq("po_id", params.id)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .single();
+    .eq("validated", true)
+    .order("created_at", { ascending: false });
+  const deliveryNote = (deliveryNotes ?? [])[0] ?? null;
 
   // Most recent invoice already applied for this PO (to reconcile stock by delta
   // when the invoice is edited again later).
@@ -66,7 +68,8 @@ export default async function InvoicePage({ params }: { params: { id: string } }
   return (
     <InvoiceClient
       po={po}
-      deliveryNote={deliveryNote ?? null}
+      deliveryNote={deliveryNote}
+      deliveryNotes={deliveryNotes ?? []}
       restaurantId={restaurant.id}
       orderCond={orderCond}
       priorInvoice={priorInvoice ?? null}

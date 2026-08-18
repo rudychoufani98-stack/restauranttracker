@@ -104,13 +104,13 @@ async function exportInventaire(supabase: any, restaurant: any, stamp: string, d
 async function exportAchats(supabase: any, restaurant: any, stamp: string, dateLabel: string) {
   const { data: ingredients } = await supabase
     .from("ingredients")
-    .select("name, category, unit, pack_price, vat_rate, pack_units, unit_size, pack_quantity, cost_per_base_unit, yield_pct, suppliers(name)")
+    .select("name, category, unit, pack_price, vat_rate, pack_units, unit_size, pack_quantity, cmup, cost_per_base_unit, yield_pct, suppliers(name)")
     .eq("restaurant_id", restaurant.id)
     .order("name");
 
   const wb = newWorkbook();
   const ws = wb.addWorksheet("Achats");
-  const headers = ["Fournisseur", "Catégorie", "Ingrédient", "Conditionnement", "Prix HT", "TVA", "Prix TTC", "Coût / kg·L·pce", "Rendement"];
+  const headers = ["Fournisseur", "Catégorie", "Ingrédient", "Conditionnement", "Prix HT", "TVA", "Prix TTC", "Coût net / kg·L·pce (rendement déduit)", "Rendement"];
   autoWidth(ws, [22, 18, 28, 20, 12, 8, 12, 16, 11]);
 
   let r = addTitle(ws, `Liste d'achats — ${restaurant.name}`, `Mercuriale au ${dateLabel} · prix HT / TTC par conditionnement`, headers.length);
@@ -136,7 +136,7 @@ async function exportAchats(supabase: any, restaurant: any, stamp: string, dateL
       const units = Number(ing.pack_units ?? 1);
       const size = Number(ing.unit_size ?? ing.pack_quantity ?? 0);
       const cond = units > 1 ? `${units} × ${size} ${unitShort(ing.unit)}` : `${size} ${unitShort(ing.unit)}`;
-      const gross = Number(ing.cost_per_base_unit ?? 0);
+      const gross = Number(ing.cmup ?? ing.cost_per_base_unit ?? 0);
       const yld = Number(ing.yield_pct ?? 100);
       const netBase = yld > 0 ? gross / (yld / 100) : gross;
       // Display per kg / L / piece rather than per g / ml.
@@ -148,7 +148,7 @@ async function exportAchats(supabase: any, restaurant: any, stamp: string, dateL
         ht, vat, ttc, net, yld,
       ]);
       row.getCell(5).numFmt = FMT.eur;
-      row.getCell(6).numFmt = FMT.pct;
+      row.getCell(6).numFmt = FMT.pct1; // 5,5 % ne doit pas s'arrondir en 6 %
       row.getCell(7).numFmt = FMT.eur;
       row.getCell(8).numFmt = FMT.eur;
       row.getCell(9).numFmt = FMT.pct;
@@ -228,7 +228,8 @@ async function exportCommandes(supabase: any, restaurant: any, stamp: string, da
       row.getCell(7).numFmt = FMT.eur;
       row.getCell(8).numFmt = FMT.eur;
     }
-    grandTotal += Number(o.expected_total ?? 0);
+    // Une commande annulée reste listée mais ne compte pas dans le total
+    if (o.status !== "Cancelled") grandTotal += Number(o.expected_total ?? 0);
   }
   const total = ws.addRow(["", "TOTAL COMMANDES", "", "", "", "", "", grandTotal]);
   total.eachCell((c: any) => { c.font = { bold: true, size: 11 }; });
@@ -281,7 +282,7 @@ async function exportVentes(supabase: any, restaurant: any, stamp: string, dateL
       .eq("restaurant_id", restaurant.id)
       .order("month", { ascending: false }),
     supabase.from("recipes").select("id, name, total_cost, menu_price, yield_portions").eq("restaurant_id", restaurant.id),
-    supabase.from("ingredients").select("id, name, selling_price, pack_price, cmup, cost_per_base_unit").eq("restaurant_id", restaurant.id).not("selling_price", "is", null),
+    supabase.from("ingredients").select("id, name, selling_price, pack_price, cmup, cost_per_base_unit, unit").eq("restaurant_id", restaurant.id).not("selling_price", "is", null),
   ]);
   const recMap = new Map((recipes ?? []).map((x: any) => [x.id, x]));
   const prodMap = new Map((products ?? []).map((x: any) => [x.id, x]));
@@ -306,7 +307,8 @@ async function exportVentes(supabase: any, restaurant: any, stamp: string, dateL
         cost = Number(rec.total_cost ?? 0) / (Number(rec.yield_portions) || 1);
       } else if (l.ingredient_id && prodMap.has(l.ingredient_id)) {
         const prod: any = prodMap.get(l.ingredient_id);
-        name = prod.name; price = Number(prod.selling_price ?? 0); cost = Number(prod.cmup ?? prod.cost_per_base_unit ?? 0);
+        // CMUP ramené à l'unité de vente (pièce, ou kg/L pour un produit au poids)
+        name = prod.name; price = Number(prod.selling_price ?? 0); cost = perDisplayCmup(Number(prod.cmup ?? prod.cost_per_base_unit ?? 0), prod.unit ?? "unit");
       } else continue;
       const qty = Number(l.qty_sold ?? 0);
       const ca = qty * price, cm = qty * cost;

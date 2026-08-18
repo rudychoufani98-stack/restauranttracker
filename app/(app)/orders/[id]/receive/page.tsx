@@ -26,13 +26,13 @@ export default async function ReceivePage({ params }: { params: { id: string } }
   // to label purchase quantities in the order conditionnement (colis, caisse…).
   const { data: supplierArticles } = await supabase
     .from("ingredient_suppliers")
-    .select("ingredient_id, pack_type, pack_units, unit_size, pack_label, unit")
+    .select("ingredient_id, pack_type, pack_units, unit_size, pack_label, unit, pack_price")
     .eq("supplier_id", po.supplier_id);
   const linkedIds = Array.from(new Set((supplierArticles ?? []).map((a) => a.ingredient_id)));
 
   // ingredient_id -> conditionnement de CE fournisseur : libellé + contenu d'un
   // colis en unités de base (g/ml/pièce) pour convertir « nb de colis » en stock.
-  const orderCond: Record<string, { type: string; detail: string; basePerPack: number }> = {};
+  const orderCond: Record<string, { type: string; detail: string; basePerPack: number; packPrice: number | null }> = {};
   for (const a of supplierArticles ?? []) {
     const units = Number(a.pack_units ?? 1) || 1;
     const size = Number(a.unit_size ?? 0) || 0;
@@ -42,6 +42,8 @@ export default async function ReceivePage({ params }: { params: { id: string } }
       type: a.pack_type || "colis",
       detail: a.pack_label || (size > 0 ? (units > 1 ? `${units} × ${size} ${unitShort(u)}` : `${size} ${unitShort(u)}`) : ""),
       basePerPack: units * size * factor,
+      // Prix du colis chez CE fournisseur — même colisage que basePerPack.
+      packPrice: a.pack_price != null ? Number(a.pack_price) : null,
     };
   }
 

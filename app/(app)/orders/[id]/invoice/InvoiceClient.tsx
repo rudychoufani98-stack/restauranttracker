@@ -28,7 +28,8 @@ type InvoiceLine = {
 type OrderCond = Record<string, { type: string; detail: string; basePerPack?: number }>;
 interface Props {
   po: PO;
-  deliveryNote: DeliveryNote | null;
+  deliveryNote: DeliveryNote | null;          // la plus récente (n° BL, rattachement)
+  deliveryNotes?: DeliveryNote[];             // TOUTES les réceptions validées (quantités)
   restaurantId: string;
   orderCond?: OrderCond;
   priorInvoice?: PriorInvoice | null;
@@ -40,7 +41,9 @@ function baseFactor(unit: string, packQty: number) {
   return unit === "kg" || unit === "l" ? p * 1000 : p;
 }
 
-export default function InvoiceClient({ po, deliveryNote, restaurantId, orderCond = {}, priorInvoice = null }: Props) {
+export default function InvoiceClient({ po, deliveryNote, deliveryNotes, restaurantId, orderCond = {}, priorInvoice = null }: Props) {
+  // Lignes reçues agrégées sur TOUTES les réceptions validées (cumul par produit).
+  const allDnLines: DNLine[] = (deliveryNotes ?? (deliveryNote ? [deliveryNote] : [])).flatMap((dn) => dn.delivery_note_lines ?? []);
   // Fallback : type déduit de l'unité (bidon / kg / colis), jamais l'unité brute.
   const condType = (ingredientId: string, unit: string, packQty?: number | null) =>
     orderCond[ingredientId]?.type || defaultPackType(unit, packQty);
@@ -51,7 +54,7 @@ export default function InvoiceClient({ po, deliveryNote, restaurantId, orderCon
   // Ingredient reference info (name, unit, pack size, cost) from the order + delivery note.
   const infoMap = new Map<string, Ingredient>();
   for (const l of po.purchase_order_lines) if (l.ingredient_id && l.ingredients) infoMap.set(l.ingredient_id, l.ingredients);
-  for (const d of deliveryNote?.delivery_note_lines ?? []) if (d.ingredient_id && d.ingredients) infoMap.set(d.ingredient_id, d.ingredients);
+  for (const d of allDnLines) if (d.ingredient_id && d.ingredients) infoMap.set(d.ingredient_id, d.ingredients);
 
   // Starting quantities: prefer the last invoice (re-edit), then the delivery note
   // (what was received), then the order.
@@ -61,10 +64,14 @@ export default function InvoiceClient({ po, deliveryNote, restaurantId, orderCon
       source = priorInvoice.invoice_lines
         .filter((l) => l.ingredient_id)
         .map((l) => ({ ingredient_id: l.ingredient_id!, qty: Number(l.quantity), price: l.unit_price ?? undefined }));
-    } else if ((deliveryNote?.delivery_note_lines ?? []).length > 0) {
-      source = deliveryNote!.delivery_note_lines
-        .filter((d) => d.ingredient_id && Number(d.quantity_received) > 0)
-        .map((d) => ({ ingredient_id: d.ingredient_id!, qty: Number(d.quantity_received) }));
+    } else if (allDnLines.length > 0) {
+      // Cumul par produit sur toutes les réceptions validées
+      const byIng = new Map<string, number>();
+      for (const d of allDnLines) {
+        if (d.ingredient_id && Number(d.quantity_received) > 0)
+          byIng.set(d.ingredient_id, (byIng.get(d.ingredient_id) ?? 0) + Number(d.quantity_received));
+      }
+      source = Array.from(byIng.entries()).map(([ingredient_id, qty]) => ({ ingredient_id, qty }));
     } else {
       source = po.purchase_order_lines
         .filter((l) => l.ingredient_id)
@@ -154,17 +161,18 @@ export default function InvoiceClient({ po, deliveryNote, restaurantId, orderCon
         return baseFactor(info?.unit ?? "unit", Number(info?.pack_quantity ?? 1) || 1);
       };
       const baseOf = (id: string, qtyColis: number) => qtyColis * packBase(id);
+      // Cumul (jamais d'écrasement) : deux lignes du même produit s'additionnent.
       if (priorInvoice) {
-        for (const l of priorInvoice.invoice_lines) if (l.ingredient_id) prevBase.set(l.ingredient_id, baseOf(l.ingredient_id, Number(l.quantity)));
+        for (const l of priorInvoice.invoice_lines) if (l.ingredient_id) prevBase.set(l.ingredient_id, (prevBase.get(l.ingredient_id) ?? 0) + baseOf(l.ingredient_id, Number(l.quantity)));
       } else {
-        for (const d of deliveryNote?.delivery_note_lines ?? []) {
-          if (d.ingredient_id && Number(d.quantity_received) > 0) prevBase.set(d.ingredient_id, baseOf(d.ingredient_id, Number(d.quantity_received)));
+        for (const d of allDnLines) {
+          if (d.ingredient_id && Number(d.quantity_received) > 0) prevBase.set(d.ingredient_id, (prevBase.get(d.ingredient_id) ?? 0) + baseOf(d.ingredient_id, Number(d.quantity_received)));
         }
       }
 
       // 3. New target base quantity per ingredient (from the editable lines).
       const newBase = new Map<string, number>();
-      for (const l of lines) newBase.set(l.ingredient_id, baseOf(l.ingredient_id, parseFloat(l.qty) || 0));
+      for (const l of lines) newBase.set(l.ingredient_id, (newBase.get(l.ingredient_id) ?? 0) + baseOf(l.ingredient_id, parseFloat(l.qty) || 0));
 
       const allIds = Array.from(new Set([...Array.from(prevBase.keys()), ...Array.from(newBase.keys())]));
 
@@ -185,7 +193,10 @@ export default function InvoiceClient({ po, deliveryNote, restaurantId, orderCon
         const target = newBase.get(id) ?? 0;
         const delta = target - prev;
 
-        const invoicePrice = line ? (parseFloat(line.invoice_price) || line.expected_price) : 0;
+        // Un prix facturé à 0 € (offert) est un vrai prix — seul un champ vide
+        // retombe sur le prix prévu.
+        const typedPrice = line ? parseFloat(line.invoice_price) : NaN;
+        const invoicePrice = line ? (Number.isFinite(typedPrice) ? typedPrice : line.expected_price) : 0;
         const factor = packBase(id);
         const newCostPerBase = line && factor > 0 ? invoicePrice / factor : Number(infoMap.get(id)?.cost_per_base_unit ?? 0);
 
@@ -195,11 +206,26 @@ export default function InvoiceClient({ po, deliveryNote, restaurantId, orderCon
         let newStock = curStock + delta;
         if (newStock < 0) newStock = 0;
 
+        // CMUP : la part déjà appliquée (réception) est REVALORISÉE au prix
+        // facturé — sinon une simple correction de prix (delta = 0, le cas
+        // normal) n'atteindrait jamais le coût moyen.
         let newCmup = curCmup;
-        if (delta > 0) newCmup = newStock > 0 ? (curStock * curCmup + delta * newCostPerBase) / newStock : newCostPerBase;
+        if (line && newStock > 0) {
+          const rest = Math.max(0, curStock - prev); // stock étranger à cette commande
+          newCmup = (rest * curCmup + target * newCostPerBase) / (rest + target || 1);
+        } else if (delta > 0) {
+          newCmup = newStock > 0 ? (curStock * curCmup + delta * newCostPerBase) / newStock : newCostPerBase;
+        }
 
         const patch: any = { stock_qty: newStock, cmup: newCmup, updated_at: new Date().toISOString() };
-        if (line) { patch.pack_price = invoicePrice; patch.cost_per_base_unit = newCostPerBase; }
+        if (line) {
+          patch.cost_per_base_unit = newCostPerBase;
+          // pack_price doit rester cohérent avec le colisage de la FICHE produit :
+          // si la facture est dans le conditionnement du fournisseur, on convertit.
+          const info = infoMap.get(id);
+          const productFactor = baseFactor(info?.unit ?? "unit", Number(info?.pack_quantity ?? 1) || 1);
+          patch.pack_price = factor === productFactor ? invoicePrice : newCostPerBase * productFactor;
+        }
         patches.push({
           id, patch,
           prev: { stock_qty: cur?.stock_qty ?? null, cmup: cur?.cmup ?? null, pack_price: cur?.pack_price ?? null, cost_per_base_unit: cur?.cost_per_base_unit ?? null },
@@ -223,7 +249,8 @@ export default function InvoiceClient({ po, deliveryNote, restaurantId, orderCon
           movements.push({
             restaurant_id: restaurantId, ingredient_id: id,
             movement_type: delta > 0 ? "in" : "adjustment",
-            qty: Math.abs(delta), unit_cost: newCostPerBase,
+            // Retrait valorisé au coût moyen du stock, ajout au prix facturé
+            qty: Math.abs(delta), unit_cost: delta > 0 ? newCostPerBase : curCmup,
             reference_type: "invoice", reference_id: invoice.id,
             notes: isEdit ? "Ajustement facture (correction)" : "Facture",
           });

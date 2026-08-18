@@ -32,7 +32,7 @@ async function buildSnapshot(supabase: ReturnType<typeof createClient>, restaura
     lines.push(`${r.name} | ${cpp.toFixed(2)}€ | ${price > 0 ? price.toFixed(2) + "€" : "—"} | ${fc}`);
   }
 
-  lines.push("## INGRÉDIENTS (nom | stock | coût moyen | seuil alerte)");
+  lines.push("## INGRÉDIENTS (nom | stock | coût moyen ; « ⚠ SOUS LE SEUIL » = à recommander)");
   for (const i of ings.data ?? []) {
     const stock = Number(i.stock_qty ?? 0);
     const cmup = Number(i.cmup ?? i.cost_per_base_unit ?? 0);

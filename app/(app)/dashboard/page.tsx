@@ -21,16 +21,18 @@ export default async function DashboardPage() {
       .select("id, name, category, total_cost, menu_price, yield_portions")
       .eq("restaurant_id", rid).eq("is_prep", false),
     supabase.from("ingredients")
-      .select("id, name, category, stock_qty, cmup, cost_per_base_unit, pack_price, selling_price")
+      .select("id, name, category, stock_qty, cmup, cost_per_base_unit, pack_price, selling_price, unit")
       .eq("restaurant_id", rid),
     supabase.from("sales_periods")
       .select("id, month, sales_lines(recipe_id, ingredient_id, qty_sold)")
       .eq("restaurant_id", rid)
       .order("month", { ascending: false }),
     supabase.from("stock_movements")
-      .select("movement_type, qty, unit_cost, created_at, ingredient_id")
+      .select("movement_type, reference_type, qty, unit_cost, created_at, ingredient_id")
       .eq("restaurant_id", rid)
-      .in("movement_type", ["in", "loss"])
+      // "adjustment" : corrections de facture et annulations de commande, qui
+      // RÉDUISENT les achats du mois (les ajustements d'inventaire sont exclus côté client).
+      .in("movement_type", ["in", "loss", "adjustment"])
       .order("created_at", { ascending: false })
       .limit(5000),
   ]);

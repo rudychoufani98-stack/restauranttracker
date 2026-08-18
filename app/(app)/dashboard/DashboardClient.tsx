@@ -3,12 +3,13 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { TrendingUp, ShoppingCart, Trash2, Percent, Warehouse, Receipt, Utensils, ArrowRight } from "lucide-react";
+import { perDisplayUnit } from "@/lib/ingredient-helpers";
 
 type Recipe = { id: string; name: string; category: string; total_cost: number; menu_price: number | null; yield_portions: number };
-type Ingredient = { id: string; name: string; category: string; stock_qty: number | null; cmup: number | null; cost_per_base_unit: number | null; pack_price: number | null; selling_price: number | null };
+type Ingredient = { id: string; name: string; category: string; stock_qty: number | null; cmup: number | null; cost_per_base_unit: number | null; pack_price: number | null; selling_price: number | null; unit?: string };
 type SalesLine = { recipe_id: string | null; ingredient_id: string | null; qty_sold: number };
 type Period = { id: string; month: string; sales_lines: SalesLine[] };
-type Movement = { movement_type: string; qty: number; unit_cost: number | null; created_at: string; ingredient_id: string | null };
+type Movement = { movement_type: string; reference_type?: string | null; qty: number; unit_cost: number | null; created_at: string; ingredient_id: string | null };
 
 interface Props {
   restaurantName: string;
@@ -45,13 +46,14 @@ export default function DashboardClient({ restaurantName, targetFoodCost, recipe
         if (!qty) continue;
         if (l.recipe_id) {
           const r = recipeMap.get(l.recipe_id);
-          if (!r) continue;
+          // Même règle que l'écran Ventes & marges : un plat sans prix est ignoré
+          if (!r || !Number(r.menu_price)) continue;
           out.push({ month: mk, category: r.category || "Autre", name: r.name, revenue: qty * Number(r.menu_price || 0), cost: qty * (Number(r.total_cost || 0) / (r.yield_portions || 1)), qty });
         } else if (l.ingredient_id) {
           const i = ingMap.get(l.ingredient_id);
-          if (!i) continue;
-          // Coût d'une pièce vendue = CMUP (jamais le prix du colis entier)
-          out.push({ month: mk, category: i.category || "Autre", name: i.name, revenue: qty * Number(i.selling_price || 0), cost: qty * Number(i.cmup ?? i.cost_per_base_unit ?? 0), qty });
+          if (!i || !Number(i.selling_price)) continue;
+          // CMUP ramené à l'unité de vente (pièce, ou kg/L pour un produit au poids)
+          out.push({ month: mk, category: i.category || "Autre", name: i.name, revenue: qty * Number(i.selling_price || 0), cost: qty * perDisplayUnit(Number(i.cmup ?? i.cost_per_base_unit ?? 0), i.unit ?? "unit"), qty });
         }
       }
     }
@@ -61,8 +63,10 @@ export default function DashboardClient({ restaurantName, targetFoodCost, recipe
   // Flatten purchases + losses
   const moveEvents = useMemo(() => movements.map((m) => {
     const i = m.ingredient_id ? ingMap.get(m.ingredient_id) : null;
-    return { month: monthKey(m.created_at), day: (m.created_at ?? "").slice(0, 10), category: i?.category || "Autre", type: m.movement_type, value: Number(m.qty) * Number(m.unit_cost || 0), isFourniture: m.ingredient_id ? fournitureSet.has(m.ingredient_id) : false };
-  }), [movements, ingMap, fournitureSet]);
+    // Correction de facture / annulation de commande = achat en MOINS.
+    const isPurchaseCorrection = m.movement_type === "adjustment" && (m.reference_type === "invoice" || m.reference_type === "adjustment");
+    return { month: monthKey(m.created_at), day: (m.created_at ?? "").slice(0, 10), category: i?.category || "Autre", type: isPurchaseCorrection ? "in" : m.movement_type, sign: isPurchaseCorrection ? -1 : 1, value: Number(m.qty) * Number(m.unit_cost || 0), isFourniture: m.ingredient_id ? fournitureSet.has(m.ingredient_id) : false };
+  }).filter((e) => e.type !== "adjustment"), [movements, ingMap, fournitureSet]);
 
   // Month + category options
   const months = useMemo(() => {
@@ -104,8 +108,8 @@ export default function DashboardClient({ restaurantName, targetFoodCost, recipe
   const platsVendus = sales.reduce((s, e) => s + e.qty, 0);
 
   // Achats séparés : nourriture (food) vs fournitures (couverts, emballages…).
-  const achatsFood = moveEvents.filter((e) => e.type === "in" && !e.isFourniture && matchMove(e) && matchC(e.category)).reduce((s, e) => s + e.value, 0);
-  const achatsFournitures = moveEvents.filter((e) => e.type === "in" && e.isFourniture && matchMove(e) && matchC(e.category)).reduce((s, e) => s + e.value, 0);
+  const achatsFood = moveEvents.filter((e) => e.type === "in" && !e.isFourniture && matchMove(e) && matchC(e.category)).reduce((s, e) => s + e.sign * e.value, 0);
+  const achatsFournitures = moveEvents.filter((e) => e.type === "in" && e.isFourniture && matchMove(e) && matchC(e.category)).reduce((s, e) => s + e.sign * e.value, 0);
   const achatsTotal = achatsFood + achatsFournitures;
   const pertes = moveEvents.filter((e) => e.type === "loss" && matchMove(e) && matchC(e.category)).reduce((s, e) => s + e.value, 0);
 

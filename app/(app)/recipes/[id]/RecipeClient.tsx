@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { ArrowLeft, Check, Plus, Trash2, Loader2, Scale, ListChecks, ChefHat, Soup, Link2 } from "lucide-react";
 import clsx from "clsx";
 
-type Ingredient = { id: string; name: string; cost_per_base_unit: number; unit: string; yield_pct?: number | null };
+type Ingredient = { id: string; name: string; cost_per_base_unit: number; cmup?: number | null; unit: string; yield_pct?: number | null };
 type RecipeRef = { id: string; name: string; total_cost: number; yield_portions: number; yield_unit: string; is_prep: boolean };
 type RecipeLine = { ingredient_id: string | null; sub_recipe_id: string | null; quantity: number; unit: string };
 type Recipe = {
@@ -38,6 +38,15 @@ function fmtScaled(qty: number, unit: string): string {
   return `${fmtNum(qty, 2)} ${unit}`;
 }
 
+// Unités de saisie cohérentes avec la dimension de l'ingrédient (un produit
+// au kg se dose en g/kg, jamais en ml — sinon le coût serait faux ×1000).
+function unitsForIngredient(ingUnit?: string): string[] {
+  if (ingUnit === "g" || ingUnit === "kg") return ["g", "kg"];
+  if (ingUnit === "ml" || ingUnit === "l") return ["ml", "l"];
+  if (ingUnit === "unit" || ingUnit === "piece") return ["unit"];
+  return ["g", "kg", "ml", "l", "unit"];
+}
+
 function unitsForSubRecipe(yieldUnit: string): string[] {
   switch (yieldUnit) {
     case "kg": case "g": return ["g", "kg"];
@@ -58,7 +67,8 @@ function calcLineCost(line: DraftLine, ingredients: Ingredient[], allRecipes: Re
     if (line.unit === "l" && (ing.unit === "ml" || ing.unit === "l")) baseQty = qty * 1000;
     const y = Number(ing.yield_pct ?? 100);
     const yf = y > 0 ? y / 100 : 1;
-    return ing.cost_per_base_unit * (baseQty / yf);
+    // CMUP (coût moyen du stock) en priorité — même base que le serveur.
+    return Number(ing.cmup ?? ing.cost_per_base_unit ?? 0) * (baseQty / yf);
   }
   const rec = allRecipes.find((r) => r.id === line.sub_recipe_id);
   if (!rec) return 0;
@@ -317,7 +327,7 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
           {lines.map((line, idx) => {
             const subUnits = line.type === "sub_recipe"
               ? unitsForSubRecipe(allRecipes.find((r) => r.id === line.sub_recipe_id)?.yield_unit || "portion")
-              : ["g", "kg", "ml", "l", "unit"];
+              : unitsForIngredient(ingredients.find((i) => i.id === line.ingredient_id)?.unit);
             return (
               <div key={idx} className="flex gap-2 items-start">
                 <select value={lineValue(line)} onChange={(e) => selectItem(idx, e.target.value)} className="flex-1 px-2 py-2 text-sm border border-gray-200 rounded-lg bg-white outline-none focus:border-emerald-500">

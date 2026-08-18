@@ -31,7 +31,7 @@ export default async function AdminPage({ searchParams }: { searchParams?: { ok?
         supabase.from("recipes").select("id", { count: "exact", head: true }).eq("restaurant_id", r.id),
         supabase.from("purchase_orders").select("created_at").eq("restaurant_id", r.id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
         supabase.from("ingredients").select("stock_qty, cmup, cost_per_base_unit").eq("restaurant_id", r.id),
-        supabase.from("purchase_orders").select("expected_total").eq("restaurant_id", r.id).gte("created_at", monthStart.toISOString()),
+        supabase.from("purchase_orders").select("expected_total").eq("restaurant_id", r.id).neq("status", "Cancelled").gte("created_at", monthStart.toISOString()),
       ]);
       const stockValue = (stockRows.data ?? []).reduce((s, i: any) => s + Number(i.stock_qty ?? 0) * Number(i.cmup ?? i.cost_per_base_unit ?? 0), 0);
       const monthSpend = (monthOrders.data ?? []).reduce((s, o: any) => s + Number(o.expected_total ?? 0), 0);

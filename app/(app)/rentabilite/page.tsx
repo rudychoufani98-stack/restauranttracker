@@ -25,7 +25,7 @@ export default async function RentabilitePage() {
   // Load existing sales periods for this restaurant
   const { data: periods } = await supabase
     .from("sales_periods")
-    .select("*, sales_lines(recipe_id, qty_sold)")
+    .select("*, sales_lines(recipe_id, ingredient_id, qty_sold)")
     .eq("restaurant_id", restaurant!.id)
     .order("month", { ascending: false });
 

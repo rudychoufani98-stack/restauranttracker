@@ -34,7 +34,7 @@ type Supplier = { id: string; name: string };
 type Ingredient = {
   id: string; name: string; category: string; supplier_id: string | null;
   pack_description: string | null; pack_price: number; pack_quantity: number;
-  unit: string; cost_per_base_unit: number; vat_rate: number;
+  unit: string; cost_per_base_unit: number; cmup?: number | null; vat_rate: number;
   selling_price: number | null;
   pack_units?: number | null; unit_size?: number | null; yield_pct?: number | null;
   reorder_threshold?: number | null;
@@ -77,6 +77,10 @@ type SupplierLine = {
   unit: string;
   pack_price: string;
   vat_rate: string;
+  // Préservés lors d'une sauvegarde depuis ce modal (édités sur la fiche produit)
+  pack_type?: string | null;
+  pack_label?: string | null;
+  is_preferred?: boolean | null;
 };
 
 const EMPTY_FORM = {
@@ -103,13 +107,9 @@ function calcCostPerBase(packPrice: number, packUnits: number, unitSize: number,
   return packPrice / totalBase;
 }
 
-function baseUnitLabel(unit: string) {
-  return unit === "kg" ? "g" : unit === "l" ? "ml" : unit;
-}
-
 // Friendly display unit: weights → kg, volumes → L, else the unit itself.
 function displayUnitLabel(unit: string) {
-  return unit === "g" || unit === "kg" ? "kg" : unit === "ml" || unit === "l" ? "L" : unit === "unit" ? "pce" : unit;
+  return unit === "g" || unit === "kg" ? "kg" : unit === "ml" || unit === "l" ? "L" : unit === "unit" || unit === "piece" ? "pce" : unit;
 }
 
 // Convert a per-base-unit cost (€/g or €/ml) to a per-display-unit cost (€/kg or €/L).
@@ -214,6 +214,9 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
       unit: s.unit ?? ing.unit,
       pack_price: String(s.pack_price ?? ""),
       vat_rate: String(s.vat_rate ?? 0),
+      pack_type: (s as any).pack_type ?? null,
+      pack_label: (s as any).pack_label ?? null,
+      is_preferred: (s as any).is_preferred ?? null,
     })));
     setSelectedTagIds((ing.ingredient_tags ?? []).map((it) => it.tag_id));
     setSelectedAllergens(ing.allergens ?? []);
@@ -267,15 +270,32 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
     if (isNaN(yld) || yld <= 0 || yld > 100) return setError("Le rendement doit être entre 1 et 100 %.");
     setSaving(true);
 
-    const qty = packTotal(pUnits, uSize); // total du colis, dans l'unité d'usage
-    const cost_per_base_unit = calcCostPerBase(price, pUnits, uSize, form.unit);
+    // Ancien produit en g/ml passé en kg/L : tailles saisies en g/ml → ÷1000
+    // (même garde que la fiche produit).
+    const oldIng = editingId ? ingredients.find((i) => i.id === editingId) : null;
+    const legacyRescale = oldIng && ((oldIng.unit === "g" && form.unit === "kg") || (oldIng.unit === "ml" && form.unit === "l")) ? 1000 : 1;
+    const uSizeR = uSize / legacyRescale;
+
+    const qty = packTotal(pUnits, uSizeR); // total du colis, dans l'unité d'usage
+    // Coût de référence = l'article LE MOINS CHER (colis principal + autres
+    // fournisseurs) — même règle que la fiche produit, pour ne pas stocker
+    // deux valeurs différentes selon l'écran qui a sauvegardé en dernier.
+    let cost_per_base_unit = calcCostPerBase(price, pUnits, uSizeR, form.unit);
+    for (const l of supplierLines) {
+      const p2 = parseFloat(l.pack_price) || 0;
+      const s2 = (parseFloat(l.unit_size) || 0) / legacyRescale;
+      if (p2 > 0 && s2 > 0) {
+        const c = calcCostPerBase(p2, parseFloat(l.pack_units) || 1, s2, form.unit);
+        if (c > 0 && (cost_per_base_unit <= 0 || c < cost_per_base_unit)) cost_per_base_unit = c;
+      }
+    }
     const selling = form.selling_price !== "" ? parseFloat(form.selling_price) : null;
     const payload = {
       name: form.name.trim(), category: form.category,
       supplier_id: form.supplier_id || null,
       pack_description: form.pack_description || null,
       pack_price: price, pack_quantity: qty, unit: form.unit,
-      pack_units: pUnits, unit_size: uSize, yield_pct: yld,
+      pack_units: pUnits, unit_size: uSizeR, yield_pct: yld,
       reorder_threshold: qtyFromDisplay(parseFloat(form.reorder_threshold) || 0, form.unit),
       supplier_reference: form.supplier_reference || null,
       cost_per_base_unit, vat_rate: vat,
@@ -342,10 +362,16 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
           supplier_id: l.supplier_id,
           supplier_reference: l.supplier_reference || null,
           pack_units: parseFloat(l.pack_units) || 1,
-          unit_size: parseFloat(l.unit_size) || 1,
-          unit: l.unit || form.unit,
+          unit_size: (parseFloat(l.unit_size) || 1) / legacyRescale,
+          // Toujours l'unité du PRODUIT : un article en « kg » sur un produit
+          // en « pièce » fausserait la conversion à la réception (×1000).
+          unit: form.unit,
           pack_price: parseFloat(l.pack_price) || 0,
           vat_rate: parseFloat(l.vat_rate) || 0,
+          // Préservés (édités sur la fiche produit, pas dans ce modal)
+          pack_type: l.pack_type ?? null,
+          pack_label: l.pack_label ?? null,
+          is_preferred: l.is_preferred ?? false,
         }));
       if (rows.length > 0) await supabase.from("ingredient_suppliers").insert(rows);
 
@@ -385,7 +411,8 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
       vat_rate: ing.vat_rate ?? 0,
       selling_price: ing.selling_price ?? null,
       pack_units: ing.pack_units ?? 1,
-      unit_size: ing.unit_size ?? 1,
+      // Ancien produit sans unit_size : la taille vit dans pack_quantity
+      unit_size: ing.unit_size ?? ing.pack_quantity ?? 1,
       yield_pct: ing.yield_pct ?? 100,
       reorder_threshold: ing.reorder_threshold ?? 0,
       supplier_reference: ing.supplier_reference ?? null,
@@ -614,7 +641,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                 <div className="flex items-start gap-2 px-3 py-2.5 bg-emerald-50 border border-emerald-200 rounded-lg">
                   <Check size={15} className="text-emerald-600 shrink-0 mt-0.5" />
                   <p className="text-sm text-emerald-800 leading-snug">
-                    1 colis = <b>{packQty || 0} {form.unit === "unit" ? "pièce" : form.unit === "l" ? "L" : form.unit}</b> · ça te revient à{" "}
+                    1 colis = <b>{Number((packQty || 0).toFixed(3)).toLocaleString("fr-FR", { maximumFractionDigits: 3 })} {form.unit === "unit" ? "pièce" : form.unit === "l" ? "L" : form.unit}</b> · ça te revient à{" "}
                     <b>€{perDisplayUnit(previewNetCost ?? 0, form.unit).toFixed(2)}/{displayUnitLabel(form.unit)}</b>
                     {yieldPct < 100 && <span className="text-emerald-600"> (perte incluse)</span>}
                   </p>
@@ -703,13 +730,11 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                         <span>×</span>
                         <input type="number" min="0" step="any" value={line.unit_size} onChange={(e) => updateSupplierLine(idx, "unit_size", e.target.value)}
                           className="w-16 px-2 py-1 text-xs bg-white border border-gray-200 rounded outline-none focus:border-green transition" />
-                        <select value={line.unit} onChange={(e) => updateSupplierLine(idx, "unit", e.target.value)}
-                          className="px-1.5 py-1 text-xs bg-white border border-gray-200 rounded outline-none focus:border-green transition">
-                          {UNIT_CHOICES.map((u) => <option key={u.value} value={u.value}>{u.label}</option>)}
-                        </select>
+                        {/* L'unité est celle du produit — pas de mélange kg/pièce entre articles */}
+                        <span className="font-medium text-gray-600">{UNIT_CHOICES.find((u) => u.value === form.unit)?.label ?? form.unit}</span>
                         {parseFloat(line.pack_price) > 0 && parseFloat(line.unit_size) > 0 && (
                           <span className="ml-auto text-green font-medium">
-                            €{perDisplayUnit(calcCostPerBase(parseFloat(line.pack_price), parseFloat(line.pack_units) || 1, parseFloat(line.unit_size), line.unit), line.unit).toFixed(2)}/{displayUnitLabel(line.unit)}
+                            €{perDisplayUnit(calcCostPerBase(parseFloat(line.pack_price), parseFloat(line.pack_units) || 1, parseFloat(line.unit_size), form.unit), form.unit).toFixed(2)}/{displayUnitLabel(form.unit)}
                           </span>
                         )}
                       </div>
@@ -939,8 +964,9 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                         <td className="px-5 py-4 text-right text-sm tabular-nums">
                           {ing.selling_price != null
                             ? (() => {
-                                // Marge à la pièce/kg/L vendue : prix de vente − coût unitaire (jamais le prix du colis entier)
-                                const unitCost = perDisplayUnit(Number(ing.cost_per_base_unit ?? 0), ing.unit);
+                                // Marge à l'unité vendue : prix de vente − CMUP (coût moyen réel
+                                // du stock), même base que Caisse / Ventes & marges / dashboard.
+                                const unitCost = perDisplayUnit(Number(ing.cmup ?? ing.cost_per_base_unit ?? 0), ing.unit);
                                 const marge = ing.selling_price - unitCost;
                                 const pct = ing.selling_price > 0 ? (marge / ing.selling_price) * 100 : 0;
                                 return (

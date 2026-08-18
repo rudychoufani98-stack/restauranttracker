@@ -50,7 +50,7 @@ Food cost % d'un plat = coût matière ÷ prix de vente. L'objectif se règle da
 ## Inventaire : compter le stock physique (fiche d'inventaire) et voir les écarts valorisés. Fiches « fournitures » séparées pour le non-alimentaire.
 ## Stock : état des stocks en temps réel, valeur totale, produits à commander, historique des mouvements par produit.
 ## Caisse : visualiser le plan de caisse (plats + produits vendus par catégorie, avec food cost) — lecture seule.
-## Ventes & marges : saisir le CA et les ventes du mois (sur place / livraison séparés) → l'app déstocke automatiquement les ingrédients des plats vendus et calcule marge brute et food cost réel.
+## Ventes & marges : saisir le CA et les ventes du mois (sur place / livraison séparés) → l'app déstocke automatiquement les ingrédients des plats vendus et calcule marge brute et food cost théorique (au CMUP actuel des recettes).
 ## Exports Excel : tous les chiffres téléchargeables en Excel — inventaire valorisé, mercuriale d'achats, fiches techniques & food cost, commandes, ventes & marges, pertes, journal des mouvements de stock. Fichiers générés à l'instant du téléchargement.
 ## Paramètres : nom du restaurant, objectif food cost, masquer les prix sur les bons de commande, équipe.
 

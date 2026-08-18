@@ -25,7 +25,7 @@ type ReceiveLine = {
   added?: boolean; // true when the user added it (not on the original order)
 };
 
-type OrderCond = Record<string, { type: string; detail: string; basePerPack?: number }>;
+type OrderCond = Record<string, { type: string; detail: string; basePerPack?: number; packPrice?: number | null }>;
 interface Props { po: PO; restaurantId: string; allIngredients: IngredientOption[]; orderCond: OrderCond }
 
 export default function ReceiveClient({ po, restaurantId, allIngredients, orderCond }: Props) {
@@ -41,17 +41,23 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
   const [lines, setLines] = useState<ReceiveLine[]>(
     po.purchase_order_lines
       .filter((l) => l.ingredient_id && l.ingredients)
-      .map((l) => ({
-        po_line_id: l.id,
-        ingredient_id: l.ingredient_id!,
-        ingredient_name: l.ingredients!.name,
-        expected_price: l.expected_price ?? l.ingredients!.pack_price,
-        qty_ordered: l.quantity,
-        qty_received: String(l.quantity), // pre-fill with ordered qty; user corrects if partial
-        actual_price: String(l.expected_price ?? l.ingredients!.pack_price),
-        unit: l.ingredients!.unit,
-        pack_quantity: Number(l.ingredients!.pack_quantity ?? 1) || 1,
-      }))
+      .map((l) => {
+        // Prix par défaut : celui du BDC, sinon l'article de CE fournisseur
+        // (même colisage que la conversion stock), sinon la fiche produit.
+        const supplierPrice = orderCond[l.ingredient_id!]?.packPrice;
+        const price = l.expected_price ?? (supplierPrice != null && supplierPrice > 0 ? supplierPrice : l.ingredients!.pack_price);
+        return {
+          po_line_id: l.id,
+          ingredient_id: l.ingredient_id!,
+          ingredient_name: l.ingredients!.name,
+          expected_price: price,
+          qty_ordered: l.quantity,
+          qty_received: String(l.quantity), // pre-fill with ordered qty; user corrects if partial
+          actual_price: String(price),
+          unit: l.ingredients!.unit,
+          pack_quantity: Number(l.ingredients!.pack_quantity ?? 1) || 1,
+        };
+      })
   );
 
   const [blNumber, setBlNumber] = useState("");
@@ -65,6 +71,13 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
     setLines((p) => { const n = [...p]; n[i] = { ...n[i], [field]: val }; return n; });
   }
 
+  // Prix retenu pour une ligne : celui saisi/scanné sur le BL (0 € accepté),
+  // sinon le prix prévu. La facture pourra encore le corriger ensuite.
+  const actualOf = (l: ReceiveLine) => {
+    const p = parseFloat(l.actual_price);
+    return Number.isFinite(p) ? p : l.expected_price;
+  };
+
   // Add an empty "produit reçu" line the user fills in (supplier sent something else / extra).
   function addLine() {
     setLines((p) => [...p, {
@@ -77,9 +90,13 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
     setLines((p) => p.filter((_, idx) => idx !== i));
   }
 
-  // Pick the ingredient for an added line.
+  // Pick the ingredient for an added line. Le prix par défaut est celui du
+  // conditionnement de CE fournisseur (même colisage que la conversion stock),
+  // sinon celui de la fiche produit.
   function pickIngredient(i: number, id: string) {
     const ing = allIngredients.find((a) => a.id === id);
+    const supplierPrice = orderCond[id]?.packPrice;
+    const price = supplierPrice != null && supplierPrice > 0 ? supplierPrice : (ing?.pack_price ?? 0);
     setLines((p) => {
       const n = [...p];
       n[i] = {
@@ -87,8 +104,8 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
         ingredient_id: id,
         ingredient_name: ing?.name ?? "",
         unit: ing?.unit ?? "",
-        expected_price: ing?.pack_price ?? 0,
-        actual_price: String(ing?.pack_price ?? 0),
+        expected_price: price,
+        actual_price: String(price),
         pack_quantity: Number(ing?.pack_quantity ?? 1) || 1,
       };
       return n;
@@ -191,8 +208,8 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
         delivery_note_id: dn.id,
         ingredient_id: l.ingredient_id,
         quantity_received: parseFloat(l.qty_received) || 0,
-        actual_price: l.expected_price, // expected price for now; invoice will adjust
-        price_changed: false,
+        actual_price: actualOf(l), // prix du BL (saisi ou scanné) ; la facture ajustera
+        price_changed: Math.abs(actualOf(l) - l.expected_price) > 0.001,
       }));
     if (dnLines.length > 0) {
       const { error: dlErr } = await supabase.from("delivery_note_lines").insert(dnLines);
@@ -212,8 +229,10 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
       const ingStockMap = new Map((currentIngData ?? []).map((i) => [i.id, i]));
 
       // Compute everything up front (movements + per-ingredient patches).
+      // Cumul par ingrédient d'abord : deux lignes du même produit ne doivent
+      // pas s'écraser (le dernier patch gagnerait, le stock serait sous-compté).
       const movements: any[] = [];
-      const patches: { id: string; newStock: number; newCmup: number; prevStock: number | null; prevCmup: number | null }[] = [];
+      const totals = new Map<string, { baseQty: number; cost: number }>(); // cost = € total reçu
       for (const line of stockedLines) {
         const qtyReceived = parseFloat(line.qty_received) || 0;
         // Contenu d'UN colis en unités de base : priorité au conditionnement de
@@ -225,17 +244,13 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
           baseQtyPerPack = line.unit === "kg" || line.unit === "l" ? packQty * 1000 : packQty;
         }
         const receivedBaseQty = qtyReceived * baseQtyPerPack;
-        const costPerBase = line.expected_price / (baseQtyPerPack || 1);
+        const costPerBase = actualOf(line) / (baseQtyPerPack || 1);
 
-        const current = ingStockMap.get(line.ingredient_id);
-        const currentStock = Number(current?.stock_qty ?? 0);
-        const currentCmup = Number(current?.cmup ?? costPerBase);
-        const newStock = currentStock + receivedBaseQty;
-        const newCmup = newStock > 0
-          ? (currentStock * currentCmup + receivedBaseQty * costPerBase) / newStock
-          : costPerBase;
+        const t = totals.get(line.ingredient_id) ?? { baseQty: 0, cost: 0 };
+        t.baseQty += receivedBaseQty;
+        t.cost += receivedBaseQty * costPerBase;
+        totals.set(line.ingredient_id, t);
 
-        patches.push({ id: line.ingredient_id, newStock, newCmup, prevStock: current?.stock_qty ?? null, prevCmup: current?.cmup ?? null });
         movements.push({
           restaurant_id: restaurantId,
           ingredient_id: line.ingredient_id,
@@ -245,6 +260,19 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
           reference_type: "delivery",
           reference_id: dn.id,
         });
+      }
+
+      const patches: { id: string; newStock: number; newCmup: number; prevStock: number | null; prevCmup: number | null }[] = [];
+      for (const [ingId, t] of Array.from(totals.entries())) {
+        const costPerBase = t.baseQty > 0 ? t.cost / t.baseQty : 0;
+        const current = ingStockMap.get(ingId);
+        const currentStock = Number(current?.stock_qty ?? 0);
+        const currentCmup = Number(current?.cmup ?? costPerBase);
+        const newStock = currentStock + t.baseQty;
+        const newCmup = newStock > 0
+          ? (currentStock * currentCmup + t.cost) / newStock
+          : costPerBase;
+        patches.push({ id: ingId, newStock, newCmup, prevStock: current?.stock_qty ?? null, prevCmup: current?.cmup ?? null });
       }
 
       // 4a. Movements first — single atomic insert, stock untouched if it fails.
@@ -327,7 +355,7 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
           <div className="col-span-5">Produit</div>
           <div className="col-span-2 text-right">Commandé</div>
           <div className="col-span-3 text-right">Reçu</div>
-          <div className="col-span-2 text-right">Prix</div>
+          <div className="col-span-2 text-right">Prix / conditionnement</div>
         </div>
         <div className="divide-y divide-gray-100">
           {lines.map((line, i) => {
@@ -382,9 +410,20 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
                     )} />
                   <span className="text-2xs text-gray-400">{type}</span>
                 </div>
-                {/* Prix */}
-                <div className="sm:col-span-2 text-right text-sm text-gray-600">
-                  €{line.expected_price.toFixed(2)}
+                {/* Prix du BL (€/conditionnement) — modifiable, la facture ajustera encore */}
+                <div className="sm:col-span-2 flex flex-col items-end gap-0.5">
+                  <div className="relative w-24">
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">€</span>
+                    <input type="number" min="0" step="0.01" value={line.actual_price}
+                      onChange={(e) => updateLine(i, "actual_price", e.target.value)}
+                      className={clsx("w-full pl-5 pr-2 py-1.5 text-sm text-right border rounded-lg outline-none focus:ring-1 transition",
+                        Math.abs(actualOf(line) - line.expected_price) > 0.001
+                          ? "border-amber-400 focus:border-amber-500 focus:ring-amber-300"
+                          : "border-[#E5E7EB] focus:border-emerald-500 focus:ring-emerald-500")} />
+                  </div>
+                  {Math.abs(actualOf(line) - line.expected_price) > 0.001 && (
+                    <span className="text-2xs text-amber-600">prévu €{line.expected_price.toFixed(2)}</span>
+                  )}
                 </div>
               </div>
             );

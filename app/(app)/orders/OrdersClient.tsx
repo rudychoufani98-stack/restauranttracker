@@ -16,13 +16,24 @@ function needsReorder(i: { stock_qty?: number | null; reorder_threshold?: number
   return thr > 0 ? stock <= thr : stock <= 0;
 }
 // Suggest number of packs (colis) to bring stock back to ~2× the threshold.
-function suggestColis(i: { stock_qty?: number | null; reorder_threshold?: number | null; pack_quantity?: number | null; unit: string }) {
+// packBaseOverride : contenu d'un colis chez le fournisseur choisi (unités de
+// base) — sinon on retombe sur le colisage de la fiche produit.
+function suggestColis(i: { stock_qty?: number | null; reorder_threshold?: number | null; pack_quantity?: number | null; unit: string }, packBaseOverride?: number) {
   const stock = Number(i.stock_qty ?? 0);
   const thr = Number(i.reorder_threshold ?? 0);
-  const packBase = toBase(Number(i.pack_quantity ?? 1) || 1, i.unit);
+  const packBase = packBaseOverride && packBaseOverride > 0 ? packBaseOverride : toBase(Number(i.pack_quantity ?? 1) || 1, i.unit);
   if (packBase <= 0) return 1;
   const need = Math.max(thr * 2 - stock, thr - stock, packBase);
   return Math.max(1, Math.ceil(need / packBase));
+}
+
+// Contenu d'un colis (unités de base) et prix du colis pour CE fournisseur.
+function artPackBase(art: Article | null, ing: { pack_quantity?: number | null; unit: string }): number {
+  if (art && Number(art.unit_size ?? 0) > 0) {
+    const u = art.unit ?? ing.unit;
+    return (Number(art.pack_units ?? 1) || 1) * Number(art.unit_size) * (u === "kg" || u === "l" ? 1000 : 1);
+  }
+  return toBase(Number(ing.pack_quantity ?? 1) || 1, ing.unit);
 }
 
 // Status filter buckets (French label → which DB statuses it matches).
@@ -167,7 +178,6 @@ function buildTimeline(o: PO, events: OrderEvent[]): TimelineItem[] {
   return items.sort((a, b) => a.date.localeCompare(b.date));
 }
 
-type DraftLine = { ingredient_id: string; quantity: string; expected_price: string };
 
 interface Props {
   restaurantId: string;
@@ -192,14 +202,8 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
   const [period, setPeriod] = useState("all");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
-  const [showForm, setShowForm] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const [supplierId, setSupplierId] = useState("");
-  const [lines, setLines] = useState<DraftLine[]>([{ ingredient_id: "", quantity: "", expected_price: "" }]);
   const [showRestock, setShowRestock] = useState(false);
   const [restocking, setRestocking] = useState(false);
 
@@ -220,8 +224,10 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
     setRestocking(true);
     for (const group of restockGroups) {
       const poLines = group.items.map((ing) => {
-        const qty = suggestColis(ing);
-        return { ingredient_id: ing.id, quantity: qty, expected_price: Number(ing.pack_price) || 0 };
+        // Colisage ET prix du fournisseur de ce bon (cohérents entre eux)
+        const art = articleFor(ing, group.supplier_id);
+        const qty = suggestColis(ing, artPackBase(art, ing));
+        return { ingredient_id: ing.id, quantity: qty, expected_price: Number(art?.pack_price ?? ing.pack_price) || 0 };
       });
       const expected = poLines.reduce((s, l) => s + l.quantity * l.expected_price, 0);
       const { data: po, error: poErr } = await supabase.from("purchase_orders").insert({
@@ -238,73 +244,6 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
     setOrders(updated ?? []);
     setRestocking(false);
     setShowRestock(false);
-  }
-
-  // Only the products this supplier actually carries
-  const supplierProducts = supplierId ? ingredients.filter((ing) => articleFor(ing, supplierId)) : [];
-
-  function changeSupplier(sid: string) {
-    setSupplierId(sid);
-    setLines([{ ingredient_id: "", quantity: "", expected_price: "" }]); // reset stale lines
-  }
-  function addLine() { setLines((p) => [...p, { ingredient_id: "", quantity: "", expected_price: "" }]); }
-  function removeLine(i: number) { setLines((p) => p.filter((_, idx) => idx !== i)); }
-  function updateLine(i: number, field: keyof DraftLine, val: string) {
-    setLines((p) => {
-      const next = [...p];
-      next[i] = { ...next[i], [field]: val };
-      if (field === "ingredient_id") {
-        const ing = ingredients.find((g) => g.id === val);
-        const art = ing ? articleFor(ing, supplierId) : null;
-        if (art) next[i].expected_price = String(art.pack_price ?? "");
-      }
-      return next;
-    });
-  }
-
-  const expectedTotal = lines.reduce((sum, l) => {
-    const qty = parseFloat(l.quantity) || 0;
-    const price = parseFloat(l.expected_price) || 0;
-    return sum + qty * price;
-  }, 0);
-
-  async function handleCreate() {
-    setError(null);
-    if (!supplierId) return setError("Veuillez sélectionner un fournisseur.");
-    const valid = lines.filter((l) => l.ingredient_id && parseFloat(l.quantity) > 0);
-    if (valid.length === 0) return setError("Ajoutez au moins une ligne d'ingrédient.");
-    setSaving(true);
-
-    const { data: po, error: poErr } = await supabase.from("purchase_orders").insert({
-      restaurant_id: restaurantId,
-      supplier_id: supplierId,
-      status: "Draft",
-      expected_total: expectedTotal,
-    }).select().single();
-
-    if (poErr) { setError(poErr.message); setSaving(false); return; }
-
-    await supabase.from("purchase_order_lines").insert(
-      valid.map((l) => ({
-        po_id: po.id,
-        ingredient_id: l.ingredient_id,
-        quantity: parseFloat(l.quantity),
-        expected_price: parseFloat(l.expected_price) || null,
-      }))
-    );
-
-    // Reload
-    const { data: updated } = await supabase
-      .from("purchase_orders")
-      .select("*, suppliers(name), purchase_order_lines(*, ingredients(name, unit))")
-      .eq("restaurant_id", restaurantId)
-      .order("created_at", { ascending: false });
-
-    setOrders(updated ?? []);
-    setSaving(false);
-    setShowForm(false);
-    setSupplierId("");
-    setLines([{ ingredient_id: "", quantity: "", expected_price: "" }]);
   }
 
   async function handleMarkSent(id: string) {
@@ -549,16 +488,17 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
                       <table className="w-full text-sm">
                         <tbody className="divide-y divide-gray-50">
                           {g.items.map((ing) => {
-                            const colis = suggestColis(ing);
                             const art = articleFor(ing, g.supplier_id);
+                            const colis = suggestColis(ing, artPackBase(art, ing));
                             const type = art ? packTypeOf(art) : defaultPackType(ing.unit, ing.unit_size ?? ing.pack_quantity);
+                            const packPrice = Number(art?.pack_price ?? ing.pack_price ?? 0);
                             return (
                               <tr key={ing.id}>
                                 <td className="px-4 py-2 text-gray-700">{ing.name}
                                   {ing.supplier_reference && <span className="text-2xs text-gray-400 ml-1.5">réf. {ing.supplier_reference}</span>}
                                 </td>
                                 <td className="px-4 py-2 text-right text-gray-500">{colis} {type}</td>
-                                <td className="px-4 py-2 text-right font-medium text-gray-900">€{(colis * Number(ing.pack_price || 0)).toFixed(2)}</td>
+                                <td className="px-4 py-2 text-right font-medium text-gray-900">€{(colis * packPrice).toFixed(2)}</td>
                               </tr>
                             );
                           })}
@@ -579,119 +519,6 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
               <button onClick={handleRestock} disabled={restocking || restockGroups.length === 0}
                 className="flex-1 py-2 text-sm text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition">
                 {restocking ? "Création…" : `Créer ${restockGroups.length} bon(s) de commande`}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* New PO form */}
-      {showForm && (
-        <div className="fixed inset-0 bg-black/30 flex items-start justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-card border border-[#E5E7EB] w-full max-w-2xl shadow-xl my-8">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-[#E5E7EB]">
-              <h2 className="text-base font-medium text-gray-900">Nouvelle commande</h2>
-              <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
-            </div>
-            <div className="p-5 space-y-4">
-              {error && <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</div>}
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Fournisseur</label>
-                <select value={supplierId} onChange={(e) => changeSupplier(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-emerald-500 bg-white transition">
-                  <option value="">Choisir un fournisseur…</option>
-                  {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}{s.email ? ` (${s.email})` : ""}</option>)}
-                </select>
-              </div>
-
-              {!supplierId ? (
-                <p className="text-sm text-gray-400 text-center py-8 border border-dashed border-gray-200 rounded-lg">
-                  Choisis un fournisseur pour voir les produits qu'il fournit.
-                </p>
-              ) : supplierProducts.length === 0 ? (
-                <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-3 text-center">
-                  Aucun produit n'a d'article chez ce fournisseur.<br />
-                  <span className="text-xs text-amber-600">Ajoute-le sur la fiche produit → section « Articles ».</span>
-                </p>
-              ) : (
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-xs font-medium text-gray-600">Produits à commander</label>
-                    <button onClick={addLine} className="text-xs text-emerald-600 hover:underline flex items-center gap-1"><Plus size={12} /> Ajouter une ligne</button>
-                  </div>
-                  <div className="space-y-2.5">
-                    {lines.map((line, i) => {
-                      const ing = ingredients.find((g) => g.id === line.ingredient_id);
-                      const art = ing ? articleFor(ing, supplierId) : null;
-                      const sub = (parseFloat(line.quantity) || 0) * (parseFloat(line.expected_price) || 0);
-                      return (
-                        <div key={i} className="border border-gray-200 rounded-lg p-2.5 bg-gray-50/40">
-                          <div className="flex gap-2 items-center">
-                            <select value={line.ingredient_id} onChange={(e) => updateLine(i, "ingredient_id", e.target.value)}
-                              className="flex-1 px-2.5 py-1.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-emerald-500 bg-white transition">
-                              <option value="">Choisir un produit…</option>
-                              {supplierProducts.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                            </select>
-                            <button onClick={() => removeLine(i)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition shrink-0"><Trash2 size={14} /></button>
-                          </div>
-                          {art && (
-                            <p className="text-2xs text-gray-500 mt-1.5 ml-0.5">
-                              1 {packTypeOf(art)} = <b>{condLabel(art)}</b>{art.supplier_reference ? <> · réf. <b>{art.supplier_reference}</b></> : null}
-                            </p>
-                          )}
-                          <div className="flex items-center gap-2 mt-2">
-                            <div className="flex items-center gap-1">
-                              <input type="number" min="0" step="any" value={line.quantity} onChange={(e) => updateLine(i, "quantity", e.target.value)}
-                                placeholder="0" className="w-16 px-2 py-1.5 text-sm text-right border border-gray-200 rounded-lg outline-none focus:border-emerald-500" />
-                              <span className="text-xs text-gray-400">{art ? packTypeOf(art) : "colis"}</span>
-                            </div>
-                            <span className="text-gray-300">×</span>
-                            <div className="relative w-28">
-                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">€</span>
-                              <input type="number" min="0" step="0.01" value={line.expected_price} onChange={(e) => updateLine(i, "expected_price", e.target.value)}
-                                placeholder="prix/colis" className="w-full pl-5 pr-2 py-1.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-emerald-500" />
-                            </div>
-                            <span className="ml-auto text-sm font-semibold text-gray-900">€{sub.toFixed(2)}</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {(() => {
-                const sup = suppliers.find((s) => s.id === supplierId);
-                const franco = Number(sup?.min_order_amount ?? 0);
-                const reached = franco > 0 && expectedTotal >= franco;
-                const missing = franco - expectedTotal;
-                return (
-                  <div className="px-4 py-3 bg-gray-50 rounded-lg border border-[#E5E7EB] space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600">Total prévisionnel</span>
-                      <span className="text-base font-medium text-gray-900">€{expectedTotal.toFixed(2)}</span>
-                    </div>
-                    {franco > 0 && (
-                      <>
-                        <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                          <div className={clsx("h-full rounded-full transition-all", reached ? "bg-emerald-500" : "bg-amber-400")}
-                            style={{ width: `${Math.min(100, (expectedTotal / franco) * 100)}%` }} />
-                        </div>
-                        <p className={clsx("text-xs", reached ? "text-emerald-600" : "text-amber-600")}>
-                          {reached
-                            ? `✓ Franco atteint (€${franco.toFixed(0)}) — livraison gratuite`
-                            : `Franco à €${franco.toFixed(0)} — il manque €${missing.toFixed(2)}`}
-                        </p>
-                      </>
-                    )}
-                  </div>
-                );
-              })()}
-            </div>
-            <div className="flex gap-2 px-5 py-4 border-t border-[#E5E7EB]">
-              <button onClick={() => setShowForm(false)} className="flex-1 py-2 text-sm text-gray-600 border border-[#E5E7EB] rounded-lg hover:bg-gray-50 transition">Annuler</button>
-              <button onClick={handleCreate} disabled={saving} className="flex-1 py-2 text-sm text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 disabled:opacity-50 transition">
-                {saving ? "Création…" : "Créer la commande"}
               </button>
             </div>
           </div>

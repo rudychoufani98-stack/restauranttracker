@@ -2,19 +2,20 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Plus, Trash2, X, ChevronDown, ChevronUp, RefreshCw, Copy, Search, ChefHat, Percent, Coins, Layers, ClipboardCheck } from "lucide-react";
 import clsx from "clsx";
 
 
-type Ingredient = { id: string; name: string; cost_per_base_unit: number; unit: string; yield_pct?: number | null };
+type Ingredient = { id: string; name: string; cost_per_base_unit: number; cmup?: number | null; unit: string; yield_pct?: number | null };
 type RecipeLine = {
   id?: string;
   ingredient_id: string | null;
   sub_recipe_id: string | null;
   quantity: number;
   unit: string;
-  ingredients?: { name: string; cost_per_base_unit: number; unit: string } | null;
+  ingredients?: { name: string; cost_per_base_unit: number; cmup?: number | null; unit: string } | null;
   sub_recipe?: { name: string; total_cost: number; yield_portions: number } | null;
 };
 type Recipe = {
@@ -78,10 +79,11 @@ function calcLineCost(line: DraftLine, ingredients: Ingredient[], allRecipes: Re
     let baseQty = qty;
     if (line.unit === "kg" && (ing.unit === "g" || ing.unit === "kg")) baseQty = qty * 1000;
     if (line.unit === "l" && (ing.unit === "ml" || ing.unit === "l")) baseQty = qty * 1000;
-    // qty is NET; real gross drawn = net / yield → cost follows gross
+    // qty is NET; real gross drawn = net / yield → cost follows gross.
+    // CMUP (coût moyen du stock) en priorité — même base que le serveur.
     const y = Number(ing.yield_pct ?? 100);
     const yf = y > 0 ? y / 100 : 1;
-    return ing.cost_per_base_unit * (baseQty / yf);
+    return Number(ing.cmup ?? ing.cost_per_base_unit ?? 0) * (baseQty / yf);
   } else {
     const rec = allRecipes.find((r) => r.id === line.sub_recipe_id);
     if (!rec) return 0;
@@ -105,12 +107,11 @@ function savedLineCost(line: RecipeLine, ingredients: Ingredient[], allRecipes: 
     if (line.unit === "l" && (info.unit === "ml" || info.unit === "l")) baseQty = qty * 1000;
     const y = Number(full?.yield_pct ?? 100);
     const yf = y > 0 ? y / 100 : 1;
-    return info.cost_per_base_unit * (baseQty / yf);
+    return Number(info.cmup ?? info.cost_per_base_unit ?? 0) * (baseQty / yf);
   }
   if (line.sub_recipe_id) {
     const rec = allRecipes.find((r) => r.id === line.sub_recipe_id);
     if (rec) return rec.total_cost * (toBase(qty, line.unit) / yieldInBase(rec));
-    if (line.sub_recipe) return (line.sub_recipe.total_cost / (line.sub_recipe.yield_portions || 1)) * qty;
   }
   return 0;
 }
@@ -127,6 +128,7 @@ interface Props {
 
 export default function RecipesClient({ restaurantId, initialRecipes, ingredients, allRecipes: allRecipesProp, menuCategories, prepCategories, lockMode }: Props) {
   const supabase = createClient();
+  const router = useRouter();
   const [recipes, setRecipes] = useState<Recipe[]>(initialRecipes);
   const [allRecipes, setAllRecipes] = useState<Recipe[]>(allRecipesProp);
   const [showForm, setShowForm] = useState(false);
@@ -304,7 +306,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
         sub_recipe_id: l.sub_recipe_id || null,
         quantity: parseFloat(l.quantity),
         unit: l.unit,
-        ingredients: ing ? { name: ing.name, cost_per_base_unit: ing.cost_per_base_unit, unit: ing.unit } : null,
+        ingredients: ing ? { name: ing.name, cost_per_base_unit: ing.cost_per_base_unit, cmup: ing.cmup ?? null, unit: ing.unit } : null,
         sub_recipe: null,
       };
     });
@@ -330,15 +332,20 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
       setAllRecipes((p) => [...p, builtRecipe].sort((a, b) => a.name.localeCompare(b.name)));
     }
 
+    // Recompute authoritative costs server-side (CMUP, sous-recettes en cascade)
+    // — attendu AVANT de rendre la main, sinon un départ de page laisse un
+    // total_cost provisoire en base.
+    try {
+      await fetch("/api/recalculate-recipes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ restaurantId }),
+      });
+    } catch { /* best-effort : le bouton Recalculer reste disponible */ }
+
     setSaving(false);
     setShowForm(false);
-
-    // Recompute authoritative costs server-side (uses CMUP, flattens sub-recipes)
-    fetch("/api/recalculate-recipes", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ restaurantId }),
-    }).catch(() => {});
+    router.refresh();
   }
 
   async function handleRecalcAll() {
@@ -491,7 +498,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
 
           <div className="glass-card rounded-2xl p-5 flex flex-col gap-3">
             <div className="flex justify-between items-center">
-              <span className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Coût moyen / portion</span>
+              <span className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">{tab === "prep" ? "Coût moyen / unité de rendement" : "Coût moyen / portion"}</span>
               <div className="w-10 h-10 rounded-full bg-primary-container/20 flex items-center justify-center text-primary-container"><Coins size={18} /></div>
             </div>
             <h3 className="text-2xl font-extrabold text-on-surface tabular-nums">€{avgCostPerPortion.toFixed(2)}</h3>
@@ -621,12 +628,20 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                         placeholder="Qty"
                         className="w-20 px-2 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition" />
 
-                      {line.type === "ingredient" ? (
-                        <select value={line.unit} onChange={(e) => updateLine(idx, "unit", e.target.value)}
-                          className="w-16 px-2 py-2 text-xs border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 bg-white transition">
-                          {["g","kg","ml","l","unit"].map((u) => <option key={u}>{u}</option>)}
-                        </select>
-                      ) : (() => {
+                      {line.type === "ingredient" ? (() => {
+                        // Unités limitées à la dimension du produit (kg → g/kg, L → ml/l…)
+                        const iu = ingredients.find((g) => g.id === line.ingredient_id)?.unit;
+                        const opts = iu === "g" || iu === "kg" ? ["g", "kg"]
+                          : iu === "ml" || iu === "l" ? ["ml", "l"]
+                          : iu === "unit" || iu === "piece" ? ["unit"]
+                          : ["g", "kg", "ml", "l", "unit"];
+                        return (
+                          <select value={line.unit} onChange={(e) => updateLine(idx, "unit", e.target.value)}
+                            className="w-16 px-2 py-2 text-xs border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 bg-white transition">
+                            {opts.map((u) => <option key={u}>{u}</option>)}
+                          </select>
+                        );
+                      })() : (() => {
                         const sub = allRecipes.find((r) => r.id === line.sub_recipe_id);
                         const opts = unitsForSubRecipe(sub?.yield_unit || "portion");
                         return (

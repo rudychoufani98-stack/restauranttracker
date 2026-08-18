@@ -9,7 +9,7 @@ export default async function InventairePage() {
 
   const { data: ingredients } = await supabase
     .from("ingredients")
-    .select("id, name, category, unit, stock_qty, cmup, cost_per_base_unit, pack_price, reorder_threshold, supplier_id, secondary_unit_label, secondary_unit_size, suppliers(name)")
+    .select("id, name, category, unit, stock_qty, cmup, cost_per_base_unit, pack_price, reorder_threshold, supplier_id, secondary_unit_label, secondary_unit_size, yield_pct, suppliers(name)")
     .eq("restaurant_id", restaurant!.id)
     .order("category")
     .order("name");
