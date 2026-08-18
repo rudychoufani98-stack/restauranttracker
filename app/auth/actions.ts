@@ -33,7 +33,12 @@ export async function login(formData: FormData) {
   }
 
   revalidatePath("/", "layout");
-  redirect("/dashboard");
+  // Retour sur la page demandée avant la connexion (lien direct vers une
+  // commande, un produit…). On n'accepte qu'un chemin interne : une URL
+  // externe permettrait une redirection malveillante.
+  const wanted = String(formData.get("next") ?? "");
+  const safeNext = wanted.startsWith("/") && !wanted.startsWith("//") ? wanted : "/dashboard";
+  redirect(safeNext);
 }
 
 // L'inscription publique est FERMÉE : les comptes sont créés par l'admin

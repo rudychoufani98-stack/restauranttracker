@@ -52,6 +52,8 @@ export default function LoginPage() {
 
         <div className="bg-white rounded-card border border-gray-200 shadow-card p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Page demandée avant la connexion (posée par le middleware) */}
+            <input type="hidden" name="next" value={params.get("next") ?? ""} />
             {error && (
               <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2.5">{error}</div>
             )}
