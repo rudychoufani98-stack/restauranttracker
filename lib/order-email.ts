@@ -53,5 +53,7 @@ export function buildOrderMailto(opts: {
   if (customerReference) bodyParts.push(`Notre référence client : ${customerReference}`);
   bodyParts.push("", "Cordialement,", restaurantName);
 
-  return `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyParts.join("\n"))}`;
+  // L'adresse reste littérale : encoder le « @ » en %40 casse l'ouverture du
+  // brouillon chez certains clients mail (Outlook notamment).
+  return `mailto:${to.trim()}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyParts.join("\n"))}`;
 }

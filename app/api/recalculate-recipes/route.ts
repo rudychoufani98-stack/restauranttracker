@@ -36,10 +36,15 @@ export async function POST(req: NextRequest) {
     const ingMap = new Map((ingredients ?? []).map((i) => [i.id, i as IngRow]));
     const recipeCosts = new Map<string, number>();
     const allergenMemo = new Map<string, Set<string>>();
+    // Recettes faussées par une MEP circulaire : on ne réécrit pas leur coût.
+    const tainted = new Set<string>();
 
     for (const recipe of recipes) {
-      calcRecipeCost(recipe.id, recipes as RecipeRow[], ingMap, recipeCosts);
+      calcRecipeCost(recipe.id, recipes as RecipeRow[], ingMap, recipeCosts, new Set(), tainted);
       calcRecipeAllergens(recipe.id, recipes as RecipeRow[], ingMap, allergenMemo);
+    }
+    if (tainted.size > 0) {
+      console.warn("[recalculate-recipes] MEP circulaire détectée, coûts non réécrits :", Array.from(tainted));
     }
 
     for (const recipeId of Array.from(recipeCosts.keys())) {
@@ -48,7 +53,10 @@ export async function POST(req: NextRequest) {
       await supabase.from("recipes").update({ total_cost: cost, allergens }).eq("id", recipeId);
     }
 
-    return NextResponse.json({ ok: true, updated: recipeCosts.size });
+    return NextResponse.json({
+      ok: true, updated: recipeCosts.size,
+      ...(tainted.size > 0 ? { skipped: Array.from(tainted), reason: "MEP circulaire" } : {}),
+    });
   } catch (e: any) {
     console.error("[recalculate-recipes] error:", (e as Error).message);
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });

@@ -37,3 +37,6 @@ next-env.d.ts
 
 # Invoice PDFs (do not commit)
 *.pdf
+
+# Exports Excel générés par les tests (tests/samples.test.ts)
+tmp-exports/

@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Upload, AlertTriangle, Check, Loader2, Plus, Trash2, PackagePlus } from "lucide-react";
 import clsx from "clsx";
 import { defaultPackType } from "@/lib/order-email";
+import { applyReception } from "@/lib/costing";
 
 type IngredientInfo = { id: string; name: string; unit: string; pack_price: number; cost_per_base_unit: number; pack_quantity: number | null };
 type POLine = { id: string; ingredient_id: string | null; quantity: number; expected_price: number | null; ingredients?: IngredientInfo | null };
@@ -266,12 +267,9 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
       for (const [ingId, t] of Array.from(totals.entries())) {
         const costPerBase = t.baseQty > 0 ? t.cost / t.baseQty : 0;
         const current = ingStockMap.get(ingId);
-        const currentStock = Number(current?.stock_qty ?? 0);
-        const currentCmup = Number(current?.cmup ?? costPerBase);
-        const newStock = currentStock + t.baseQty;
-        const newCmup = newStock > 0
-          ? (currentStock * currentCmup + t.cost) / newStock
-          : costPerBase;
+        const { newStock, newCmup } = applyReception(
+          Number(current?.stock_qty ?? 0), current?.cmup ?? null, t.baseQty, costPerBase,
+        );
         patches.push({ id: ingId, newStock, newCmup, prevStock: current?.stock_qty ?? null, prevCmup: current?.cmup ?? null });
       }
 

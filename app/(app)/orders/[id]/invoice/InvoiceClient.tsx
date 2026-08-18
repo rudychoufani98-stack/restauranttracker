@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Check, Loader2, FileText } from "lucide-react";
 import { defaultPackType } from "@/lib/order-email";
+import { revalueOnInvoice } from "@/lib/costing";
 
 type Ingredient = { id: string; name: string; unit: string; pack_price: number; cost_per_base_unit: number; pack_quantity: number };
 type POLine = { id: string; ingredient_id: string | null; quantity: number; expected_price: number | null; ingredients?: Ingredient | null };
@@ -203,19 +204,13 @@ export default function InvoiceClient({ po, deliveryNote, deliveryNotes, restaur
         const cur = ingStockMap.get(id);
         const curStock = Number(cur?.stock_qty ?? 0);
         const curCmup = Number(cur?.cmup ?? newCostPerBase);
-        let newStock = curStock + delta;
-        if (newStock < 0) newStock = 0;
-
-        // CMUP : la part déjà appliquée (réception) est REVALORISÉE au prix
-        // facturé — sinon une simple correction de prix (delta = 0, le cas
-        // normal) n'atteindrait jamais le coût moyen.
-        let newCmup = curCmup;
-        if (line && newStock > 0) {
-          const rest = Math.max(0, curStock - prev); // stock étranger à cette commande
-          newCmup = (rest * curCmup + target * newCostPerBase) / (rest + target || 1);
-        } else if (delta > 0) {
-          newCmup = newStock > 0 ? (curStock * curCmup + delta * newCostPerBase) / newStock : newCostPerBase;
-        }
+        // La part déjà appliquée à la réception est revalorisée au prix facturé
+        // (fonction partagée et couverte par les tests — lib/costing.ts).
+        const { newStock, newCmup } = revalueOnInvoice({
+          currentStock: curStock, currentCmup: cur?.cmup ?? null,
+          prevBase: prev, targetBase: target,
+          newCostPerBase, invoiced: !!line,
+        });
 
         const patch: any = { stock_qty: newStock, cmup: newCmup, updated_at: new Date().toISOString() };
         if (line) {
