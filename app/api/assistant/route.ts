@@ -17,7 +17,7 @@ function fmtStock(qty: number, unit: string): string {
 async function buildSnapshot(supabase: ReturnType<typeof createClient>, restaurantId: string, restaurantName: string): Promise<string> {
   const [ings, recipes, orders, suppliers] = await Promise.all([
     supabase.from("ingredients").select("name, unit, stock_qty, cmup, cost_per_base_unit, selling_price, reorder_threshold").eq("restaurant_id", restaurantId).order("name"),
-    supabase.from("recipes").select("name, category, total_cost, menu_price, yield_portions").eq("restaurant_id", restaurantId).order("name"),
+    supabase.from("recipes").select("name, category, total_cost, menu_price, yield_portions").eq("restaurant_id", restaurantId).eq("is_prep", false).order("name"),
     supabase.from("purchase_orders").select("order_number, status, expected_total, created_at, suppliers(name)").eq("restaurant_id", restaurantId).order("created_at", { ascending: false }).limit(8),
     supabase.from("suppliers").select("name, email, min_order_amount").eq("restaurant_id", restaurantId),
   ]);

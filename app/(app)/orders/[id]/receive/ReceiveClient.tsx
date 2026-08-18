@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Upload, AlertTriangle, Check, Loader2, Plus, Trash2, PackagePlus } from "lucide-react";
 import clsx from "clsx";
+import { defaultPackType } from "@/lib/order-email";
 
 type IngredientInfo = { id: string; name: string; unit: string; pack_price: number; cost_per_base_unit: number; pack_quantity: number | null };
 type POLine = { id: string; ingredient_id: string | null; quantity: number; expected_price: number | null; ingredients?: IngredientInfo | null };
@@ -24,12 +25,14 @@ type ReceiveLine = {
   added?: boolean; // true when the user added it (not on the original order)
 };
 
-type OrderCond = Record<string, { type: string; detail: string }>;
+type OrderCond = Record<string, { type: string; detail: string; basePerPack?: number }>;
 interface Props { po: PO; restaurantId: string; allIngredients: IngredientOption[]; orderCond: OrderCond }
 
 export default function ReceiveClient({ po, restaurantId, allIngredients, orderCond }: Props) {
   // Label a purchase quantity in the supplier's order conditionnement (colis…).
-  const condType = (ingredientId: string, fallback: string) => orderCond[ingredientId]?.type || fallback || "colis";
+  // Fallback : type déduit de l'unité (bidon / kg / colis), jamais l'unité brute.
+  const condType = (ingredientId: string, unit: string, packQty?: number | null) =>
+    orderCond[ingredientId]?.type || defaultPackType(unit, packQty);
   const condDetail = (ingredientId: string) => orderCond[ingredientId]?.detail || "";
   const router = useRouter();
   const supabase = createClient();
@@ -213,9 +216,14 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
       const patches: { id: string; newStock: number; newCmup: number; prevStock: number | null; prevCmup: number | null }[] = [];
       for (const line of stockedLines) {
         const qtyReceived = parseFloat(line.qty_received) || 0;
-        const packQty = line.pack_quantity || 1;
-        let baseQtyPerPack = packQty;
-        if (line.unit === "kg" || line.unit === "l") baseQtyPerPack = packQty * 1000;
+        // Contenu d'UN colis en unités de base : priorité au conditionnement de
+        // CE fournisseur (article), sinon celui de la fiche produit.
+        const supplierBase = Number(orderCond[line.ingredient_id]?.basePerPack ?? 0);
+        let baseQtyPerPack = supplierBase;
+        if (!(baseQtyPerPack > 0)) {
+          const packQty = line.pack_quantity || 1;
+          baseQtyPerPack = line.unit === "kg" || line.unit === "l" ? packQty * 1000 : packQty;
+        }
         const receivedBaseQty = qtyReceived * baseQtyPerPack;
         const costPerBase = line.expected_price / (baseQtyPerPack || 1);
 
@@ -326,7 +334,7 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
             const qtyReceived = parseFloat(line.qty_received);
             const qtyPartial = !line.added && qtyReceived < line.qty_ordered;
             const isZero = !line.added && qtyReceived === 0;
-            const type = condType(line.ingredient_id, line.unit);
+            const type = condType(line.ingredient_id, line.unit, line.pack_quantity);
             return (
               <div key={i} className={clsx("grid grid-cols-2 sm:grid-cols-12 gap-x-3 gap-y-2 items-center px-5 py-3", line.added && "border-l-2 border-l-blue-300")}>
                 {/* Produit */}

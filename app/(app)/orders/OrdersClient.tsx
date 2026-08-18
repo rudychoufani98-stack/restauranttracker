@@ -365,10 +365,19 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
         // Quantités déjà appliquées au stock : la dernière facture validée,
         // sinon les lignes des bons de livraison validés.
         const prevBase = new Map<string, number>();
+        // Contenu d'UN colis en unités de base : priorité au conditionnement de
+        // CE fournisseur (article), sinon celui de la fiche produit.
         const baseFactorOf = (ingredientId: string) => {
           const ing = ingredients.find((i) => i.id === ingredientId);
-          const pack = Number(ing?.pack_quantity ?? 1) || 1;
-          return ing && (ing.unit === "kg" || ing.unit === "l") ? pack * 1000 : pack;
+          if (!ing) return 1;
+          const art = po.supplier_id ? articleFor(ing, po.supplier_id) : null;
+          if (art && Number(art.unit_size ?? 0) > 0) {
+            const u = art.unit ?? ing.unit;
+            const factor = u === "kg" || u === "l" ? 1000 : 1;
+            return (Number(art.pack_units ?? 1) || 1) * Number(art.unit_size) * factor;
+          }
+          const pack = Number(ing.pack_quantity ?? 1) || 1;
+          return ing.unit === "kg" || ing.unit === "l" ? pack * 1000 : pack;
         };
         const { data: inv } = await supabase
           .from("invoices")
@@ -529,7 +538,7 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
               ) : (
                 <>
                   <p className="text-sm text-gray-500">
-                    {restockGroups.reduce((s, g) => s + g.items.length, 0)} produit(s) à commander chez {restockGroups.length} fournisseur(s). Quantités suggérées (en colis) — ajustables après création.
+                    {restockGroups.reduce((s, g) => s + g.items.length, 0)} produit(s) à commander chez {restockGroups.length} fournisseur(s). Quantités suggérées (en nombre de conditionnements) — ajustables après création.
                   </p>
                   {restockGroups.map((g) => (
                     <div key={g.supplier_id} className="border border-gray-200 rounded-lg overflow-hidden">
@@ -541,12 +550,14 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
                         <tbody className="divide-y divide-gray-50">
                           {g.items.map((ing) => {
                             const colis = suggestColis(ing);
+                            const art = articleFor(ing, g.supplier_id);
+                            const type = art ? packTypeOf(art) : defaultPackType(ing.unit, ing.unit_size ?? ing.pack_quantity);
                             return (
                               <tr key={ing.id}>
                                 <td className="px-4 py-2 text-gray-700">{ing.name}
                                   {ing.supplier_reference && <span className="text-2xs text-gray-400 ml-1.5">réf. {ing.supplier_reference}</span>}
                                 </td>
-                                <td className="px-4 py-2 text-right text-gray-500">{colis} colis</td>
+                                <td className="px-4 py-2 text-right text-gray-500">{colis} {type}</td>
                                 <td className="px-4 py-2 text-right font-medium text-gray-900">€{(colis * Number(ing.pack_price || 0)).toFixed(2)}</td>
                               </tr>
                             );
@@ -925,14 +936,23 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
                                         </tr>
                                       </thead>
                                       <tbody className="divide-y divide-outline-variant/10">
-                                        {order.purchase_order_lines.map((line, i) => (
+                                        {order.purchase_order_lines.map((line, i) => {
+                                          // Quantité en nb de colis → libellé du conditionnement, pas l'unité brute
+                                          const lineIng = line.ingredient_id ? ingredients.find((x) => x.id === line.ingredient_id) : null;
+                                          const lineArt = lineIng && order.supplier_id ? articleFor(lineIng, order.supplier_id) : null;
+                                          const lineType = lineArt ? packTypeOf(lineArt) : defaultPackType(line.ingredients?.unit, lineIng?.pack_quantity ?? null);
+                                          return (
                                           <tr key={i}>
-                                            <td className="py-1.5 text-on-surface-variant">{line.ingredients?.name ?? "—"}</td>
-                                            <td className="text-right text-on-surface-variant/70">{line.quantity} {line.ingredients?.unit}</td>
+                                            <td className="py-1.5 text-on-surface-variant">
+                                              {line.ingredients?.name ?? "—"}
+                                              {lineArt && <span className="text-2xs text-on-surface-variant/50 ml-1.5">(1 {lineType} = {condLabel(lineArt)})</span>}
+                                            </td>
+                                            <td className="text-right text-on-surface-variant/70">{line.quantity} {lineType}</td>
                                             <td className="text-right text-on-surface-variant/70">€{Number(line.expected_price ?? 0).toFixed(2)}</td>
                                             <td className="text-right font-semibold text-on-surface tabular-nums">€{(line.quantity * Number(line.expected_price ?? 0)).toFixed(2)}</td>
                                           </tr>
-                                        ))}
+                                          );
+                                        })}
                                       </tbody>
                                     </table>
 

@@ -30,15 +30,18 @@ export default async function ReceivePage({ params }: { params: { id: string } }
     .eq("supplier_id", po.supplier_id);
   const linkedIds = Array.from(new Set((supplierArticles ?? []).map((a) => a.ingredient_id)));
 
-  // ingredient_id -> { type: "colis", detail: "2 kg" } for the supplier's conditionnement
-  const orderCond: Record<string, { type: string; detail: string }> = {};
+  // ingredient_id -> conditionnement de CE fournisseur : libellé + contenu d'un
+  // colis en unités de base (g/ml/pièce) pour convertir « nb de colis » en stock.
+  const orderCond: Record<string, { type: string; detail: string; basePerPack: number }> = {};
   for (const a of supplierArticles ?? []) {
     const units = Number(a.pack_units ?? 1) || 1;
     const size = Number(a.unit_size ?? 0) || 0;
     const u = a.unit ?? "";
+    const factor = u === "kg" || u === "l" ? 1000 : 1; // anciens articles en g/ml : taille déjà en base
     orderCond[a.ingredient_id] = {
       type: a.pack_type || "colis",
       detail: a.pack_label || (size > 0 ? (units > 1 ? `${units} × ${size} ${unitShort(u)}` : `${size} ${unitShort(u)}`) : ""),
+      basePerPack: units * size * factor,
     };
   }
 

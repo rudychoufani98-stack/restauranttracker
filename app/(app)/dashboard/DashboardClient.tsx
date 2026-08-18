@@ -50,7 +50,8 @@ export default function DashboardClient({ restaurantName, targetFoodCost, recipe
         } else if (l.ingredient_id) {
           const i = ingMap.get(l.ingredient_id);
           if (!i) continue;
-          out.push({ month: mk, category: i.category || "Autre", name: i.name, revenue: qty * Number(i.selling_price || 0), cost: qty * Number(i.pack_price || 0), qty });
+          // Coût d'une pièce vendue = CMUP (jamais le prix du colis entier)
+          out.push({ month: mk, category: i.category || "Autre", name: i.name, revenue: qty * Number(i.selling_price || 0), cost: qty * Number(i.cmup ?? i.cost_per_base_unit ?? 0), qty });
         }
       }
     }

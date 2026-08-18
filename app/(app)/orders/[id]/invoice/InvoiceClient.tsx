@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Check, Loader2, FileText } from "lucide-react";
+import { defaultPackType } from "@/lib/order-email";
 
 type Ingredient = { id: string; name: string; unit: string; pack_price: number; cost_per_base_unit: number; pack_quantity: number };
 type POLine = { id: string; ingredient_id: string | null; quantity: number; expected_price: number | null; ingredients?: Ingredient | null };
@@ -24,7 +25,7 @@ type InvoiceLine = {
   cost_per_base_unit: number;
 };
 
-type OrderCond = Record<string, { type: string; detail: string }>;
+type OrderCond = Record<string, { type: string; detail: string; basePerPack?: number }>;
 interface Props {
   po: PO;
   deliveryNote: DeliveryNote | null;
@@ -40,7 +41,9 @@ function baseFactor(unit: string, packQty: number) {
 }
 
 export default function InvoiceClient({ po, deliveryNote, restaurantId, orderCond = {}, priorInvoice = null }: Props) {
-  const condType = (ingredientId: string, fallback: string) => orderCond[ingredientId]?.type || fallback || "colis";
+  // Fallback : type déduit de l'unité (bidon / kg / colis), jamais l'unité brute.
+  const condType = (ingredientId: string, unit: string, packQty?: number | null) =>
+    orderCond[ingredientId]?.type || defaultPackType(unit, packQty);
   const router = useRouter();
   const supabase = createClient();
   const isEdit = !!priorInvoice;
@@ -142,10 +145,15 @@ export default function InvoiceClient({ po, deliveryNote, restaurantId, orderCon
       // 2. Previously applied base quantity per ingredient (what the stock already
       //    reflects for this order): the last invoice if any, else the reception.
       const prevBase = new Map<string, number>();
-      const baseOf = (id: string, qtyColis: number) => {
+      // Contenu d'UN colis en unités de base : priorité au conditionnement de
+      // CE fournisseur (article), sinon celui de la fiche produit.
+      const packBase = (id: string) => {
+        const supplierBase = Number(orderCond[id]?.basePerPack ?? 0);
+        if (supplierBase > 0) return supplierBase;
         const info = infoMap.get(id);
-        return qtyColis * baseFactor(info?.unit ?? "unit", Number(info?.pack_quantity ?? 1) || 1);
+        return baseFactor(info?.unit ?? "unit", Number(info?.pack_quantity ?? 1) || 1);
       };
+      const baseOf = (id: string, qtyColis: number) => qtyColis * packBase(id);
       if (priorInvoice) {
         for (const l of priorInvoice.invoice_lines) if (l.ingredient_id) prevBase.set(l.ingredient_id, baseOf(l.ingredient_id, Number(l.quantity)));
       } else {
@@ -178,7 +186,7 @@ export default function InvoiceClient({ po, deliveryNote, restaurantId, orderCon
         const delta = target - prev;
 
         const invoicePrice = line ? (parseFloat(line.invoice_price) || line.expected_price) : 0;
-        const factor = baseFactor(infoMap.get(id)?.unit ?? "unit", Number(infoMap.get(id)?.pack_quantity ?? 1) || 1);
+        const factor = packBase(id);
         const newCostPerBase = line && factor > 0 ? invoicePrice / factor : Number(infoMap.get(id)?.cost_per_base_unit ?? 0);
 
         const cur = ingStockMap.get(id);
@@ -317,7 +325,7 @@ export default function InvoiceClient({ po, deliveryNote, restaurantId, orderCon
             const qty = parseFloat(line.qty) || 0;
             const priceChanged = Math.abs(invoicePrice - line.expected_price) > 0.001;
             const lineTotal = invoicePrice * qty;
-            const type = condType(line.ingredient_id, line.unit);
+            const type = condType(line.ingredient_id, line.unit, line.pack_quantity);
             return (
               <div key={i} className={`px-5 py-4 ${qty === 0 ? "bg-gray-50/60" : ""}`}>
                 <div className="flex items-center justify-between mb-3">

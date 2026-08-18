@@ -15,7 +15,7 @@ export default async function CaissePage() {
       .order("name"),
     supabase
       .from("ingredients")
-      .select("id, name, category, pack_price, selling_price, allergens")
+      .select("id, name, category, pack_price, cmup, cost_per_base_unit, selling_price, allergens")
       .eq("restaurant_id", restaurant!.id)
       .not("selling_price", "is", null)
       .order("name"),

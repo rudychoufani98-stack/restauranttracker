@@ -16,7 +16,7 @@ export default async function RentabilitePage() {
       .order("name"),
     supabase
       .from("ingredients")
-      .select("id, name, category, pack_price, selling_price, unit")
+      .select("id, name, category, pack_price, cmup, cost_per_base_unit, selling_price, unit")
       .eq("restaurant_id", restaurant!.id)
       .not("selling_price", "is", null)
       .order("name"),

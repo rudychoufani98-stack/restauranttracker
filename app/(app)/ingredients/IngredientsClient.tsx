@@ -109,7 +109,7 @@ function baseUnitLabel(unit: string) {
 
 // Friendly display unit: weights → kg, volumes → L, else the unit itself.
 function displayUnitLabel(unit: string) {
-  return unit === "g" || unit === "kg" ? "kg" : unit === "ml" || unit === "l" ? "L" : unit;
+  return unit === "g" || unit === "kg" ? "kg" : unit === "ml" || unit === "l" ? "L" : unit === "unit" ? "pce" : unit;
 }
 
 // Convert a per-base-unit cost (€/g or €/ml) to a per-display-unit cost (€/kg or €/L).
@@ -614,7 +614,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                 <div className="flex items-start gap-2 px-3 py-2.5 bg-emerald-50 border border-emerald-200 rounded-lg">
                   <Check size={15} className="text-emerald-600 shrink-0 mt-0.5" />
                   <p className="text-sm text-emerald-800 leading-snug">
-                    1 colis = <b>{packQty || 0} {form.unit}</b> · ça te revient à{" "}
+                    1 colis = <b>{packQty || 0} {form.unit === "unit" ? "pièce" : form.unit === "l" ? "L" : form.unit}</b> · ça te revient à{" "}
                     <b>€{perDisplayUnit(previewNetCost ?? 0, form.unit).toFixed(2)}/{displayUnitLabel(form.unit)}</b>
                     {yieldPct < 100 && <span className="text-emerald-600"> (perte incluse)</span>}
                   </p>
@@ -738,9 +738,10 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                   <div className="px-3 py-2.5 bg-white border border-blue-200 rounded-lg">
                     <p className="text-xs text-gray-400">Marge unitaire</p>
                     <p className="text-sm font-semibold text-emerald-600">
-                      €{(parseFloat(form.selling_price) - priceHT).toFixed(2)}
+                      {/* prix de vente à la pièce − coût unitaire (jamais le prix du colis entier) */}
+                      €{(parseFloat(form.selling_price) - (previewNetCost !== null ? perDisplayUnit(previewNetCost, form.unit) : 0)).toFixed(2)}
                       <span className="text-xs text-gray-400 font-normal ml-1">
-                        ({priceHT > 0 ? (((parseFloat(form.selling_price) - priceHT) / parseFloat(form.selling_price)) * 100).toFixed(0) : 0}%)
+                        ({parseFloat(form.selling_price) > 0 ? (((parseFloat(form.selling_price) - (previewNetCost !== null ? perDisplayUnit(previewNetCost, form.unit) : 0)) / parseFloat(form.selling_price)) * 100).toFixed(0) : 0}%)
                       </span>
                     </p>
                   </div>
@@ -938,7 +939,9 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                         <td className="px-5 py-4 text-right text-sm tabular-nums">
                           {ing.selling_price != null
                             ? (() => {
-                                const marge = ing.selling_price - ing.pack_price;
+                                // Marge à la pièce/kg/L vendue : prix de vente − coût unitaire (jamais le prix du colis entier)
+                                const unitCost = perDisplayUnit(Number(ing.cost_per_base_unit ?? 0), ing.unit);
+                                const marge = ing.selling_price - unitCost;
                                 const pct = ing.selling_price > 0 ? (marge / ing.selling_price) * 100 : 0;
                                 return (
                                   <span className={marge >= 0 ? "font-semibold text-emerald-600" : "font-semibold text-red"}>

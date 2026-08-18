@@ -18,7 +18,7 @@ type SimpleProduct = {
   id: string;
   name: string;
   category: string;
-  pack_price: number;
+  pack_price: number; cmup?: number | null; cost_per_base_unit?: number | null;
   selling_price: number;
   unit: string;
 };
@@ -71,7 +71,7 @@ function calcPeriodStats(period: Period, recipes: Recipe[], simpleProducts: Simp
       const prod = simpleProducts.find((p) => p.id === line.ingredient_id);
       if (!prod) continue;
       ca += line.qty_sold * prod.selling_price;
-      coutMatiere += line.qty_sold * prod.pack_price;
+      coutMatiere += line.qty_sold * Number(prod.cmup ?? prod.cost_per_base_unit ?? 0);
     }
   }
   // Commission plateforme sur le CA des ventes en livraison.
@@ -116,7 +116,7 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
       .map((r) => ({ key: r.id, name: r.name, category: r.category || "Autre", price: Number(r.menu_price), cost: r.total_cost / (r.yield_portions || 1), resale: false }));
     const fromP = simpleProducts
       .filter((p) => p.selling_price && p.selling_price > 0)
-      .map((p) => ({ key: `__sp__${p.id}`, name: p.name, category: p.category || "Autre", price: Number(p.selling_price), cost: Number(p.pack_price || 0), resale: true }));
+      .map((p) => ({ key: `__sp__${p.id}`, name: p.name, category: p.category || "Autre", price: Number(p.selling_price), cost: Number(p.cmup ?? p.cost_per_base_unit ?? 0), resale: true }));
     return [...fromR, ...fromP];
   }, [recipes, simpleProducts]);
 
@@ -146,7 +146,7 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
         const prod = simpleProducts.find((p) => p.id === prodId);
         if (!prod) continue;
         ca += qty * prod.selling_price;
-        cout += qty * prod.pack_price;
+        cout += qty * Number(prod.cmup ?? prod.cost_per_base_unit ?? 0);
         couverts += qty;
       } else {
         const recipe = recipes.find((r) => r.id === dl.recipe_id);

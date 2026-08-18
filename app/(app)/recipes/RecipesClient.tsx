@@ -91,6 +91,30 @@ function calcLineCost(line: DraftLine, ingredients: Ingredient[], allRecipes: Re
   }
 }
 
+// Coût d'une ligne DÉJÀ enregistrée (même maths que calcLineCost : conversion
+// kg/l → base, rendement de l'ingrédient, fraction du batch pour une MEP).
+function savedLineCost(line: RecipeLine, ingredients: Ingredient[], allRecipes: Recipe[]): number {
+  const qty = Number(line.quantity) || 0;
+  if (!qty) return 0;
+  if (line.ingredient_id) {
+    const full = ingredients.find((i) => i.id === line.ingredient_id);
+    const info = full ?? line.ingredients;
+    if (!info) return 0;
+    let baseQty = qty;
+    if (line.unit === "kg" && (info.unit === "g" || info.unit === "kg")) baseQty = qty * 1000;
+    if (line.unit === "l" && (info.unit === "ml" || info.unit === "l")) baseQty = qty * 1000;
+    const y = Number(full?.yield_pct ?? 100);
+    const yf = y > 0 ? y / 100 : 1;
+    return info.cost_per_base_unit * (baseQty / yf);
+  }
+  if (line.sub_recipe_id) {
+    const rec = allRecipes.find((r) => r.id === line.sub_recipe_id);
+    if (rec) return rec.total_cost * (toBase(qty, line.unit) / yieldInBase(rec));
+    if (line.sub_recipe) return (line.sub_recipe.total_cost / (line.sub_recipe.yield_portions || 1)) * qty;
+  }
+  return 0;
+}
+
 interface Props {
   restaurantId: string;
   initialRecipes: Recipe[];
@@ -138,7 +162,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
   const statBase = tab === "recipe" ? menuRecipes : prepRecipes;
   const pricedRecipes = statBase.filter((r) => Number(r.menu_price ?? 0) > 0);
   const avgFoodCost = pricedRecipes.length
-    ? pricedRecipes.reduce((s, r) => s + (r.total_cost / Number(r.menu_price)) * 100, 0) / pricedRecipes.length
+    ? pricedRecipes.reduce((s, r) => s + (r.total_cost / (r.yield_portions || 1) / Number(r.menu_price)) * 100, 0) / pricedRecipes.length
     : null;
   const avgCostPerPortion = statBase.length
     ? statBase.reduce((s, r) => s + r.total_cost / (r.yield_portions || 1), 0) / statBase.length
@@ -702,7 +726,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
             const isExpanded = expandedId === recipe.id;
             const costPerPortion = recipe.total_cost / (recipe.yield_portions || 1);
             const yUnit = YIELD_UNITS.find((u) => u.value === (recipe.yield_unit || "portion"))?.label ?? recipe.yield_unit;
-            const foodCost = Number(recipe.menu_price ?? 0) > 0 ? (recipe.total_cost / Number(recipe.menu_price)) * 100 : null;
+            const foodCost = Number(recipe.menu_price ?? 0) > 0 ? (costPerPortion / Number(recipe.menu_price)) * 100 : null;
             const highCost = foodCost !== null && foodCost > 35;
             return (
               <div key={recipe.id} className="glass-card rounded-2xl overflow-hidden">
@@ -796,11 +820,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                         {recipe.recipe_lines.map((line, i) => {
                           const label = line.ingredients?.name ?? line.sub_recipe?.name ?? "—";
                           const isSubRecipe = !!line.sub_recipe_id;
-                          const lineCost = line.ingredients
-                            ? line.ingredients.cost_per_base_unit * line.quantity
-                            : line.sub_recipe
-                            ? (line.sub_recipe.total_cost / (line.sub_recipe.yield_portions || 1)) * line.quantity
-                            : 0;
+                          const lineCost = savedLineCost(line, ingredients, allRecipes);
                           return (
                             <tr key={i}>
                               <td className="py-1.5 text-on-surface-variant">

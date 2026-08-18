@@ -13,7 +13,7 @@ function fmtNum(n: number) {
 function formatQty(qty: number, unit: string) {
   if (unit === "kg" || unit === "g") return `${fmtNum(qty / 1000)} kg`;
   if (unit === "l" || unit === "ml") return `${fmtNum(qty / 1000)} L`;
-  return `${fmtNum(qty)} ${unit === "unit" ? "u" : unit}`;
+  return `${fmtNum(qty)} ${unit === "unit" ? "pce" : unit}`;
 }
 const MONTHS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
 function monthLabel(key: string) {

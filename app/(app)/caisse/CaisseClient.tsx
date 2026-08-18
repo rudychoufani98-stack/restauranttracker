@@ -6,7 +6,7 @@ import clsx from "clsx";
 import Link from "next/link";
 
 type Recipe  = { id: string; name: string; category: string; total_cost: number; menu_price: number | null; yield_portions: number; allergens: string[] | null };
-type Product = { id: string; name: string; category: string; pack_price: number; selling_price: number | null; allergens: string[] | null };
+type Product = { id: string; name: string; category: string; pack_price: number; cmup?: number | null; cost_per_base_unit?: number | null; selling_price: number | null; allergens: string[] | null };
 
 type Touch = {
   id: string;
@@ -47,7 +47,7 @@ export default function CaisseClient({ recipes, products, categoryOrder }: Props
       category: p.category || "Autre",
       price: p.selling_price,
       type: "product",
-      cost: Number(p.pack_price ?? 0),
+      cost: Number(p.cmup ?? p.cost_per_base_unit ?? 0),
       allergens: p.allergens ?? [],
       linked: true,
     }));

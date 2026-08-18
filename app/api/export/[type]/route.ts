@@ -1,12 +1,13 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getRestaurant } from "@/lib/auth";
+import { unitShort } from "@/lib/ingredient-helpers";
 import {
   newWorkbook, addTitle, styleHeader, styleSubtotal, autoWidth,
   workbookToResponse, FMT, todayStamp,
 } from "@/lib/excel";
 
-const displayUnit = (u: string) => (u === "g" || u === "kg" ? "kg" : u === "ml" || u === "l" ? "L" : u === "unit" ? "u" : u);
+const displayUnit = (u: string) => (u === "g" || u === "kg" ? "kg" : u === "ml" || u === "l" ? "L" : u === "unit" || u === "piece" ? "pce" : u);
 const qtyDisplay = (base: number, u: string) => (["g", "kg", "ml", "l"].includes(u) ? base / 1000 : base);
 const perDisplayCmup = (cmupBase: number, u: string) => (["g", "kg", "ml", "l"].includes(u) ? cmupBase * 1000 : cmupBase);
 
@@ -134,7 +135,7 @@ async function exportAchats(supabase: any, restaurant: any, stamp: string, dateL
       const ttc = ht * (1 + vat / 100);
       const units = Number(ing.pack_units ?? 1);
       const size = Number(ing.unit_size ?? ing.pack_quantity ?? 0);
-      const cond = units > 1 ? `${units} × ${size} ${ing.unit}` : `${size} ${ing.unit}`;
+      const cond = units > 1 ? `${units} × ${size} ${unitShort(ing.unit)}` : `${size} ${unitShort(ing.unit)}`;
       const gross = Number(ing.cost_per_base_unit ?? 0);
       const yld = Number(ing.yield_pct ?? 100);
       const netBase = yld > 0 ? gross / (yld / 100) : gross;
@@ -164,6 +165,7 @@ async function exportRecettes(supabase: any, restaurant: any, stamp: string, dat
     .from("recipes")
     .select("name, category, total_cost, menu_price, yield_portions")
     .eq("restaurant_id", restaurant.id)
+    .eq("is_prep", false) // les MEP ne sont pas des plats vendus
     .order("category").order("name");
 
   const wb = newWorkbook();
@@ -279,7 +281,7 @@ async function exportVentes(supabase: any, restaurant: any, stamp: string, dateL
       .eq("restaurant_id", restaurant.id)
       .order("month", { ascending: false }),
     supabase.from("recipes").select("id, name, total_cost, menu_price, yield_portions").eq("restaurant_id", restaurant.id),
-    supabase.from("ingredients").select("id, name, selling_price, pack_price").eq("restaurant_id", restaurant.id).not("selling_price", "is", null),
+    supabase.from("ingredients").select("id, name, selling_price, pack_price, cmup, cost_per_base_unit").eq("restaurant_id", restaurant.id).not("selling_price", "is", null),
   ]);
   const recMap = new Map((recipes ?? []).map((x: any) => [x.id, x]));
   const prodMap = new Map((products ?? []).map((x: any) => [x.id, x]));
@@ -304,7 +306,7 @@ async function exportVentes(supabase: any, restaurant: any, stamp: string, dateL
         cost = Number(rec.total_cost ?? 0) / (Number(rec.yield_portions) || 1);
       } else if (l.ingredient_id && prodMap.has(l.ingredient_id)) {
         const prod: any = prodMap.get(l.ingredient_id);
-        name = prod.name; price = Number(prod.selling_price ?? 0); cost = Number(prod.pack_price ?? 0);
+        name = prod.name; price = Number(prod.selling_price ?? 0); cost = Number(prod.cmup ?? prod.cost_per_base_unit ?? 0);
       } else continue;
       const qty = Number(l.qty_sold ?? 0);
       const ca = qty * price, cm = qty * cost;

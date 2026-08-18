@@ -18,7 +18,7 @@ type SimpleProduct = {
   id: string;
   name: string;
   category: string;
-  pack_price: number;
+  pack_price: number; cmup?: number | null; cost_per_base_unit?: number | null;
   selling_price: number;
   unit: string;
 };
@@ -77,7 +77,7 @@ export default function MenuClient({ restaurantId: _restaurantId, targetFoodCost
       name: p.name,
       category: p.category || "Autre",
       type: "product",
-      cost: p.pack_price,
+      cost: Number(p.cmup ?? p.cost_per_base_unit ?? 0),
       price: p.selling_price ?? null,
     }));
     return [...fromRecipes, ...fromProducts];

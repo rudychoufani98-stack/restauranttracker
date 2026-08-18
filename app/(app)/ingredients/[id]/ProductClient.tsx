@@ -135,7 +135,12 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
     const secSizeNum = parseFloat(secSize) || 0;
     if (secLabel.trim() && secSizeNum <= 0) return setError("Conditionnement secondaire : indique sa taille (ex. 0,75).");
     if (!secLabel.trim() && secSizeNum > 0) return setError("Conditionnement secondaire : indique son nom (ex. bouteille).");
-    const validArticles = articles.filter((a) => parseFloat(a.pack_price) >= 0 && parseFloat(a.unit_size) > 0);
+    // Ancien produit en g/ml qu'on passe en kg/L : les tailles saisies étaient
+    // en g/ml → on les divise par 1000 pour rester honnête (1000 g → 1 kg).
+    const legacyRescale =
+      (ingredient.unit === "g" && unit === "kg") || (ingredient.unit === "ml" && unit === "l") ? 1000 : 1;
+    const sizeOf = (a: Article) => (parseFloat(a.unit_size) || 0) / legacyRescale;
+    const validArticles = articles.filter((a) => parseFloat(a.pack_price) >= 0 && sizeOf(a) > 0);
     setSaving(true);
 
     // Reference article = cheapest priced one (drives the fallback cost +
@@ -143,7 +148,7 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
     const priced = validArticles.filter((a) => (parseFloat(a.pack_price) || 0) > 0);
     const pref = (priced.length > 0 ? [...priced].sort((a, b) => articleGross(a) - articleGross(b))[0] : validArticles[0]);
     const pUnits = pref ? parseFloat(pref.pack_units) || 1 : 1;
-    const uSize = pref ? parseFloat(pref.unit_size) || 0 : 0;
+    const uSize = pref ? sizeOf(pref) : 0;
     const pPrice = pref ? parseFloat(pref.pack_price) || 0 : 0;
     const vat = pref ? parseFloat(pref.vat_rate) || 0 : 0;
     const cost_per_base_unit = pref ? calcCostPerBase(pPrice, pUnits, uSize, unit) : 0;
@@ -158,7 +163,7 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
       selling_price: sellingPrice !== "" ? parseFloat(sellingPrice) : null,
       allergens,
       secondary_unit_label: secLabel.trim() || null,
-      secondary_unit_size: secSizeNum > 0 ? secSizeNum : null,
+      secondary_unit_size: secSizeNum > 0 ? secSizeNum / legacyRescale : null,
       updated_at: new Date().toISOString(),
     };
     const { error: err } = await supabase.from("ingredients").update(payload).eq("id", ingredient.id);
@@ -171,7 +176,7 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
       supplier_id: a.supplier_id || null,
       supplier_reference: a.supplier_reference || null,
       pack_units: parseFloat(a.pack_units) || 1,
-      unit_size: parseFloat(a.unit_size) || 1,
+      unit_size: sizeOf(a) || 1,
       unit,
       pack_price: parseFloat(a.pack_price) || 0,
       vat_rate: parseFloat(a.vat_rate) || 0,

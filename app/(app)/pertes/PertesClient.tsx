@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Trash2, Plus, Loader2, Check, X, Clock, TrendingDown } from "lucide-react";
 import clsx from "clsx";
+import { qtyFromDisplay, perDisplayUnit } from "@/lib/ingredient-helpers";
 
 type Ingredient = {
   id: string;
@@ -52,12 +53,6 @@ const REASON_BAR: Record<string, string> = {
   "Vol / inconnu": "bg-on-surface-variant/40",
 };
 
-// Convert a quantity in the ingredient's purchase unit to base units (g/ml/unit)
-function toBase(qty: number, unit: string): number {
-  if (unit === "kg" || unit === "l") return qty * 1000;
-  return qty;
-}
-
 interface Props {
   restaurantId: string;
   ingredients: Ingredient[];
@@ -103,7 +98,9 @@ export default function PertesClient({ restaurantId, ingredients, recentLosses }
     const ing = ingMap.get(ingredientId)!;
 
     setSaving(true);
-    const baseQty = toBase(q, ing.unit);
+    // La saisie est en kg/L/pièce (unité d'affichage) → base g/ml/pièce,
+    // y compris pour les anciens produits encore en « g »/« ml ».
+    const baseQty = qtyFromDisplay(q, ing.unit);
     const cmup = Number(ing.cmup ?? ing.cost_per_base_unit ?? 0);
     const currentStock = Number(ing.stock_qty ?? 0);
     const newStock = Math.max(0, currentStock - baseQty);
@@ -146,9 +143,9 @@ export default function PertesClient({ restaurantId, ingredients, recentLosses }
     const n = (x: number) => Number(x.toFixed(3)).toLocaleString("fr-FR", { maximumFractionDigits: 3 });
     if (unit === "kg" || unit === "g") return `${n(baseQty / 1000)} kg`;
     if (unit === "l" || unit === "ml") return `${n(baseQty / 1000)} L`;
-    return `${n(baseQty)} ${unit === "unit" ? "u" : unit}`;
+    return `${n(baseQty)} ${unit === "unit" ? "pce" : unit}`;
   }
-  const displayUnitLabel = (u: string) => (u === "g" || u === "kg" ? "kg" : u === "ml" || u === "l" ? "L" : u === "unit" ? "u" : u);
+  const displayUnitLabel = (u: string) => (u === "g" || u === "kg" ? "kg" : u === "ml" || u === "l" ? "L" : u === "unit" || u === "piece" ? "pce" : u);
 
   return (
     <div className="p-8 max-w-5xl mx-auto">
@@ -224,7 +221,7 @@ export default function PertesClient({ restaurantId, ingredients, recentLosses }
                 </select>
                 {selected && (
                   <p className="text-xs text-gray-400 mt-1">
-                    Stock actuel : {fmtQty(Number(selected.stock_qty ?? 0), selected.unit)} · CMUP €{Number(selected.cmup ?? selected.cost_per_base_unit ?? 0).toFixed(4)}
+                    Stock actuel : {fmtQty(Number(selected.stock_qty ?? 0), selected.unit)} · CMUP €{perDisplayUnit(Number(selected.cmup ?? selected.cost_per_base_unit ?? 0), selected.unit).toFixed(2)} / {displayUnitLabel(selected.unit)}
                   </p>
                 )}
               </div>
@@ -237,7 +234,7 @@ export default function PertesClient({ restaurantId, ingredients, recentLosses }
                   className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition" />
                 {selected && qty && !isNaN(parseFloat(qty)) && (
                   <p className="text-xs text-red-500 mt-1">
-                    Coût de la perte : €{(toBase(parseFloat(qty), selected.unit) * Number(selected.cmup ?? selected.cost_per_base_unit ?? 0)).toFixed(2)}
+                    Coût de la perte : €{(qtyFromDisplay(parseFloat(qty), selected.unit) * Number(selected.cmup ?? selected.cost_per_base_unit ?? 0)).toFixed(2)}
                   </p>
                 )}
               </div>

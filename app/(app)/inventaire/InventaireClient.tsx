@@ -67,9 +67,16 @@ type CountRecipe = {
   recipe_lines: { ingredient_id: string | null; sub_recipe_id: string | null; quantity: number; unit: string }[];
 };
 // Libellé de saisie pour une MEP/recette : son unité de rendement.
+// FIDÈLE à l'unité de rendement (la saisie est convertie avec la même unité :
+// « g » reste g, sinon on compterait 1000× trop).
 function yieldLabel(r: CountRecipe): string {
   const u = r.yield_unit || "portion";
-  return u === "kg" || u === "g" ? "kg" : u === "l" || u === "ml" ? "L" : "portion(s)";
+  if (u === "kg") return "kg";
+  if (u === "g") return "g";
+  if (u === "l") return "L";
+  if (u === "ml") return "ml";
+  if (u === "piece") return "pièce(s)";
+  return "portion(s)";
 }
 type Kind = "food" | "fournitures";
 type InventorySession = {
@@ -88,10 +95,6 @@ interface Props {
   fournitureIds: string[];
   recipes?: CountRecipe[];
 }
-
-const UNIT_LABELS: Record<string, string> = {
-  g: "g", kg: "g", ml: "ml", l: "ml", unit: "u", piece: "u",
-};
 
 // Pretty number: up to 3 decimals, no trailing zeros.
 function fmtNum(n: number): string {
@@ -147,10 +150,6 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
   const [mepCounts, setMepCounts] = useState<Record<string, string>>({});
   const [validatingCount, setValidatingCount] = useState(false);
   const [countDone, setCountDone] = useState<string | null>(null);
-  const [adjustId, setAdjustId] = useState<string | null>(null);
-  const [adjustQty, setAdjustQty] = useState("");
-  const [adjustNotes, setAdjustNotes] = useState("");
-  const [saving, setSaving] = useState(false);
   const [localIngredients, setLocalIngredients] = useState<Ingredient[]>(ingredients);
   const [filterCat, setFilterCat] = useState("Toutes");
   const [search, setSearch] = useState("");
@@ -187,37 +186,6 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
   }, [localIngredients]);
 
   const lowStockCount = localIngredients.filter(needsReorder).length;
-
-  async function handleAdjust(ing: Ingredient) {
-    const typed = parseFloat(adjustQty);
-    if (isNaN(typed) || typed < 0) return;
-    const newQty = displayToBase(typed, ing.unit); // user typed in kg/L → store base
-    setSaving(true);
-
-    const currentQty = Number(ing.stock_qty ?? 0);
-    const diff = newQty - currentQty; // positive = ajout, negative = retrait
-    const cmup = Number(ing.cmup ?? ing.cost_per_base_unit ?? 0);
-
-    await supabase.from("ingredients").update({ stock_qty: newQty }).eq("id", ing.id);
-
-    await supabase.from("stock_movements").insert({
-      restaurant_id: restaurantId,
-      ingredient_id: ing.id,
-      movement_type: "adjustment",
-      qty: Math.abs(diff),
-      unit_cost: cmup,
-      reference_type: "adjustment",
-      notes: adjustNotes || `Inventaire: ${currentQty} → ${newQty}`,
-    });
-
-    setLocalIngredients((prev) =>
-      prev.map((i) => i.id === ing.id ? { ...i, stock_qty: newQty } : i)
-    );
-    setAdjustId(null);
-    setAdjustQty("");
-    setAdjustNotes("");
-    setSaving(false);
-  }
 
   // ---- MEP / recettes comptables (vue alimentaire uniquement) ----
   const countableMeps = useMemo(() => recipes.filter((r) => r.is_prep), [recipes]);
@@ -368,8 +336,8 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
       if (finalize && diff !== 0) {
         updates.push({ id: ing.id, qty: real, prevQty: ing.stock_qty ?? null });
         movements.push(diff < 0
-          ? { restaurant_id: restaurantId, ingredient_id: ing.id, movement_type: "loss", qty: Math.abs(diff), unit_cost: cmup, reference_type: "inventory", reference_id: activeSessionId, loss_reason: "Écart inventaire", notes: `Inventaire : ${theo} → ${real}` }
-          : { restaurant_id: restaurantId, ingredient_id: ing.id, movement_type: "adjustment", qty: diff, unit_cost: cmup, reference_type: "inventory", reference_id: activeSessionId, notes: `Inventaire : ${theo} → ${real}` });
+          ? { restaurant_id: restaurantId, ingredient_id: ing.id, movement_type: "loss", qty: Math.abs(diff), unit_cost: cmup, reference_type: "inventory", reference_id: activeSessionId, loss_reason: "Écart inventaire", notes: `Inventaire : ${formatQty(theo, ing.unit)} → ${formatQty(real, ing.unit)}` }
+          : { restaurant_id: restaurantId, ingredient_id: ing.id, movement_type: "adjustment", qty: diff, unit_cost: cmup, reference_type: "inventory", reference_id: activeSessionId, notes: `Inventaire : ${formatQty(theo, ing.unit)} → ${formatQty(real, ing.unit)}` });
       }
     }
 
@@ -846,16 +814,18 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
                             const u = l.unit ?? "unit";
                             const ec = Number(l.ecart ?? 0);
                             const ev = Number(l.ecart_value ?? 0);
+                            // Ligne MEP / recette : pas de théorique ni d'écart (comptage informatif)
+                            const isRecipeLine = !!l.recipe_id || l.theoretical_qty === null;
                             return (
                               <tr key={i}>
                                 <td className="py-1.5 text-on-surface-variant">{l.ingredient_name ?? "—"}</td>
-                                <td className="py-1.5 text-right text-on-surface-variant/60 tabular-nums">{formatQty(Number(l.theoretical_qty ?? 0), u)}</td>
+                                <td className="py-1.5 text-right text-on-surface-variant/60 tabular-nums">{isRecipeLine ? "—" : formatQty(Number(l.theoretical_qty ?? 0), u)}</td>
                                 <td className="py-1.5 text-right text-on-surface-variant tabular-nums">{formatQty(Number(l.counted_qty ?? 0), u)}</td>
                                 <td className={clsx("py-1.5 text-right font-medium tabular-nums", ec < 0 ? "text-red" : ec > 0 ? "text-primary" : "text-on-surface-variant/40")}>
-                                  {ec === 0 ? "—" : `${ec > 0 ? "+" : "-"}${formatQty(Math.abs(ec), u)}`}
+                                  {isRecipeLine || ec === 0 ? "—" : `${ec > 0 ? "+" : "-"}${formatQty(Math.abs(ec), u)}`}
                                 </td>
                                 <td className={clsx("py-1.5 text-right tabular-nums", ev < 0 ? "text-red" : ev > 0 ? "text-primary" : "text-on-surface-variant/40")}>
-                                  {ev === 0 ? "—" : `${ev < 0 ? "-" : "+"}€${Math.abs(ev).toFixed(2)}`}
+                                  {isRecipeLine || ev === 0 ? "—" : `${ev < 0 ? "-" : "+"}€${Math.abs(ev).toFixed(2)}`}
                                 </td>
                               </tr>
                             );

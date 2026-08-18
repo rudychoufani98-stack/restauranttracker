@@ -52,9 +52,9 @@ export function unitShort(unit: string): string {
   return unit === "unit" || unit === "piece" ? "pièce" : unit === "l" ? "L" : unit;
 }
 
-// Friendly display unit: weights → kg, volumes → L, else the unit itself.
+// Friendly display unit: weights → kg, volumes → L, pieces → pce.
 export function displayUnitLabel(unit: string): string {
-  return unit === "g" || unit === "kg" ? "kg" : unit === "ml" || unit === "l" ? "L" : unit;
+  return unit === "g" || unit === "kg" ? "kg" : unit === "ml" || unit === "l" ? "L" : unit === "unit" || unit === "piece" ? "pce" : unit;
 }
 
 // Convert a per-base-unit cost (€/g or €/ml) to a per-display-unit cost (€/kg or €/L).
