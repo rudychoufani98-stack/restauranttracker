@@ -763,12 +763,13 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                             window.alert(`Impossible de modifier : ${tErr.message}`);
                           }
                         }}
-                        title={recipe.countable_in_inventory ? "Retirée du comptage d'inventaire au prochain clic" : "Ajouter au comptage d'inventaire"}
-                        className={clsx("p-2 rounded-lg transition",
+                        title={recipe.countable_in_inventory ? "Cette recette est comptée à l'inventaire — clique pour la retirer" : "Ajouter au comptage d'inventaire"}
+                        className={clsx("flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-2xs font-bold uppercase tracking-wide transition whitespace-nowrap",
                           recipe.countable_in_inventory
-                            ? "text-primary bg-emerald-50 hover:bg-emerald-100"
-                            : "text-on-surface-variant/50 hover:bg-surface-container-high hover:text-primary")}>
-                        <ClipboardCheck size={14} />
+                            ? "text-on-primary bg-primary hover:bg-primary-container"
+                            : "text-on-surface-variant/60 border border-outline-variant/40 hover:bg-surface-container-low hover:text-primary")}>
+                        <ClipboardCheck size={13} />
+                        {recipe.countable_in_inventory ? "Inventaire ✓" : "+ Inventaire"}
                       </button>
                     )}
                     <button onClick={(e) => { e.stopPropagation(); handleDelete(recipe.id); }}
