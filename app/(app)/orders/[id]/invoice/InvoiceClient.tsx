@@ -108,7 +108,9 @@ export default function InvoiceClient({ po, deliveryNote, deliveryNotes, restaur
     setLines((p) => { const n = [...p]; n[i] = { ...n[i], invoice_price: val }; return n; });
   }
   function updateQty(i: number, val: string) {
-    setLines((p) => { const n = [...p]; n[i] = { ...n[i], qty: val }; return n; });
+    // Une quantité négative retirerait du stock sans que rien ne l'indique.
+    const clean = val === "" || parseFloat(val) >= 0 ? val : "0";
+    setLines((p) => { const n = [...p]; n[i] = { ...n[i], qty: clean }; return n; });
   }
 
   const linesTotal = lines.reduce((s, l) => s + (parseFloat(l.invoice_price) || 0) * (parseFloat(l.qty) || 0), 0);
@@ -116,8 +118,20 @@ export default function InvoiceClient({ po, deliveryNote, deliveryNotes, restaur
   const total = linesTotal + misc;
 
   async function handleValidate() {
-    setSaving(true);
     setError(null);
+
+    if (!invoiceNumber.trim() && !window.confirm(
+      "Aucun numéro de facture saisi.\n\nContinuer sans numéro ? (il sera difficile de retrouver ce document plus tard)"
+    )) return;
+
+    // L'action réajuste stock, coût moyen ET prix produits : on l'annonce.
+    if (!window.confirm(
+      `${isEdit ? "Enregistrer les corrections" : "Valider la facture"} ?\n\n` +
+      `Total HT €${total.toFixed(2)}\n\n` +
+      "Le stock sera réajusté par différence, et les prix d'achat + coût moyen (CMUP) des produits seront mis à jour au prix facturé."
+    )) return;
+
+    setSaving(true);
 
     // 1. Create the invoice as a DRAFT (validated only once everything is
     //    written) so a mid-flight failure never leaves an applied-looking
@@ -277,15 +291,34 @@ export default function InvoiceClient({ po, deliveryNote, deliveryNotes, restaur
       }
 
       // 7. Everything written: validate the invoice, then the PO.
-      await supabase.from("invoices").update({ validated: true, validated_at: new Date().toISOString() }).eq("id", invoice.id);
-      await supabase.from("purchase_orders").update({ status: "Invoiced" }).eq("id", po.id);
+      //    Si la validation échoue, la facture resterait un brouillon : la
+      //    prochaine visite repartirait de la réception et rajouterait tout.
+      const { error: valErr } = await supabase.from("invoices")
+        .update({ validated: true, validated_at: new Date().toISOString() }).eq("id", invoice.id);
+      if (valErr) {
+        for (const a of applied) await supabase.from("ingredients").update(a.prev).eq("id", a.id);
+        return abort(`Validation de la facture impossible : ${valErr.message}. Les prix et le stock ont été remis comme avant — réessaie.`);
+      }
+      const { error: poErr } = await supabase.from("purchase_orders").update({ status: "Invoiced" }).eq("id", po.id);
 
-      // Recalculate recipes using these ingredients (best-effort).
-      await fetch("/api/recalculate-recipes", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ restaurantId, changedIngredientIds: allIds }),
-      }).catch(() => {});
+      // Recalculate recipes using these ingredients.
+      let recalcOk = true;
+      try {
+        const r = await fetch("/api/recalculate-recipes", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ restaurantId, changedIngredientIds: allIds }),
+        });
+        recalcOk = r.ok;
+      } catch { recalcOk = false; }
 
+      if (poErr || !recalcOk) {
+        setSaving(false);
+        window.alert(
+          "La facture est enregistrée et le stock est à jour." +
+          (poErr ? `\n\n• Le statut de la commande n'a pas suivi (${poErr.message}) — recharge la page, ne re-valide pas.` : "") +
+          (!recalcOk ? "\n\n• Le recalcul des coûts de recettes a échoué : lance « Tout recalculer » depuis les recettes." : "")
+        );
+      }
       router.push("/orders?invoiced=1");
     } catch (e: any) {
       return abort(e.message);

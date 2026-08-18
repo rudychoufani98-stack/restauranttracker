@@ -13,9 +13,13 @@ export default function ResetPasswordPage() {
     e.preventDefault();
     setError(null);
     setLoading(true);
-    const result = await requestPasswordReset(new FormData(e.currentTarget));
-    if (result?.error) setError(result.error);
-    else setSent(true);
+    try {
+      const result = await requestPasswordReset(new FormData(e.currentTarget));
+      if (result?.error) setError(result.error);
+      else setSent(true);
+    } catch {
+      setError("Connexion au serveur impossible. Vérifie ta connexion internet et réessaie.");
+    }
     setLoading(false);
   }
 

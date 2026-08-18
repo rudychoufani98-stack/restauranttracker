@@ -32,7 +32,12 @@ export async function createCustomer(formData: FormData) {
     email, password, email_confirm: true,
   });
   if (userErr || !created?.user) {
-    redirect("/admin?err=" + encodeURIComponent("Création du compte impossible : " + (userErr?.message ?? "erreur inconnue")));
+    // Traduire le cas le plus fréquent au lieu d'afficher le message anglais brut.
+    const raw = userErr?.message ?? "erreur inconnue";
+    const msg = /already been registered|already exists/i.test(raw)
+      ? "Cet email a déjà un compte sur la plateforme — utilise une autre adresse."
+      : "Création du compte impossible : " + raw;
+    redirect("/admin?err=" + encodeURIComponent(msg));
   }
 
   // 2. Son restaurant vierge
@@ -42,7 +47,8 @@ export async function createCustomer(formData: FormData) {
     redirect("/admin?err=" + encodeURIComponent("Création du restaurant impossible : " + restErr.message));
   }
 
-  redirect("/admin?ok=" + encodeURIComponent(`Client « ${name} » créé. Transmets-lui ses identifiants : ${email} / le mot de passe choisi.`));
+  // L'email du client ne figure pas dans l'URL (historique + journaux serveur).
+  redirect("/admin?ok=" + encodeURIComponent(`Client « ${name} » créé. Transmets-lui l'email et le mot de passe provisoire que tu viens de saisir.`));
 }
 
 // Ouvre l'interface d'un client : toute l'app bascule sur son restaurant.
@@ -50,12 +56,17 @@ export async function openRestaurant(formData: FormData) {
   if (!(await isAppAdmin())) redirect("/dashboard");
   const id = String(formData.get("restaurant_id") ?? "");
   if (!id) redirect("/admin");
-  cookies().set(ADMIN_RESTAURANT_COOKIE, id, { httpOnly: true, sameSite: "lax", path: "/" });
+  cookies().set(ADMIN_RESTAURANT_COOKIE, id, {
+    httpOnly: true, sameSite: "lax", path: "/",
+    secure: process.env.NODE_ENV === "production", // cookie d'impersonation : jamais en clair
+    maxAge: 60 * 60 * 8, // 8 h : ne reste pas ouvert indéfiniment
+  });
   redirect("/dashboard");
 }
 
 // Revient sur ton propre compte.
 export async function closeRestaurant() {
+  if (!(await isAppAdmin())) redirect("/dashboard"); // symétrie avec openRestaurant
   cookies().delete(ADMIN_RESTAURANT_COOKIE);
   redirect("/admin");
 }

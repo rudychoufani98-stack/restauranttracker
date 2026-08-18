@@ -54,10 +54,15 @@ export const getRestaurant = cache(async () => {
     if (data) return data;
   }
 
+  // maybeSingle + limit(1) : si un compte finit avec deux restaurants (ancien
+  // bug d'onboarding), .single() renvoyait une erreur et l'utilisateur était
+  // renvoyé indéfiniment vers l'onboarding — donc bloqué hors de l'app.
   const { data } = await supabase
     .from("restaurants")
     .select("*")
     .eq("owner_id", user.id)
-    .single();
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
   return data;
 });

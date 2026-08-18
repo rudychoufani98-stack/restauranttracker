@@ -3,7 +3,8 @@ import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser, isAppAdmin, ADMIN_RESTAURANT_COOKIE } from "@/lib/auth";
 import { openRestaurant, closeRestaurant, createCustomer } from "./actions";
-import { Building2, Package, ShoppingCart, ChefHat, ArrowRight, ArrowLeft, Crown, UserPlus } from "lucide-react";
+import { Building2, Package, ShoppingCart, ChefHat, ArrowLeft, Crown, UserPlus } from "lucide-react";
+import { OpenClientForm, CreateCustomerSubmit } from "./AdminForms";
 
 export const dynamic = "force-dynamic";
 
@@ -105,9 +106,7 @@ export default async function AdminPage({ searchParams }: { searchParams?: { ok?
               <input name="password" type="text" required minLength={8} placeholder="8 caractères min."
                 className="w-full px-3 py-2.5 text-sm bg-surface-container-low border-none rounded-xl outline-none focus:ring-2 focus:ring-primary/20" />
             </div>
-            <button className="flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary text-sm font-semibold rounded-xl hover:bg-primary-container transition shadow-lg active:scale-[0.98]">
-              <UserPlus size={15} /> Créer le client
-            </button>
+            <CreateCustomerSubmit />
             <p className="w-full text-2xs text-on-surface-variant/50 mt-1">
               Son espace est créé vierge. Transmets-lui son email + mot de passe provisoire — il pourra le changer via « Mot de passe oublié ? ».
             </p>
@@ -139,12 +138,7 @@ export default async function AdminPage({ searchParams }: { searchParams?: { ok?
                   <span className="flex items-center gap-1.5" title="Commandes"><ShoppingCart size={14} className="text-on-surface-variant/50" /> {r.nOrders}</span>
                 </div>
               </div>
-              <form action={openRestaurant} className="shrink-0">
-                <input type="hidden" name="restaurant_id" value={r.id} />
-                <button className="flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary text-sm font-semibold rounded-xl hover:bg-primary-container transition shadow-lg active:scale-[0.98]">
-                  Ouvrir <ArrowRight size={15} />
-                </button>
-              </form>
+              <OpenClientForm action={openRestaurant} restaurantId={r.id} name={r.name} />
             </div>
           ))}
         </div>

@@ -2,7 +2,7 @@
 
 import { useState, Fragment } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { buildOrderMailto, defaultPackType } from "@/lib/order-email";
 import { unitShort } from "@/lib/ingredient-helpers";
@@ -191,6 +191,7 @@ interface Props {
 
 export default function OrdersClient({ restaurantId, restaurantName, initialOrders, suppliers, ingredients, orderEvents = [], hidePrices = false }: Props) {
   const supabase = createClient();
+  const router = useRouter();
   const params = useSearchParams();
   const flash = params.get("sent") ? "Commande envoyée ✓"
     : params.get("validated") ? "Réception validée ✓ — stock mis à jour"
@@ -222,6 +223,8 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
 
   async function handleRestock() {
     setRestocking(true);
+    const echecs: string[] = [];
+    let crees = 0;
     for (const group of restockGroups) {
       const poLines = group.items.map((ing) => {
         // Colisage ET prix du fournisseur de ce bon (cohérents entre eux)
@@ -233,29 +236,33 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
       const { data: po, error: poErr } = await supabase.from("purchase_orders").insert({
         restaurant_id: restaurantId, supplier_id: group.supplier_id, status: "Draft", expected_total: expected,
       }).select().single();
-      if (poErr || !po) continue;
-      await supabase.from("purchase_order_lines").insert(poLines.map((l) => ({ po_id: po.id, ...l })));
+      if (poErr || !po) { echecs.push(`${group.supplierName} : ${poErr?.message ?? "création refusée"}`); continue; }
+      const { error: linesErr } = await supabase.from("purchase_order_lines").insert(poLines.map((l) => ({ po_id: po.id, ...l })));
+      if (linesErr) {
+        // Une commande sans ligne serait inutilisable : on la retire.
+        await supabase.from("purchase_orders").delete().eq("id", po.id);
+        echecs.push(`${group.supplierName} : ${linesErr.message}`);
+        continue;
+      }
+      crees++;
     }
-    const { data: updated } = await supabase
-      .from("purchase_orders")
-      .select("*, suppliers(name), purchase_order_lines(*, ingredients(name, unit))")
-      .eq("restaurant_id", restaurantId)
-      .order("created_at", { ascending: false });
-    setOrders(updated ?? []);
     setRestocking(false);
     setShowRestock(false);
+    if (echecs.length > 0) {
+      window.alert(`${crees} bon(s) créé(s).\n\nÉchecs :\n${echecs.map((e) => `• ${e}`).join("\n")}`);
+    }
+    // router.refresh() recharge la liste avec TOUTES ses données (réceptions,
+    // factures) — une requête partielle ici faisait disparaître ces infos.
+    router.refresh();
   }
 
   async function handleMarkSent(id: string) {
     setSending(id);
-    await supabase.from("purchase_orders").update({ status: "Sent", sent_at: new Date().toISOString() }).eq("id", id);
-    const { data: updated } = await supabase
-      .from("purchase_orders")
-      .select("*, suppliers(name), purchase_order_lines(*, ingredients(name, unit))")
-      .eq("restaurant_id", restaurantId)
-      .order("created_at", { ascending: false });
-    setOrders(updated ?? []);
+    const { error } = await supabase.from("purchase_orders")
+      .update({ status: "Sent", sent_at: new Date().toISOString() }).eq("id", id);
     setSending(null);
+    if (error) { window.alert(`Le statut n'a pas pu être mis à jour : ${error.message}`); return; }
+    router.refresh();
   }
 
   // Opens the user's own email client (Gmail, Outlook…) with the order
@@ -370,12 +377,22 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
         }
       }
 
-      await supabase.from("purchase_orders").update({ status: "Cancelled" }).eq("id", po.id);
+      const { error: stErr } = await supabase.from("purchase_orders").update({ status: "Cancelled" }).eq("id", po.id);
+      if (stErr) {
+        // Sans ce contrôle, l'écran affichait « Annulée » alors que la commande
+        // restait active en base : un 2ᵉ clic retirait le stock une 2ᵉ fois.
+        window.alert(
+          `Le stock a été retiré, mais le statut « Annulée » n'a pas pu être enregistré (${stErr.message}).\n\n` +
+          "Recharge la page et réessaie l'annulation : le stock ne sera pas retiré deux fois si tu ne cliques pas à nouveau avant le rechargement."
+        );
+        return;
+      }
       supabase.from("order_events").insert({
         restaurant_id: restaurantId, po_id: po.id, type: "cancelled",
         detail: applied ? "Stock retiré" : null,
       }).then(() => {}, () => {});
       setOrders((p) => p.map((o) => o.id === po.id ? { ...o, status: "Cancelled" } : o));
+      router.refresh();
     } finally {
       setSending(null);
     }
@@ -391,7 +408,8 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
     }
     const label = o?.suppliers?.name ? `la commande « ${o.suppliers.name} »` : "cette commande";
     if (!window.confirm(`Supprimer ${label} ? Cette action est irréversible.`)) return;
-    await supabase.from("purchase_orders").delete().eq("id", id);
+    const { error } = await supabase.from("purchase_orders").delete().eq("id", id);
+    if (error) { window.alert(`Suppression impossible : ${error.message}`); return; }
     setOrders((p) => p.filter((o) => o.id !== id));
   }
 
@@ -745,7 +763,16 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
                                         <Ban size={14} />
                                       </button>
                                     )}
-                                    {isExpanded ? <ChevronUp size={16} className="text-on-surface-variant/40" /> : <ChevronDown size={16} className="text-on-surface-variant/40" />}
+                                    {/* Vrai bouton : le chevron était dans une
+                                        zone qui bloquait le clic. */}
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); setExpandedId(isExpanded ? null : order.id); }}
+                                      title={isExpanded ? "Masquer le détail" : "Voir le détail"}
+                                      aria-label={isExpanded ? "Masquer le détail de la commande" : "Voir le détail de la commande"}
+                                      aria-expanded={isExpanded}
+                                      className="p-1.5 rounded-lg text-on-surface-variant/40 hover:bg-surface-container-high hover:text-primary transition">
+                                      {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                    </button>
                                   </div>
                                 </td>
                               </tr>

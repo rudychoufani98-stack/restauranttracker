@@ -191,6 +191,13 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
     if (yp <= 0) return setError("Le rendement doit être supérieur à 0.");
     const valid = lines.filter((l) => l.ingredient_id || l.sub_recipe_id);
     if (valid.length === 0) return setError("Ajoute au moins un ingrédient ou une mise en place.");
+    // Une ligne sans quantité enverrait NaN (quantité nulle en base).
+    const sansQte = valid.find((l) => !(parseFloat(l.quantity) > 0));
+    if (sansQte) {
+      const nom = ingredients.find((i) => i.id === sansQte.ingredient_id)?.name
+        ?? allRecipes.find((r) => r.id === sansQte.sub_recipe_id)?.name ?? "une ligne";
+      return setError(`Indique une quantité pour « ${nom} » (ou retire la ligne).`);
+    }
     setSaving(true);
 
     const { error: err } = await supabase.from("recipes").update({
@@ -199,23 +206,45 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
     }).eq("id", recipe.id);
     if (err) { setError(err.message); setSaving(false); return; }
 
-    await supabase.from("recipe_lines").delete().eq("recipe_id", recipe.id);
-    await supabase.from("recipe_lines").insert(valid.map((l) => ({
+    // Réécriture des lignes : on garde les anciennes pour pouvoir les remettre.
+    const previous = recipe.recipe_lines.map((l) => ({
+      recipe_id: recipe.id, ingredient_id: l.ingredient_id, sub_recipe_id: l.sub_recipe_id,
+      quantity: l.quantity, unit: l.unit,
+    }));
+    const { error: delErr } = await supabase.from("recipe_lines").delete().eq("recipe_id", recipe.id);
+    if (delErr) {
+      setError(`Mise à jour des ingrédients impossible : ${delErr.message}. Rien n'a été modifié.`);
+      setSaving(false); return;
+    }
+    const { error: insErr } = await supabase.from("recipe_lines").insert(valid.map((l) => ({
       recipe_id: recipe.id,
       ingredient_id: l.type === "ingredient" ? l.ingredient_id : null,
       sub_recipe_id: l.type === "sub_recipe" ? l.sub_recipe_id : null,
       quantity: parseFloat(l.quantity), unit: l.unit,
     })));
+    if (insErr) {
+      if (previous.length > 0) await supabase.from("recipe_lines").insert(previous);
+      setError(`Enregistrement des ingrédients impossible : ${insErr.message}. La version précédente a été rétablie.`);
+      setSaving(false); return;
+    }
 
     // Authoritative recompute (CMUP + allergens)
-    await fetch("/api/recalculate-recipes", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ restaurantId }),
-    }).catch(() => {});
+    let recalcOk = true;
+    try {
+      const res = await fetch("/api/recalculate-recipes", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ restaurantId }),
+      });
+      recalcOk = res.ok;
+    } catch { recalcOk = false; }
 
     setSaving(false);
-    setToast("Enregistré ✓");
-    setTimeout(() => setToast(null), 2500);
+    if (!recalcOk) {
+      setError("Fiche enregistrée, mais le recalcul des coûts a échoué. Utilise « Tout recalculer » sur la liste des recettes.");
+    } else {
+      setToast("Enregistré ✓");
+      setTimeout(() => setToast(null), 2500);
+    }
     router.refresh();
   }
 
@@ -260,7 +289,9 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
         <div className="flex gap-2 max-w-xs">
           <input type="number" min="0" step="any" value={yieldPortions} onChange={(e) => setYieldPortions(e.target.value)} className={clsx(inputCls, "w-28")} />
           <select value={yieldUnit} onChange={(e) => setYieldUnit(e.target.value)} className={inputCls}>
-            {YIELD_UNITS.map((u) => <option key={u.value} value={u.value}>{u.label}</option>)}
+            {/* Un plat VENDU se compte en portions/pièces (voir RecipesClient) */}
+            {(recipe.is_prep ? YIELD_UNITS : YIELD_UNITS.filter((u) => u.value === "portion" || u.value === "piece"))
+              .map((u) => <option key={u.value} value={u.value}>{u.label}</option>)}
           </select>
         </div>
       </Section>
@@ -346,7 +377,7 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
                   {subUnits.map((u) => <option key={u} value={u}>{u === "portion" ? "port." : u}</option>)}
                 </select>
                 <div className="w-16 text-right text-xs text-gray-500 pt-2.5">€{calcLineCost(line, ingredients, allRecipes).toFixed(3)}</div>
-                <button onClick={() => removeLine(idx)} className="pt-2 text-gray-300 hover:text-red-400 transition"><Trash2 size={14} /></button>
+                <button onClick={() => removeLine(idx)} title="Retirer cette ligne" aria-label="Retirer cette ligne" className="pt-2 text-gray-300 hover:text-red-400 transition"><Trash2 size={14} /></button>
               </div>
             );
           })}

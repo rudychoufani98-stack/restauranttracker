@@ -22,6 +22,20 @@ export default async function ReceivePage({ params }: { params: { id: string } }
 
   if (!po) return notFound();
 
+  // Déjà reçu sur cette commande (réceptions validées) : la 2ᵉ réception doit
+  // proposer le RESTE, sinon un clic ajouterait toute la commande une 2ᵉ fois.
+  const { data: priorDNs } = await supabase
+    .from("delivery_notes")
+    .select("delivery_note_lines(ingredient_id, quantity_received)")
+    .eq("po_id", params.id)
+    .eq("validated", true);
+  const alreadyReceived: Record<string, number> = {};
+  for (const dn of priorDNs ?? []) {
+    for (const l of (dn as any).delivery_note_lines ?? []) {
+      if (l.ingredient_id) alreadyReceived[l.ingredient_id] = (alreadyReceived[l.ingredient_id] ?? 0) + Number(l.quantity_received ?? 0);
+    }
+  }
+
   // Articles of THIS supplier — used both to filter the "produit reçu" picker and
   // to label purchase quantities in the order conditionnement (colis, caisse…).
   const { data: supplierArticles } = await supabase
@@ -56,5 +70,5 @@ export default async function ReceivePage({ params }: { params: { id: string } }
     : supplierIngredientsQuery.eq("supplier_id", po.supplier_id);
   const { data: allIngredients } = await supplierIngredientsQuery.order("name");
 
-  return <ReceiveClient po={po} restaurantId={restaurant!.id} allIngredients={allIngredients ?? []} orderCond={orderCond} />;
+  return <ReceiveClient po={po} restaurantId={restaurant!.id} allIngredients={allIngredients ?? []} orderCond={orderCond} alreadyReceived={alreadyReceived} />;
 }

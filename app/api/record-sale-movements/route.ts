@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
 
     const { data: ingredients } = await supabase
       .from("ingredients")
-      .select("id, stock_qty, cmup, cost_per_base_unit, yield_pct")
+      .select("id, name, stock_qty, cmup, cost_per_base_unit, yield_pct")
       .in("id", allIngredientIds);
     const ingMap = new Map((ingredients ?? []).map((i: any) => [i.id, i]));
 
@@ -98,6 +98,9 @@ export async function POST(req: NextRequest) {
     // values kept for rollback). No write happens during this pass.
     const movements: any[] = [];
     const patches: { id: string; newStock: number; prevStock: number }[] = [];
+    // Produits dont le stock ne suffisait pas : le stock est borné à 0, il faut
+    // le SIGNALER (sinon l'écart entre stock et mouvements est inexplicable).
+    const insuffisants: string[] = [];
     for (const ingredientId of allIngredientIds) {
       const ing = ingMap.get(ingredientId);
       if (!ing) continue;
@@ -106,6 +109,7 @@ export async function POST(req: NextRequest) {
       const delta = gross - prev; // extra to remove (or add back if negative)
       const currentStock = Number(ing.stock_qty ?? 0);
       const unitCost = Number(ing.cmup ?? ing.cost_per_base_unit ?? 0);
+      if (delta > currentStock + 0.0001) insuffisants.push((ing as any).name ?? ingredientId);
       patches.push({ id: ingredientId, newStock: Math.max(0, currentStock - delta), prevStock: ing.stock_qty });
 
       if (gross > 0) {
@@ -151,7 +155,10 @@ export async function POST(req: NextRequest) {
       applied.push(p);
     }
 
-    return NextResponse.json({ ok: true, movements: movements.length });
+    return NextResponse.json({
+      ok: true, movements: movements.length,
+      ...(insuffisants.length > 0 ? { stockInsuffisant: insuffisants } : {}),
+    });
   } catch (e: any) {
     console.error("[record-sale-movements] error:", (e as Error).message);
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });

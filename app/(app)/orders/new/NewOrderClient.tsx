@@ -54,9 +54,11 @@ interface Props {
   initialSupplierId?: string;
   initialCart?: Record<string, CartLine>;
   hidePrices?: boolean;
+  /** Numéro existant (mode modification) : doit figurer dans l'e-mail au fournisseur */
+  existingOrderNumber?: string | null;
 }
 
-export default function NewOrderClient({ restaurantId, restaurantName, suppliers, ingredients, orderId, initialSupplierId = "", initialCart, hidePrices = false }: Props) {
+export default function NewOrderClient({ restaurantId, restaurantName, suppliers, ingredients, orderId, initialSupplierId = "", initialCart, hidePrices = false, existingOrderNumber = null }: Props) {
   const supabase = createClient();
   const router = useRouter();
   const isEdit = !!orderId;
@@ -127,21 +129,36 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
 
     // Always save as Draft first; we only mark "Sent" after the send step.
     let poId = orderId;
-    let orderNumber: string | null = null;
+    let orderNumber: string | null = existingOrderNumber ?? null;
+    let previousLines: any[] = [];
     if (isEdit) {
       const { error: upErr } = await supabase.from("purchase_orders").update({
         supplier_id: supplierId, status: "Draft", sent_at: null, expected_total: total,
       }).eq("id", orderId);
       if (upErr) { setError(upErr.message); setSaving(null); return; }
-      await supabase.from("purchase_order_lines").delete().eq("po_id", orderId);
+      const { data: oldLines } = await supabase
+        .from("purchase_order_lines").select("ingredient_id, quantity, expected_price").eq("po_id", orderId);
+      previousLines = (oldLines ?? []).map((l) => ({ ...l, po_id: orderId }));
+      const { error: delErr } = await supabase.from("purchase_order_lines").delete().eq("po_id", orderId);
+      if (delErr) {
+        // Sans ce contrôle, les lignes se dédoublaient (quantités ×2).
+        setError(`Modification impossible : ${delErr.message}. La commande n'a pas été changée.`);
+        setSaving(null); return;
+      }
     } else {
-      // Sequential order number BDC-YEAR-NNNN so it's visible from creation.
+      // Numérotation BDC-ANNÉE-NNNN dérivée du PLUS GRAND numéro existant :
+      // un simple compteur se répétait après la suppression d'un brouillon.
       const year = new Date().getFullYear();
-      const { count } = await supabase
+      const { data: last } = await supabase
         .from("purchase_orders")
-        .select("*", { count: "exact", head: true })
-        .eq("restaurant_id", restaurantId);
-      orderNumber = `BDC-${year}-${String((count ?? 0) + 1).padStart(4, "0")}`;
+        .select("order_number")
+        .eq("restaurant_id", restaurantId)
+        .like("order_number", `BDC-${year}-%`)
+        .order("order_number", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const lastSeq = last?.order_number ? parseInt(String(last.order_number).split("-")[2] ?? "0", 10) : 0;
+      orderNumber = `BDC-${year}-${String((isNaN(lastSeq) ? 0 : lastSeq) + 1).padStart(4, "0")}`;
       const { data: po, error: poErr } = await supabase.from("purchase_orders").insert({
         restaurant_id: restaurantId, supplier_id: supplierId,
         order_number: orderNumber, status: "Draft", expected_total: total,
@@ -150,9 +167,21 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
       poId = po.id;
     }
 
-    await supabase.from("purchase_order_lines").insert(valid.map(([ingredient_id, l]) => ({
+    const { error: linesErr } = await supabase.from("purchase_order_lines").insert(valid.map(([ingredient_id, l]) => ({
       po_id: poId, ingredient_id, quantity: l.quantity, expected_price: parseFloat(l.price) || null,
     })));
+    if (linesErr) {
+      if (isEdit) {
+        // Remettre les lignes d'origine plutôt que de laisser la commande vide.
+        if (previousLines.length > 0) await supabase.from("purchase_order_lines").insert(previousLines);
+        setError(`Enregistrement des produits impossible : ${linesErr.message}. La version précédente a été rétablie.`);
+      } else {
+        // Une commande sans ligne n'est pas exploitable : on l'annule.
+        await supabase.from("purchase_orders").delete().eq("id", poId);
+        setError(`Création impossible : ${linesErr.message}. Rien n'a été enregistré.`);
+      }
+      setSaving(null); return;
+    }
 
     // Journal: log a "modified" event when editing an existing order (best-effort).
     if (isEdit) {
@@ -183,14 +212,30 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
       });
     }
 
-    await supabase.from("purchase_orders").update({ status: "Sent", sent_at: new Date().toISOString() }).eq("id", poId);
+    const { error: sentErr } = await supabase.from("purchase_orders")
+      .update({ status: "Sent", sent_at: new Date().toISOString() }).eq("id", poId);
+    if (sentErr) {
+      // Le mail est parti : ne pas afficher « envoyée » si la base l'ignore.
+      setSaving(null);
+      window.alert(
+        `La commande est enregistrée, mais son statut n'a pas pu passer à « Envoyée » (${sentErr.message}).\n\n` +
+        "Utilise le bouton « Envoyé » depuis la liste des commandes."
+      );
+      router.push("/orders");
+      return;
+    }
     router.push("/orders?sent=1");
   }
 
   return (
     <div className="p-6 lg:p-8 max-w-6xl mx-auto pb-28">
       <div className="flex items-center justify-between mb-5">
-        <Link href="/orders" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition">
+        <Link href="/orders"
+          onClick={(e) => {
+            // Un panier rempli et non enregistré serait perdu sans un mot.
+            if (cartEntries.length > 0 && !window.confirm("Quitter sans enregistrer ?\n\nLes produits ajoutés à cette commande seront perdus.")) e.preventDefault();
+          }}
+          className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition">
           <ArrowLeft size={16} /> Bons de commande
         </Link>
       </div>
@@ -353,7 +398,8 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
               <button onClick={() => handleCreate(true)} disabled={saving !== null || cartEntries.length === 0}
                 className="w-full mt-1 py-2.5 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition flex items-center justify-center gap-1.5">
                 {saving === "send" ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
-                {sup?.email ? "Envoyer la commande" : "Valider la commande"}
+                {/* Sans email, rien n'est envoyé : le libellé doit le dire. */}
+                {sup?.email ? "Envoyer la commande" : "Marquer envoyée (sans email)"}
               </button>
               <button onClick={() => handleCreate(false)} disabled={saving !== null || cartEntries.length === 0}
                 className="w-full py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition flex items-center justify-center gap-1.5">

@@ -2,24 +2,23 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Check, Plus, Trash2, Tag, Mail, KeyRound, LogOut, Loader2, Users, UserPlus, Shield } from "lucide-react";
+import { Check, Trash2, Mail, KeyRound, LogOut, Loader2, Users, UserPlus, Shield } from "lucide-react";
 import { Card, Button, Input, Select, Alert, Badge } from "@/components/ui";
 import { logout } from "@/app/auth/actions";
 import clsx from "clsx";
 
 const CUISINE_TYPES = ["Française", "Italienne", "Japonaise", "Méditerranéenne", "Mexicaine", "Indienne", "Américaine", "Autre"];
-const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
-
-const TAG_COLORS = [
-  { label: "Gray",    value: "#6B7280" },
-  { label: "Red",     value: "#EF4444" },
-  { label: "Orange",  value: "#F97316" },
-  { label: "Amber",   value: "#F59E0B" },
-  { label: "Green",   value: "#10B981" },
-  { label: "Teal",    value: "#14B8A6" },
-  { label: "Blue",    value: "#3B82F6" },
-  { label: "Violet",  value: "#8B5CF6" },
-  { label: "Pink",    value: "#EC4899" },
+// La valeur STOCKÉE doit rester en anglais : le cron du récap compare avec
+// toLocaleDateString("en-US", { weekday: "long" }). Enregistrer « Lundi »
+// empêchait définitivement l'envoi de l'email hebdomadaire.
+const DAYS: { value: string; label: string }[] = [
+  { value: "Monday", label: "Lundi" },
+  { value: "Tuesday", label: "Mardi" },
+  { value: "Wednesday", label: "Mercredi" },
+  { value: "Thursday", label: "Jeudi" },
+  { value: "Friday", label: "Vendredi" },
+  { value: "Saturday", label: "Samedi" },
+  { value: "Sunday", label: "Dimanche" },
 ];
 
 type Restaurant = {
@@ -27,10 +26,10 @@ type Restaurant = {
   target_food_cost_pct: number; digest_enabled?: boolean; digest_day?: string;
   address?: string; phone?: string; siret?: string; hide_po_prices?: boolean;
 };
-type Tag = { id: string; name: string; color: string };
 type Member = { id: string; email: string; role: string; status: string; created_at: string };
 
-type Tab = "restaurant" | "tags" | "digest" | "compte" | "utilisateurs";
+// Les tags sont gérés dans /categories (même rôle : classer les produits).
+type Tab = "restaurant" | "digest" | "compte" | "utilisateurs";
 
 // Rôles des membres d'équipe (clé stockée en base → libellé affiché)
 const MEMBER_ROLES: { value: string; label: string }[] = [
@@ -40,9 +39,9 @@ const MEMBER_ROLES: { value: string; label: string }[] = [
 ];
 const roleLabel = (r: string) => MEMBER_ROLES.find((x) => x.value === r)?.label ?? r;
 
-interface Props { restaurant: Restaurant; email: string; initialTags: Tag[]; initialMembers: Member[] }
+interface Props { restaurant: Restaurant; email: string; initialMembers: Member[] }
 
-export default function SettingsClient({ restaurant, email, initialTags, initialMembers }: Props) {
+export default function SettingsClient({ restaurant, email, initialMembers }: Props) {
   const supabase = createClient();
   const [tab, setTab] = useState<Tab>("restaurant");
 
@@ -60,57 +59,38 @@ export default function SettingsClient({ restaurant, email, initialTags, initial
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   async function handleSaveRestaurant() {
+    setSaveError(null);
+    if (!form.name.trim()) { setSaveError("Le nom du restaurant est obligatoire."); return; }
+    const pct = parseFloat(form.target_food_cost_pct);
+    if (isNaN(pct) || pct <= 0 || pct > 100) {
+      // Un champ vidé donnait NaN → objectif nul → tous les plats signalés
+      // « hors objectif » dans le récap hebdo.
+      setSaveError("L'objectif de food cost doit être un nombre entre 1 et 100 %.");
+      return;
+    }
+    const day = DAYS.some((d) => d.value === form.digest_day) ? form.digest_day : "Monday";
+
     setSaving(true); setSaved(false);
-    await supabase.from("restaurants").update({
-      name: form.name,
+    const { error } = await supabase.from("restaurants").update({
+      name: form.name.trim(),
       cuisine_type: form.cuisine_type,
-      target_food_cost_pct: parseFloat(form.target_food_cost_pct),
+      target_food_cost_pct: pct,
       digest_enabled: form.digest_enabled,
-      digest_day: form.digest_day,
+      digest_day: day,
       address: form.address || null,
       phone: form.phone || null,
       siret: form.siret || null,
       hide_po_prices: form.hide_po_prices,
     }).eq("id", restaurant.id);
-    setSaving(false); setSaved(true);
+    setSaving(false);
+    // Sans ce contrôle, l'écran affichait « Enregistré ✓ » même en cas d'échec.
+    if (error) { setSaveError(`Enregistrement impossible : ${error.message}`); return; }
+    setForm((f) => ({ ...f, digest_day: day }));
+    setSaved(true);
     setTimeout(() => setSaved(false), 2500);
-  }
-
-  // --- Tags ---
-  const [tags, setTags] = useState<Tag[]>(initialTags);
-  const [newTagName, setNewTagName] = useState("");
-  const [newTagColor, setNewTagColor] = useState(TAG_COLORS[4].value); // green default
-  const [tagError, setTagError] = useState<string | null>(null);
-  const [addingTag, setAddingTag] = useState(false);
-  const [deletingTagId, setDeletingTagId] = useState<string | null>(null);
-
-  async function handleAddTag() {
-    setTagError(null);
-    if (!newTagName.trim()) return setTagError("Le nom du tag est requis.");
-    if (tags.find((t) => t.name.toLowerCase() === newTagName.trim().toLowerCase())) {
-      return setTagError("Un tag avec ce nom existe déjà.");
-    }
-    setAddingTag(true);
-    const { data, error } = await supabase.from("tags").insert({
-      restaurant_id: restaurant.id,
-      name: newTagName.trim(),
-      color: newTagColor,
-    }).select().single();
-    if (error) { setTagError(error.message); setAddingTag(false); return; }
-    setTags((p) => [...p, data].sort((a, b) => a.name.localeCompare(b.name)));
-    setNewTagName("");
-    setAddingTag(false);
-  }
-
-  async function handleDeleteTag(id: string) {
-    const name = tags.find((t) => t.id === id)?.name ?? "ce tag";
-    if (!window.confirm(`Supprimer le tag « ${name} » ?`)) return;
-    setDeletingTagId(id);
-    await supabase.from("tags").delete().eq("id", id);
-    setTags((p) => p.filter((t) => t.id !== id));
-    setDeletingTagId(null);
   }
 
   // --- Account ---
@@ -165,17 +145,25 @@ export default function SettingsClient({ restaurant, email, initialTags, initial
   }
 
   async function handleChangeMemberRole(id: string, role: string) {
+    const before = members.find((m) => m.id === id)?.role;
     setMembers((p) => p.map((m) => (m.id === id ? { ...m, role } : m)));
-    await supabase.from("restaurant_members").update({ role }).eq("id", id);
+    const { error } = await supabase.from("restaurant_members").update({ role }).eq("id", id);
+    if (error) {
+      // Remettre l'ancien rôle : sinon l'écran affiche un rôle jamais enregistré.
+      if (before) setMembers((p) => p.map((m) => (m.id === id ? { ...m, role: before } : m)));
+      setMemberError(`Changement de rôle impossible : ${error.message}`);
+    }
   }
 
   async function handleDeleteMember(id: string) {
-    const email = members.find((m) => m.id === id)?.email ?? "ce membre";
-    if (!window.confirm(`Retirer « ${email} » de l'équipe ?`)) return;
+    const who = members.find((m) => m.id === id)?.email ?? "ce membre";
+    if (!window.confirm(`Retirer « ${who} » de l'équipe ?\n\nCette personne perdra l'accès au restaurant.`)) return;
+    setMemberError(null);
     setDeletingMemberId(id);
-    await supabase.from("restaurant_members").delete().eq("id", id);
-    setMembers((p) => p.filter((m) => m.id !== id));
+    const { error } = await supabase.from("restaurant_members").delete().eq("id", id);
     setDeletingMemberId(null);
+    if (error) { setMemberError(`Suppression impossible : ${error.message}`); return; }
+    setMembers((p) => p.filter((m) => m.id !== id));
   }
 
   // Tags moved next to Categories (both classify products) — see /categories.
@@ -475,12 +463,13 @@ export default function SettingsClient({ restaurant, email, initialTags, initial
                   onChange={(e) => setForm({ ...form, digest_day: e.target.value })}
                   className="w-48"
                 >
-                  {DAYS.map((d) => <option key={d}>{d}</option>)}
+                  {DAYS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
                 </Select>
               </div>
             )}
           </Card>
 
+          {saveError && <Alert variant="error">{saveError}</Alert>}
           <Button variant="primary" onClick={handleSaveRestaurant} disabled={saving}>
             {saved ? <><Check size={13} /> Enregistré</> : saving ? "Enregistrement…" : "Enregistrer les paramètres"}
           </Button>

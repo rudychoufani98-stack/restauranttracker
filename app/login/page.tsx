@@ -1,19 +1,40 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { login } from "@/app/auth/actions";
+
+const LINK_ERRORS: Record<string, string> = {
+  lien_invalide: "Ce lien n'est plus valide (déjà utilisé, expiré, ou ouvert dans un autre navigateur). Redemande un email de réinitialisation.",
+};
 
 export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const params = useSearchParams();
+
+  // Un lien de réinitialisation expiré renvoyait ici SANS aucune explication :
+  // l'utilisateur réessayait indéfiniment.
+  useEffect(() => {
+    const code = params.get("error");
+    if (code) setError(LINK_ERRORS[code] ?? decodeURIComponent(params.get("error_description") ?? code));
+  }, [params]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setLoading(true);
-    const result = await login(new FormData(e.currentTarget));
-    if (result?.error) { setError(result.error); setLoading(false); }
+    try {
+      const result = await login(new FormData(e.currentTarget));
+      if (result?.error) { setError(result.error); setLoading(false); }
+      // Succès : la redirection est faite côté serveur, on garde le bouton occupé.
+    } catch {
+      // Sans ce filet, une coupure réseau laissait le bouton bloqué sur
+      // « Connexion… » sans message, et il fallait recharger la page.
+      setError("Connexion au serveur impossible. Vérifie ta connexion internet et réessaie.");
+      setLoading(false);
+    }
   }
 
   return (

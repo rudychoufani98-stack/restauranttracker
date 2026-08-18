@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Trash2, Plus, Loader2, Check, X, Clock, TrendingDown } from "lucide-react";
 import clsx from "clsx";
@@ -61,6 +62,7 @@ interface Props {
 
 export default function PertesClient({ restaurantId, ingredients, recentLosses }: Props) {
   const supabase = createClient();
+  const router = useRouter();
   const [losses, setLosses] = useState<Loss[]>(recentLosses);
   const [showForm, setShowForm] = useState(false);
   const [ingredientId, setIngredientId] = useState("");
@@ -97,6 +99,21 @@ export default function PertesClient({ restaurantId, ingredients, recentLosses }
     if (isNaN(q) || q <= 0) return setError("Quantité invalide.");
     const ing = ingMap.get(ingredientId)!;
 
+    // Quantité supérieure au stock : le stock serait bloqué à 0 alors que le
+    // mouvement enregistrerait toute la valeur → écart inexplicable ensuite.
+    const baseQtyCheck = qtyFromDisplay(q, ing.unit);
+    const stockNow = Number(ing.stock_qty ?? 0);
+    if (baseQtyCheck > stockNow) {
+      const ok = window.confirm(
+        `La perte saisie (${q} ${displayUnitLabel(ing.unit)}) dépasse le stock enregistré (${fmtQty(stockNow, ing.unit)}).\n\n` +
+        "Le stock sera mis à 0. Continuer quand même ? (Vérifie plutôt la quantité, ou fais un inventaire.)"
+      );
+      if (!ok) return;
+    }
+
+    const cout = baseQtyCheck * Number(ing.cmup ?? ing.cost_per_base_unit ?? 0);
+    if (!window.confirm(`Enregistrer cette perte ?\n\n${ing.name} — ${q} ${displayUnitLabel(ing.unit)} · €${cout.toFixed(2)}\n\nLe stock sera diminué immédiatement.`)) return;
+
     setSaving(true);
     // La saisie est en kg/L/pièce (unité d'affichage) → base g/ml/pièce,
     // y compris pour les anciens produits encore en « g »/« ml ».
@@ -128,8 +145,9 @@ export default function PertesClient({ restaurantId, ingredients, recentLosses }
       setError(`Erreur lors de la mise à jour du stock : ${upErr.message}`); setSaving(false); return;
     }
 
-    // Update local state
+    // Le stock des autres écrans doit refléter la perte (pages serveur).
     ing.stock_qty = newStock;
+    router.refresh();
     setLosses((prev) => [
       { ingredient_id: ingredientId, qty: baseQty, unit_cost: cmup, loss_reason: reason, notes: note || null, created_at: new Date().toISOString() },
       ...prev,
@@ -208,7 +226,7 @@ export default function PertesClient({ restaurantId, ingredients, recentLosses }
           <div className="bg-white rounded-card border border-[#E5E7EB] w-full max-w-md shadow-xl">
             <div className="flex items-center justify-between px-5 py-4 border-b border-[#E5E7EB]">
               <h2 className="text-base font-medium text-gray-900">Nouvelle perte</h2>
-              <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+              <button onClick={() => setShowForm(false)} title="Fermer" aria-label="Fermer" className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
             <div className="p-5 space-y-4">
               {error && <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</div>}
@@ -252,7 +270,7 @@ export default function PertesClient({ restaurantId, ingredients, recentLosses }
               </div>
             </div>
             <div className="flex gap-2 px-5 py-4 border-t border-[#E5E7EB]">
-              <button onClick={() => setShowForm(false)} className="flex-1 py-2 text-sm text-gray-600 border border-[#E5E7EB] rounded-lg hover:bg-gray-50 transition">Annuler</button>
+              <button onClick={() => setShowForm(false)} title="Fermer" aria-label="Fermer" className="flex-1 py-2 text-sm text-gray-600 border border-[#E5E7EB] rounded-lg hover:bg-gray-50 transition">Annuler</button>
               <button onClick={handleSave} disabled={saving} className="flex-1 py-2 text-sm text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 disabled:opacity-50 transition flex items-center justify-center gap-2">
                 {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Enregistrer
               </button>

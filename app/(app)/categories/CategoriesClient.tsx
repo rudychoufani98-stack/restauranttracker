@@ -48,20 +48,26 @@ export default function CategoriesClient({ restaurantId, initialCategories, init
   const [newTagName, setNewTagName] = useState("");
   const [newTagColor, setNewTagColor] = useState(TAG_COLORS[4].value);
 
+  // Un seul verrou pour tous les écrits de la page : évite les doublons créés
+  // par un double-clic (le contrôle d'unicité lit un état pas encore à jour).
+  const [busy, setBusy] = useState(false);
+
   async function addTag() {
     const name = newTagName.trim();
-    if (!name) return;
+    if (!name || busy) return;
     if (tags.some((t) => t.name.toLowerCase() === name.toLowerCase())) {
       setError("Ce tag existe déjà.");
       return;
     }
     setError(null);
+    setBusy(true);
     const { data, error: err } = await supabase
       .from("tags")
       .insert({ restaurant_id: restaurantId, name, color: newTagColor })
       .select()
       .single();
-    if (err) { setError("Impossible d'ajouter le tag."); return; }
+    setBusy(false);
+    if (err) { setError(`Impossible d'ajouter le tag : ${err.message}`); return; }
     setTags((p) => [...p, data].sort((a, b) => a.name.localeCompare(b.name)));
     setNewTagName("");
   }
@@ -69,7 +75,10 @@ export default function CategoriesClient({ restaurantId, initialCategories, init
   async function removeTag(id: string) {
     const name = tags.find((t) => t.id === id)?.name ?? "ce tag";
     if (!window.confirm(`Supprimer le tag « ${name} » ? Il sera retiré de tous les produits.`)) return;
-    await supabase.from("tags").delete().eq("id", id);
+    setBusy(true);
+    const { error: err } = await supabase.from("tags").delete().eq("id", id);
+    setBusy(false);
+    if (err) { setError(`Suppression impossible : ${err.message}`); return; }
     setTags((p) => p.filter((t) => t.id !== id));
   }
 
@@ -80,52 +89,76 @@ export default function CategoriesClient({ restaurantId, initialCategories, init
 
   async function addCategory() {
     const name = newName.trim();
-    if (!name) return;
+    if (!name || busy) return;
     if (list.some((c) => c.name.toLowerCase() === name.toLowerCase())) {
       setError("Cette catégorie existe déjà.");
       return;
     }
     setError(null);
+    setBusy(true);
     const position = list.length;
     const { data, error: err } = await supabase
       .from("categories")
       .insert({ restaurant_id: restaurantId, type: tab, name, position })
       .select()
       .single();
-    if (err) { setError("Impossible d'ajouter la catégorie."); return; }
+    setBusy(false);
+    if (err) { setError(`Impossible d'ajouter la catégorie : ${err.message}`); return; }
     setCats((p) => [...p, data]);
     setNewName("");
   }
 
   async function saveRename(id: string) {
     const name = editName.trim();
-    if (!name) { setEditingId(null); return; }
-    await supabase.from("categories").update({ name }).eq("id", id);
+    if (!name) { setError("Le nom ne peut pas être vide."); return; }
+    setError(null);
+    setBusy(true);
+    const { data, error: err } = await supabase.from("categories").update({ name }).eq("id", id).select().maybeSingle();
+    setBusy(false);
+    // Sans .select(), un refus silencieux (RLS) affichait le nouveau nom alors
+    // que la base gardait l'ancien.
+    if (err || !data) { setError(`Renommage impossible : ${err?.message ?? "modification refusée"}`); return; }
     setCats((p) => p.map((c) => (c.id === id ? { ...c, name } : c)));
     setEditingId(null);
   }
 
   async function remove(id: string) {
-    const name = cats.find((c) => c.id === id)?.name ?? "cette catégorie";
-    if (!window.confirm(`Supprimer la catégorie « ${name} » ?`)) return;
-    await supabase.from("categories").delete().eq("id", id);
+    const cat = cats.find((c) => c.id === id);
+    const name = cat?.name ?? "cette catégorie";
+    if (!window.confirm(
+      `Supprimer la catégorie « ${name} » ?\n\nLes produits ou recettes qui l'utilisent ne seront pas supprimés, mais ils n'auront plus de catégorie : tu devras leur en réattribuer une.`
+    )) return;
+    setBusy(true);
+    const { error: err } = await supabase.from("categories").delete().eq("id", id);
+    setBusy(false);
+    if (err) { setError(`Suppression impossible : ${err.message}`); return; }
     setCats((p) => p.filter((c) => c.id !== id));
   }
 
   async function move(id: string, dir: -1 | 1) {
     const idx = list.findIndex((c) => c.id === id);
     const swapIdx = idx + dir;
-    if (swapIdx < 0 || swapIdx >= list.length) return;
+    if (swapIdx < 0 || swapIdx >= list.length || busy) return;
     const a = list[idx];
     const b = list[swapIdx];
     // swap positions
     setCats((p) => p.map((c) =>
       c.id === a.id ? { ...c, position: b.position } : c.id === b.id ? { ...c, position: a.position } : c
     ));
-    await Promise.all([
+    setBusy(true);
+    const [r1, r2] = await Promise.all([
       supabase.from("categories").update({ position: b.position }).eq("id", a.id),
       supabase.from("categories").update({ position: a.position }).eq("id", b.id),
     ]);
+    setBusy(false);
+    if (r1.error || r2.error) {
+      // Une seule des deux écritures passées = deux positions identiques et un
+      // ordre aléatoire au rechargement : on annule l'échange affiché.
+      setCats((p) => p.map((c) =>
+        c.id === a.id ? { ...c, position: a.position } : c.id === b.id ? { ...c, position: b.position } : c
+      ));
+      setError("Le nouvel ordre n'a pas pu être enregistré. Réessaie.");
+    }
   }
 
   const activeTab = TABS.find((t) => t.key === tab)!;
@@ -232,8 +265,8 @@ export default function CategoriesClient({ restaurantId, initialCategories, init
                     aperçu
                   </span>
                 </div>
-                <button onClick={() => removeTag(t.id)}
-                  className="p-2 rounded-lg text-on-surface-variant/50 hover:text-red hover:bg-red-light transition opacity-0 group-hover:opacity-100">
+                <button onClick={() => removeTag(t.id)} title="Supprimer le tag" aria-label={`Supprimer le tag ${t.name}`}
+                  className="p-2 rounded-lg text-on-surface-variant/50 hover:text-red hover:bg-red-light transition opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus:opacity-100">
                   <Trash2 size={14} />
                 </button>
               </div>
@@ -252,9 +285,9 @@ export default function CategoriesClient({ restaurantId, initialCategories, init
           {list.map((c, i) => (
             <div key={c.id} className="flex items-center gap-4 px-5 py-4 hover:bg-surface-container-low/40 transition-colors">
               <div className="flex flex-col">
-                <button onClick={() => move(c.id, -1)} disabled={i === 0}
+                <button onClick={() => move(c.id, -1)} title="Monter" aria-label={`Monter ${c.name}`} disabled={i === 0}
                   className="text-on-surface-variant/40 hover:text-primary disabled:opacity-30 disabled:hover:text-on-surface-variant/40 transition"><ChevronUp size={15} /></button>
-                <button onClick={() => move(c.id, 1)} disabled={i === list.length - 1}
+                <button onClick={() => move(c.id, 1)} title="Descendre" aria-label={`Descendre ${c.name}`} disabled={i === list.length - 1}
                   className="text-on-surface-variant/40 hover:text-primary disabled:opacity-30 disabled:hover:text-on-surface-variant/40 transition"><ChevronDown size={15} /></button>
               </div>
 
@@ -266,7 +299,7 @@ export default function CategoriesClient({ restaurantId, initialCategories, init
                     onKeyDown={(e) => { if (e.key === "Enter") saveRename(c.id); if (e.key === "Escape") setEditingId(null); }}
                     className="flex-1 bg-surface-container-low border-none rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20"
                   />
-                  <button onClick={() => saveRename(c.id)} className="p-2 rounded-lg text-primary hover:bg-surface-container-high transition"><Check size={15} /></button>
+                  <button onClick={() => saveRename(c.id)} title="Valider le nouveau nom" aria-label="Valider le nouveau nom" className="p-2 rounded-lg text-primary hover:bg-surface-container-high transition"><Check size={15} /></button>
                   <button onClick={() => setEditingId(null)} className="p-2 rounded-lg text-on-surface-variant/50 hover:bg-surface-container-high transition"><X size={15} /></button>
                 </div>
               ) : (
@@ -277,7 +310,7 @@ export default function CategoriesClient({ restaurantId, initialCategories, init
                     className="p-2 rounded-lg text-on-surface-variant/50 hover:text-primary hover:bg-surface-container-high transition"
                   ><Pencil size={14} /></button>
                   <button
-                    onClick={() => remove(c.id)}
+                    onClick={() => remove(c.id)} title="Supprimer" aria-label={`Supprimer ${c.name}`}
                     className="p-2 rounded-lg text-on-surface-variant/50 hover:text-red hover:bg-red-light transition"
                   ><Trash2 size={14} /></button>
                 </>

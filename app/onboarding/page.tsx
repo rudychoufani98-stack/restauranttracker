@@ -29,23 +29,38 @@ export default function OnboardingPage() {
     setError(null);
     setLoading(true);
 
+    const pct = parseFloat(form.target_food_cost_pct);
+    if (!form.name.trim()) { setError("Indique le nom du restaurant."); setLoading(false); return; }
+    if (isNaN(pct) || pct <= 0 || pct > 100) { setError("L'objectif de food cost doit être entre 1 et 100 %."); setLoading(false); return; }
+
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
+      setLoading(false);
       router.push("/login");
+      return;
+    }
+
+    // Un compte = UN restaurant. Sans ce garde-fou, revenir sur cette page
+    // créait un second restaurant et bloquait le compte hors de l'application.
+    const { data: existing } = await supabase
+      .from("restaurants").select("id").eq("owner_id", user.id).limit(1).maybeSingle();
+    if (existing) {
+      router.push("/dashboard");
       return;
     }
 
     const { error: dbError } = await supabase.from("restaurants").insert({
       name: form.name.trim(),
       cuisine_type: form.cuisine_type,
-      target_food_cost_pct: parseFloat(form.target_food_cost_pct),
+      target_food_cost_pct: pct,
       owner_id: user.id,
     });
 
     if (dbError) {
-      setError(dbError.message);
+      console.error("[onboarding]", dbError.message);
+      setError("La création du restaurant a échoué. Réessaie, et si le problème persiste contacte le support.");
       setLoading(false);
       return;
     }

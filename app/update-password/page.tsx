@@ -12,8 +12,13 @@ export default function UpdatePasswordPage() {
     e.preventDefault();
     setError(null);
     setLoading(true);
-    const result = await updatePassword(new FormData(e.currentTarget));
-    if (result?.error) { setError(result.error); setLoading(false); }
+    try {
+      const result = await updatePassword(new FormData(e.currentTarget));
+      if (result?.error) { setError(result.error); setLoading(false); }
+    } catch {
+      setError("Connexion au serveur impossible. Vérifie ta connexion internet et réessaie.");
+      setLoading(false);
+    }
   }
 
   return (

@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { ingredientsPerYieldBase, type RecipeRow } from "@/lib/costing";
 import { ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -129,6 +129,7 @@ function displayToBase(qty: number, unit: string): number {
 
 export default function InventaireClient({ restaurantId, ingredients, recentMovements, inventorySessions, fournitureIds, recipes = [] }: Props) {
   const supabase = createClient();
+  const router = useRouter();
   const fournitureSet = useMemo(() => new Set(fournitureIds), [fournitureIds]);
   const isFourniture = (id: string) => fournitureSet.has(id);
   // Two sidebar entries share this page: /inventaire (état des stocks) and
@@ -265,12 +266,17 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
   async function createDraft() {
     const kind = countKind;
     setCreatingDraft(true);
-    const { data: session } = await supabase.from("inventory_sessions").insert({
+    const { data: session, error: crErr } = await supabase.from("inventory_sessions").insert({
       restaurant_id: restaurantId, status: "draft", kind,
       closing_at: newClosingAt ? new Date(newClosingAt).toISOString() : new Date().toISOString(),
       items_counted: 0,
     }).select().single();
     setCreatingDraft(false);
+    if (crErr || !session) {
+      // Sans message, le bouton semblait simplement mort.
+      window.alert(`Création de la fiche impossible : ${crErr?.message ?? "réessaie."}`);
+      return;
+    }
     if (session) {
       setSessions((prev) => [{ ...session, inventory_lines: [] } as InventorySession, ...prev]);
       setActiveSessionId(session.id);
@@ -329,6 +335,18 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
   async function saveSession(finalize: boolean) {
     if (!activeSessionId) return;
     const sessionKind: Kind = (sessions.find((s) => s.id === activeSessionId)?.kind as Kind) ?? countKind;
+
+    // Finaliser écrase le stock théorique et écrit des mouvements de perte /
+    // ajustement : action irréversible, on demande confirmation.
+    if (finalize) {
+      const ok = window.confirm(
+        `Finaliser l'inventaire ?\n\n${countSummary.counted} produit(s) compté(s) · écart net €${countSummary.net.toFixed(2)} ` +
+        `(manquant €${countSummary.manque.toFixed(2)} / surplus €${countSummary.surplus.toFixed(2)})\n\n` +
+        "Le stock théorique sera REMPLACÉ par les quantités comptées et les écarts seront enregistrés en pertes/ajustements. Cette action ne peut pas être annulée."
+      );
+      if (!ok) return;
+    }
+
     setValidatingCount(true);
     const movements: any[] = [];
     const updates: { id: string; qty: number; prevQty: number | null }[] = [];
@@ -371,7 +389,12 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
     }
 
     // Replace the session's saved lines with the current count
-    await supabase.from("inventory_lines").delete().eq("session_id", activeSessionId);
+    const { error: lineDelErr } = await supabase.from("inventory_lines").delete().eq("session_id", activeSessionId);
+    if (lineDelErr) {
+      setValidatingCount(false);
+      window.alert(`Mise à jour de la fiche impossible : ${lineDelErr.message}. Rien n'a été modifié — réessaie.`);
+      return;
+    }
     if (sessionLines.length > 0) {
       const { error: linesErr } = await supabase.from("inventory_lines").insert(sessionLines.map((l) => ({ session_id: activeSessionId, ...l })));
       if (linesErr) { setCountDone(null); setValidatingCount(false); window.alert(`Enregistrement des lignes impossible : ${linesErr.message}`); return; }
@@ -383,7 +406,12 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
       items_counted: sessionLines.length,
       manquant_value: countSummary.manque, surplus_value: countSummary.surplus, net_value: countSummary.net,
     };
-    await supabase.from("inventory_sessions").update(patch).eq("id", activeSessionId);
+    const { error: sessErr } = await supabase.from("inventory_sessions").update(patch).eq("id", activeSessionId);
+    if (sessErr) {
+      setValidatingCount(false);
+      window.alert(`Enregistrement de la fiche impossible : ${sessErr.message}. Le comptage n'a pas été sauvegardé — réessaie.`);
+      return;
+    }
 
     // Apply stock only when finalizing — movements FIRST (atomic insert :
     // if the DB refuses them, no stock has been touched), then stock with
@@ -410,7 +438,19 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
         applied.push(u);
       }
       patch.status = "finalized"; patch.finalized_at = new Date().toISOString();
-      await supabase.from("inventory_sessions").update({ status: patch.status, finalized_at: patch.finalized_at }).eq("id", activeSessionId);
+      const { error: finErr } = await supabase.from("inventory_sessions")
+        .update({ status: patch.status, finalized_at: patch.finalized_at }).eq("id", activeSessionId);
+      if (finErr) {
+        // Le stock EST à jour : le dire clairement pour éviter une 2ᵉ finalisation.
+        setValidatingCount(false);
+        window.alert(
+          `Le stock a bien été ajusté, mais la fiche n'a pas pu être archivée (${finErr.message}).\n\n` +
+          "Elle réapparaîtra en brouillon : NE la finalise PAS une seconde fois, le stock est déjà corrigé."
+        );
+        setLocalIngredients((prev) => prev.map((i) => { const u = updates.find((x) => x.id === i.id); return u ? { ...i, stock_qty: u.qty } : i; }));
+        router.refresh();
+        return;
+      }
       setLocalIngredients((prev) => prev.map((i) => { const u = updates.find((x) => x.id === i.id); return u ? { ...i, stock_qty: u.qty } : i; }));
     }
 
@@ -577,7 +617,15 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
               <p className="text-2xs text-amber-dark uppercase tracking-wide font-bold">Brouillon · {countSummary.counted} produit(s) compté(s)</p>
             </div>
             <div className="flex items-center gap-2">
-              <button onClick={() => { setActiveSessionId(null); setCounts({}); setMepCounts({}); }} className="px-3 py-1.5 text-xs text-on-surface-variant/60 hover:text-on-surface">Quitter</button>
+              <button
+                onClick={() => {
+                  // Un comptage peut représenter une heure de travail : ne jamais
+                  // le jeter sans prévenir.
+                  const saisi = Object.values(counts).some((v) => v !== "") || Object.values(mepCounts).some((v) => v !== "");
+                  if (saisi && !window.confirm("Quitter le comptage ?\n\nLes quantités saisies et non enregistrées seront perdues. Utilise « Enregistrer brouillon » pour les garder.")) return;
+                  setActiveSessionId(null); setCounts({}); setMepCounts({});
+                }}
+                className="px-3 py-1.5 text-xs text-on-surface-variant/60 hover:text-on-surface">Quitter</button>
               <button onClick={() => saveSession(false)} disabled={validatingCount}
                 className="px-4 py-2 text-sm font-semibold text-on-surface-variant border border-outline-variant/40 rounded-xl hover:bg-surface-container-low disabled:opacity-50 transition">
                 Enregistrer brouillon
@@ -608,6 +656,33 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
           </div>
 
           <p className="text-sm text-on-surface-variant/70 mb-3">Saisis le stock physique compté. <b>Enregistrer brouillon</b> ne touche pas au stock ; <b>Finaliser</b> applique les écarts et archive la fiche.</p>
+
+          {/* Recherche + catégorie : indispensables pour retrouver un produit
+              dans une longue liste pendant le comptage. */}
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            <div className="relative flex-1 min-w-[220px]">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/40" />
+              <input value={search} onChange={(e) => setSearch(e.target.value)}
+                placeholder="Rechercher un produit à compter…"
+                aria-label="Rechercher un produit à compter"
+                className="w-full pl-9 pr-3 py-2 text-sm glass-card rounded-xl border-none outline-none focus:ring-2 focus:ring-primary/20" />
+            </div>
+            <select value={filterCat} onChange={(e) => setFilterCat(e.target.value)}
+              aria-label="Filtrer par catégorie"
+              className="px-3 py-2 text-sm glass-card rounded-xl border-none outline-none focus:ring-2 focus:ring-primary/20">
+              {["Toutes", ...categories].map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+            {(search || filterCat !== "Toutes") && (
+              <button onClick={() => { setSearch(""); setFilterCat("Toutes"); }}
+                title="Effacer les filtres"
+                className="px-3 py-2 text-xs text-on-surface-variant/60 hover:text-primary">
+                Tout afficher
+              </button>
+            )}
+            <span className="text-2xs text-on-surface-variant/50">
+              {filtered.length} produit(s) affiché(s) — les quantités déjà saisies sont conservées.
+            </span>
+          </div>
 
           <div className="glass-card rounded-2xl overflow-hidden">
             <div className="overflow-x-auto">

@@ -37,14 +37,20 @@ export default function AssistantWidget() {
         // Le message d'accueil n'est pas envoyé (économie de contexte)
         body: JSON.stringify({ messages: next.slice(1) }),
       });
-      const json = await res.json().catch(() => ({}));
-      setMessages((p) => [...p, {
-        role: "assistant",
-        content: res.ok
-          ? (json.reply ?? "Désolé, je n'ai pas compris — reformule ?")
-          : (json.error ?? "L'assistant est momentanément indisponible."),
-      }]);
+      const json = await res.json().catch(() => null);
+      // Réponse non-JSON (page de connexion, erreur de passerelle…) : ne jamais
+      // faire passer ça pour une réponse de l'assistant.
+      if (json === null) {
+        setInput(text); // on rend sa question à l'utilisateur
+        setMessages((p) => [...p, { role: "assistant", content: "Ta session a peut-être expiré. Recharge la page et reconnecte-toi, puis réessaie." }]);
+      } else if (!res.ok) {
+        setInput(text);
+        setMessages((p) => [...p, { role: "assistant", content: json.error ?? "L'assistant est momentanément indisponible." }]);
+      } else {
+        setMessages((p) => [...p, { role: "assistant", content: json.reply ?? "Désolé, je n'ai pas compris — reformule ?" }]);
+      }
     } catch {
+      setInput(text);
       setMessages((p) => [...p, { role: "assistant", content: "Problème de connexion — réessaie dans un instant." }]);
     }
     setLoading(false);
@@ -55,7 +61,9 @@ export default function AssistantWidget() {
       {/* Bouton flottant */}
       <button
         onClick={() => setOpen((o) => !o)}
-        title="Assistant d'aide"
+        title={open ? "Fermer l'assistant" : "Assistant d'aide"}
+        aria-label={open ? "Fermer l'assistant" : "Ouvrir l'assistant d'aide"}
+        aria-expanded={open}
         className={clsx(
           "fixed bottom-6 right-6 z-[90] w-14 h-14 rounded-full flex items-center justify-center shadow-xl transition-all active:scale-95",
           open ? "bg-surface-container-highest text-on-surface-variant" : "bg-primary text-on-primary hover:scale-105 nav-active-glow"
@@ -109,6 +117,8 @@ export default function AssistantWidget() {
               <button
                 onClick={send}
                 disabled={loading || !input.trim()}
+                title="Envoyer"
+                aria-label="Envoyer le message"
                 className="w-9 h-9 rounded-xl bg-primary text-on-primary flex items-center justify-center hover:bg-primary-container disabled:opacity-40 transition shrink-0"
               >
                 <Send size={15} />

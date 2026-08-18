@@ -268,6 +268,10 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
     if (isNaN(pUnits) || pUnits <= 0) return setError("Le nombre d'unités par colis doit être supérieur à 0.");
     if (isNaN(uSize) || uSize <= 0) return setError("La contenance par unité doit être supérieure à 0.");
     if (isNaN(yld) || yld <= 0 || yld > 100) return setError("Le rendement doit être entre 1 et 100 %.");
+    // Ces deux champs alimentent la marge et l'alerte de stock : une valeur
+    // négative passait silencieusement (min="0" n'est pas contraignant ici).
+    if (form.selling_price !== "" && !(parseFloat(form.selling_price) >= 0)) return setError("Le prix de vente doit être un nombre positif.");
+    if (form.reorder_threshold !== "" && !(parseFloat(form.reorder_threshold) >= 0)) return setError("Le seuil d'alerte doit être un nombre positif.");
     setSaving(true);
 
     // Ancien produit en g/ml passé en kg/L : tailles saisies en g/ml → ÷1000
@@ -354,7 +358,15 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
 
     // Sync alternate suppliers (delete all + re-insert)
     if (ingredientId) {
-      await supabase.from("ingredient_suppliers").delete().eq("ingredient_id", ingredientId);
+      // Sauvegarde de l'existant : un échec d'insertion effacerait sinon tous
+      // les prix fournisseurs sans que rien ne l'indique.
+      const { data: beforeArts } = await supabase
+        .from("ingredient_suppliers").select("*").eq("ingredient_id", ingredientId);
+      const { error: delArtErr } = await supabase.from("ingredient_suppliers").delete().eq("ingredient_id", ingredientId);
+      if (delArtErr) {
+        setError(`Mise à jour des fournisseurs impossible : ${delArtErr.message}`);
+        setSaving(false); return;
+      }
       const rows = supplierLines
         .filter((l) => l.supplier_id)
         .map((l) => ({
@@ -373,7 +385,14 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
           pack_label: l.pack_label ?? null,
           is_preferred: l.is_preferred ?? false,
         }));
-      if (rows.length > 0) await supabase.from("ingredient_suppliers").insert(rows);
+      if (rows.length > 0) {
+        const { error: insArtErr } = await supabase.from("ingredient_suppliers").insert(rows);
+        if (insArtErr) {
+          if ((beforeArts ?? []).length > 0) await supabase.from("ingredient_suppliers").insert(beforeArts!);
+          setError(`Enregistrement des fournisseurs impossible : ${insArtErr.message}. La version précédente a été rétablie.`);
+          setSaving(false); return;
+        }
+      }
 
       // Refetch full ingredient so the list reflects everything
       const { data: full } = await supabase
@@ -383,17 +402,38 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
       if (full) setIngredients((p) => p.map((i) => i.id === ingredientId ? full : i));
     }
 
+    // Le coût des recettes dépend des prix d'achat : recalcul serveur, sinon
+    // le food cost affiché resterait celui d'avant la modification.
+    let recalcOk = true;
+    try {
+      const res = await fetch("/api/recalculate-recipes", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ restaurantId }),
+      });
+      recalcOk = res.ok;
+    } catch { recalcOk = false; }
+
     setSaving(false);
     setShowForm(false);
+    if (!recalcOk) {
+      window.alert("Produit enregistré, mais le recalcul des coûts de recettes a échoué. Lance « Tout recalculer » depuis les recettes.");
+    }
+    router.refresh();
   }
 
   async function handleDelete(id: string) {
     const name = ingredients.find((i) => i.id === id)?.name ?? "cet ingrédient";
     if (!window.confirm(`Supprimer « ${name} » ? Cette action est irréversible.`)) return;
     setDeletingId(id);
-    await supabase.from("ingredients").delete().eq("id", id);
-    setIngredients((p) => p.filter((i) => i.id !== id));
+    const { error } = await supabase.from("ingredients").delete().eq("id", id);
     setDeletingId(null);
+    if (error) {
+      // Typiquement un produit utilisé dans une recette ou une commande : sans
+      // ce message, il disparaissait de l'écran puis réapparaissait au rechargement.
+      window.alert(`Suppression impossible : ${error.message}\n\nCe produit est probablement utilisé dans une recette, une commande ou un mouvement de stock.`);
+      return;
+    }
+    setIngredients((p) => p.filter((i) => i.id !== id));
   }
 
   async function handleDuplicate(ing: Ingredient) {
@@ -420,7 +460,11 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
     };
     const { data: created, error: err } = await supabase
       .from("ingredients").insert(payload).select("*, suppliers(name)").single();
-    if (err || !created) { setDuplicatingId(null); return; }
+    if (err || !created) {
+      setDuplicatingId(null);
+      window.alert(`Duplication impossible : ${err?.message ?? "réessaie."}`);
+      return;
+    }
 
     // Copie des articles fournisseurs
     const arts = (ing.ingredient_suppliers ?? []).map((a) => ({
@@ -1002,7 +1046,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                               className="p-1.5 rounded-md text-on-surface-variant/50 hover:text-primary hover:bg-surface-container-low transition disabled:opacity-50">
                               <Copy size={13} />
                             </button>
-                            <button onClick={(e) => { e.stopPropagation(); handleDelete(ing.id); }} disabled={deletingId === ing.id}
+                            <button onClick={(e) => { e.stopPropagation(); handleDelete(ing.id); }} title="Supprimer" aria-label={`Supprimer ${ing.name}`} disabled={deletingId === ing.id}
                               className="p-1.5 rounded-md text-on-surface-variant/50 hover:text-red hover:bg-red-light transition">
                               <Trash2 size={13} />
                             </button>

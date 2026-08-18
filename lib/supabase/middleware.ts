@@ -61,8 +61,19 @@ export async function updateSession(request: NextRequest) {
   if (authUnavailable) return supabaseResponse;
 
   if (!user && !isPublic) {
+    // Une API doit répondre 401 en JSON : rediriger vers /login renverrait une
+    // page HTML que le code appelant interpréterait comme un succès (le chatbot
+    // affichait « je n'ai pas compris » au lieu de « session expirée »).
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json(
+        { error: "Session expirée — reconnecte-toi pour continuer." },
+        { status: 401 },
+      );
+    }
     const url = request.nextUrl.clone();
     url.pathname = "/login";
+    // On mémorise la page demandée pour y revenir après la connexion.
+    if (pathname !== "/dashboard") url.searchParams.set("next", pathname + request.nextUrl.search);
     return NextResponse.redirect(url);
   }
 

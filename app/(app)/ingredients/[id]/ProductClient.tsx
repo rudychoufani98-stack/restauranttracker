@@ -142,6 +142,18 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
     const secSizeNum = parseFloat(secSize) || 0;
     if (secLabel.trim() && secSizeNum <= 0) return setError("Conditionnement secondaire : indique sa taille (ex. 0,75).");
     if (!secLabel.trim() && secSizeNum > 0) return setError("Conditionnement secondaire : indique son nom (ex. bouteille).");
+    // Un article incomplet serait silencieusement supprimé à l'enregistrement.
+    const incomplet = articles.findIndex((a) => (a.supplier_id || a.supplier_reference || a.pack_price || a.unit_size) && !(parseFloat(a.pack_price) >= 0 && sizeOf(a) > 0));
+    if (incomplet >= 0) {
+      return setError(`Article n°${incomplet + 1} incomplet : renseigne le prix ET la contenance (ou retire la ligne).`);
+    }
+    // Garde-fou numérique : une valeur négative fausserait le coût par unité.
+    const negatif = articles.find((a) => parseFloat(a.pack_units) < 0 || parseFloat(a.unit_size) < 0 || parseFloat(a.pack_price) < 0);
+    if (negatif) return setError("Les quantités et prix des articles doivent être positifs.");
+    const reorderNum = parseFloat(reorder);
+    if (reorder !== "" && (isNaN(reorderNum) || reorderNum < 0)) return setError("Le seuil d'alerte doit être un nombre positif.");
+    if (sellingPrice !== "" && !(parseFloat(sellingPrice) >= 0)) return setError("Le prix de vente doit être un nombre positif.");
+
     const validArticles = articles.filter((a) => parseFloat(a.pack_price) >= 0 && sizeOf(a) > 0);
     setSaving(true);
 
@@ -171,8 +183,15 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
     const { error: err } = await supabase.from("ingredients").update(payload).eq("id", ingredient.id);
     if (err) { setError(err.message); setSaving(false); return; }
 
-    // Rewrite the article list
-    await supabase.from("ingredient_suppliers").delete().eq("ingredient_id", ingredient.id);
+    // Réécriture des articles : on garde l'existant pour pouvoir le remettre,
+    // sinon un échec d'insertion effacerait tous les prix fournisseurs.
+    const { data: beforeArticles } = await supabase
+      .from("ingredient_suppliers").select("*").eq("ingredient_id", ingredient.id);
+    const { error: delArtErr } = await supabase.from("ingredient_suppliers").delete().eq("ingredient_id", ingredient.id);
+    if (delArtErr) {
+      setError(`Mise à jour des articles impossible : ${delArtErr.message}. Aucun article n'a été modifié.`);
+      setSaving(false); return;
+    }
     const rows = validArticles.map((a) => ({
       ingredient_id: ingredient.id,
       supplier_id: a.supplier_id || null,
@@ -186,38 +205,99 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
       pack_label: a.pack_label || null,
       is_preferred: a === pref,
     }));
-    if (rows.length > 0) await supabase.from("ingredient_suppliers").insert(rows);
+    if (rows.length > 0) {
+      const { error: insArtErr } = await supabase.from("ingredient_suppliers").insert(rows);
+      if (insArtErr) {
+        // Restauration : ne jamais laisser le produit sans ses articles.
+        if ((beforeArticles ?? []).length > 0) await supabase.from("ingredient_suppliers").insert(beforeArticles!);
+        setError(`Enregistrement des articles impossible : ${insArtErr.message}. La version précédente a été rétablie.`);
+        setSaving(false); return;
+      }
+    }
+
+    // Historique de prix (comme sur l'écran Ingrédients) : une hausse manuelle
+    // doit rester traçable et apparaître dans le récap hebdo.
+    if (Math.abs(Number(ingredient.pack_price ?? 0) - pPrice) > 0.0001) {
+      await supabase.from("ingredient_price_history").insert({
+        ingredient_id: ingredient.id, old_price: ingredient.pack_price ?? null, new_price: pPrice, source: "manual",
+      });
+    }
+
+    // Le coût des recettes dépend de ce produit : recalcul serveur.
+    let recalcOk = true;
+    try {
+      const res = await fetch("/api/recalculate-recipes", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ restaurantId: (ingredient as any).restaurant_id }),
+      });
+      recalcOk = res.ok;
+    } catch { recalcOk = false; }
 
     setSaving(false);
-    setToast("Enregistré ✓");
-    setTimeout(() => setToast(null), 2500);
+    if (recalcOk) {
+      setToast("Enregistré ✓");
+      setTimeout(() => setToast(null), 2500);
+    } else {
+      setError("Produit enregistré, mais le recalcul des coûts de recettes a échoué. Lance « Tout recalculer » depuis les recettes.");
+    }
     router.refresh();
   }
 
   async function handleMerge() {
     if (!mergeTargetId) return;
+    setError(null);
     setMerging(true);
     const src = ingredient;
     const targetId = mergeTargetId;
-    const { data: tgt } = await supabase.from("ingredients").select("stock_qty, cmup, cost_per_base_unit, allergens").eq("id", targetId).single();
-    await supabase.from("recipe_lines").update({ ingredient_id: targetId }).eq("ingredient_id", src.id);
-    await supabase.from("ingredient_suppliers").update({ ingredient_id: targetId }).eq("ingredient_id", src.id);
+
+    // Échec en cours de route = données à moitié déplacées : chaque étape est
+    // vérifiée et on n'efface le produit source qu'en toute dernière étape.
+    function fail(msg: string) {
+      setMerging(false);
+      setError(`Fusion interrompue : ${msg}. Le produit « ${src.name} » n'a PAS été supprimé — relance la fusion.`);
+      return false;
+    }
+
+    const { data: tgt, error: tgtErr } = await supabase
+      .from("ingredients").select("stock_qty, cmup, cost_per_base_unit, allergens").eq("id", targetId).maybeSingle();
+    if (tgtErr || !tgt) return fail(tgtErr?.message ?? "produit cible introuvable");
+
+    const { error: rlErr } = await supabase.from("recipe_lines").update({ ingredient_id: targetId }).eq("ingredient_id", src.id);
+    if (rlErr) return fail(`recettes non transférées (${rlErr.message})`);
+
+    const { error: isErr } = await supabase.from("ingredient_suppliers").update({ ingredient_id: targetId }).eq("ingredient_id", src.id);
+    if (isErr) return fail(`articles fournisseurs non transférés (${isErr.message})`);
+
     if (src.supplier_id) {
       await supabase.from("ingredient_suppliers").insert({
         ingredient_id: targetId, supplier_id: src.supplier_id, supplier_reference: src.supplier_reference,
         pack_units: src.pack_units ?? 1, unit_size: src.unit_size ?? src.pack_quantity ?? 1, unit: src.unit,
         pack_price: src.pack_price ?? 0, vat_rate: src.vat_rate ?? 0,
-      });
+      }); // best-effort : doublon d'article possible, sans impact sur le stock
     }
+
+    const { error: smErr } = await supabase.from("stock_movements").update({ ingredient_id: targetId }).eq("ingredient_id", src.id);
+    if (smErr) return fail(`historique des mouvements non transféré (${smErr.message})`);
+
+    await supabase.from("ingredient_price_history").update({ ingredient_id: targetId }).eq("ingredient_id", src.id);
+
     const tStock = Number(tgt?.stock_qty ?? 0), sStock = Number(src.stock_qty ?? 0);
     const tC = Number(tgt?.cmup ?? tgt?.cost_per_base_unit ?? 0), sC = Number(src.cmup ?? src.cost_per_base_unit ?? 0);
     const newStock = tStock + sStock;
     const newCmup = newStock > 0 ? (tStock * tC + sStock * sC) / newStock : (tC || sC);
     const mergedAllergens = Array.from(new Set([...((tgt?.allergens as string[]) ?? []), ...(src.allergens ?? [])]));
-    await supabase.from("ingredients").update({ stock_qty: newStock, cmup: newCmup, allergens: mergedAllergens }).eq("id", targetId);
-    await supabase.from("stock_movements").update({ ingredient_id: targetId }).eq("ingredient_id", src.id);
-    await supabase.from("ingredient_price_history").update({ ingredient_id: targetId }).eq("ingredient_id", src.id);
-    await supabase.from("ingredients").delete().eq("id", src.id);
+    const { error: updErr } = await supabase.from("ingredients")
+      .update({ stock_qty: newStock, cmup: newCmup, allergens: mergedAllergens }).eq("id", targetId);
+    if (updErr) return fail(`stock cumulé non enregistré (${updErr.message})`);
+
+    // Tout est transféré : on peut supprimer le doublon.
+    const { error: delErr } = await supabase.from("ingredients").delete().eq("id", src.id);
+    if (delErr) {
+      setMerging(false);
+      setError(`Les données ont été transférées vers « ${mergeTargets.find((t) => t.id === targetId)?.name ?? "le produit cible"} », mais l'ancien produit n'a pas pu être supprimé (${delErr.message}). Supprime-le manuellement.`);
+      return;
+    }
+
     await fetch("/api/recalculate-recipes", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ restaurantId: (ingredient as any).restaurant_id }),
@@ -349,7 +429,7 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
                       <option value="">Choisir un fournisseur…</option>
                       {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                     </select>
-                    <button onClick={() => removeArticle(i)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition shrink-0"><Trash2 size={14} /></button>
+                    <button onClick={() => removeArticle(i)} title="Supprimer cet article" aria-label="Supprimer cet article" className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition shrink-0"><Trash2 size={14} /></button>
                   </div>
 
                   <p className="text-2xs font-medium text-gray-400 uppercase tracking-wide">Conditionnement de commande (colissage)</p>

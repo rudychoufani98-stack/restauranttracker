@@ -59,6 +59,8 @@ export default function MenuClient({ restaurantId: _restaurantId, targetFoodCost
   const [products, setProducts] = useState<SimpleProduct[]>(simpleProducts);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [priceInput, setPriceInput] = useState("");
+  const [priceError, setPriceError] = useState<string | null>(null);
+  const [savingPrice, setSavingPrice] = useState(false);
   const [filterStatus, setFilterStatus] = useState<"all" | "green" | "amber" | "red">("all");
 
   // Build unified items
@@ -147,12 +149,24 @@ export default function MenuClient({ restaurantId: _restaurantId, targetFoodCost
 
   async function savePrice(it: MenuItem) {
     const price = parseFloat(priceInput);
-    if (isNaN(price) || price < 0) { setEditingKey(null); return; }
+    if (!(price > 0)) {
+      setPriceError("Saisis un prix de vente supérieur à 0.");
+      return; // on garde l'éditeur ouvert : la saisie n'est pas perdue
+    }
+    setPriceError(null);
+    setSavingPrice(true);
+    const { error } = it.type === "recipe"
+      ? await supabase.from("recipes").update({ menu_price: price }).eq("id", it.id)
+      : await supabase.from("ingredients").update({ selling_price: price }).eq("id", it.id);
+    setSavingPrice(false);
+    if (error) {
+      // Ne jamais afficher un prix qui n'est pas en base.
+      setPriceError(`Enregistrement impossible : ${error.message}`);
+      return;
+    }
     if (it.type === "recipe") {
-      await supabase.from("recipes").update({ menu_price: price }).eq("id", it.id);
       setRecipes((prev) => prev.map((r) => (r.id === it.id ? { ...r, menu_price: price } : r)));
     } else {
-      await supabase.from("ingredients").update({ selling_price: price }).eq("id", it.id);
       setProducts((prev) => prev.map((p) => (p.id === it.id ? { ...p, selling_price: price } : p)));
     }
     setEditingKey(null);
@@ -288,16 +302,19 @@ export default function MenuClient({ restaurantId: _restaurantId, targetFoodCost
                             <td className="px-5 py-4 text-right tabular-nums text-on-surface-variant/80">€{it.cost.toFixed(2)}</td>
                             <td className="px-5 py-4 text-right">
                               {editingKey === it.key ? (
-                                <div className="flex items-center gap-1 justify-end">
-                                  <span className="text-on-surface-variant/50 text-xs">€</span>
-                                  <input
-                                    autoFocus type="number" min="0" step="0.01" value={priceInput}
-                                    onChange={(e) => setPriceInput(e.target.value)}
-                                    onKeyDown={(e) => { if (e.key === "Enter") savePrice(it); if (e.key === "Escape") setEditingKey(null); }}
-                                    className="w-20 px-2 py-1 text-sm bg-surface-container-low border border-primary rounded-lg outline-none focus:ring-2 focus:ring-primary/20"
-                                  />
-                                  <button onClick={() => savePrice(it)} className="text-primary"><Check size={14} /></button>
-                                  <button onClick={() => setEditingKey(null)} className="text-on-surface-variant/50"><X size={14} /></button>
+                                <div className="flex flex-col items-end gap-1">
+                                  <div className="flex items-center gap-1 justify-end">
+                                    <span className="text-on-surface-variant/50 text-xs">€</span>
+                                    <input
+                                      autoFocus type="number" min="0" step="0.01" value={priceInput}
+                                      onChange={(e) => { setPriceInput(e.target.value); setPriceError(null); }}
+                                      onKeyDown={(e) => { if (e.key === "Enter") savePrice(it); if (e.key === "Escape") { setPriceError(null); setEditingKey(null); } }}
+                                      className="w-20 px-2 py-1 text-sm bg-surface-container-low border border-primary rounded-lg outline-none focus:ring-2 focus:ring-primary/20"
+                                    />
+                                    <button onClick={() => savePrice(it)} disabled={savingPrice} title="Valider le prix" aria-label="Valider le prix" className="text-primary disabled:opacity-40"><Check size={14} /></button>
+                                    <button onClick={() => { setPriceError(null); setEditingKey(null); }} title="Annuler" aria-label="Annuler" className="text-on-surface-variant/50"><X size={14} /></button>
+                                  </div>
+                                  {priceError && <span className="text-2xs text-red text-right max-w-40">{priceError}</span>}
                                 </div>
                               ) : (
                                 <button onClick={() => startEdit(it)} className="flex items-center gap-1 group text-on-surface hover:text-primary ml-auto tabular-nums">

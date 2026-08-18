@@ -213,19 +213,41 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
   async function handleSave() {
     const hasData = draftLines.some((l) => parseFloat(l.qty_sold) > 0);
     if (!hasData) return setError("Saisissez au moins une quantité vendue.");
-    setSaving(true);
-    setError(null);
 
     // Check if a period already exists for this month AND channel
     const existing = periods.find((p) => p.month === selectedMonth && (p.channel ?? "dine_in") === saleChannel);
 
+    // L'action déstocke les ingrédients (MEP incluses) : on l'annonce, et on
+    // signale qu'une saisie existante sera remplacée.
+    const nbLignes = draftLines.filter((l) => parseFloat(l.qty_sold) > 0).length;
+    const confirmMsg =
+      `Enregistrer les ventes de ${monthLabel(selectedMonth)} (${channelLabel(saleChannel)}) ?\n\n` +
+      `${nbLignes} article(s) · CA €${preview.ca.toFixed(2)}\n\n` +
+      "Les ingrédients des plats vendus (y compris ceux des mises en place) seront DÉSTOCKÉS." +
+      (existing ? "\n\n⚠️ Une saisie existe déjà pour ce mois et ce canal : elle sera REMPLACÉE (le stock est réajusté par différence)." : "");
+    if (!window.confirm(confirmMsg)) return;
+
+    setSaving(true);
+    setError(null);
+
     let periodId: string;
+    // Lignes précédentes conservées : si la réécriture échoue, on les remet.
+    let previousLines: any[] = [];
 
     if (existing) {
       // Update: delete old lines, insert new ones
       periodId = existing.id;
-      await supabase.from("sales_periods").update({ notes: notes || null }).eq("id", periodId);
-      await supabase.from("sales_lines").delete().eq("period_id", periodId);
+      const { error: upErr } = await supabase.from("sales_periods").update({ notes: notes || null }).eq("id", periodId);
+      if (upErr) { setError(`Enregistrement impossible : ${upErr.message}`); setSaving(false); return; }
+      const { data: oldLines } = await supabase
+        .from("sales_lines").select("recipe_id, ingredient_id, qty_sold").eq("period_id", periodId);
+      previousLines = (oldLines ?? []).map((l) => ({ ...l, period_id: periodId }));
+      const { error: delErr } = await supabase.from("sales_lines").delete().eq("period_id", periodId);
+      if (delErr) {
+        // Sans ce contrôle, les lignes se dédoublaient → CA et déstockage ×2.
+        setError(`Remplacement de la saisie impossible : ${delErr.message}. Rien n'a été modifié.`);
+        setSaving(false); return;
+      }
     } else {
       const { data: period, error: pErr } = await supabase
         .from("sales_periods")
@@ -247,7 +269,12 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
       });
 
     const { error: lErr } = await supabase.from("sales_lines").insert(linesToInsert);
-    if (lErr) { setError(lErr.message); setSaving(false); return; }
+    if (lErr) {
+      // Ne pas laisser le mois vidé de sa saisie précédente.
+      if (previousLines.length > 0) await supabase.from("sales_lines").insert(previousLines);
+      setError(`Enregistrement impossible : ${lErr.message}.${previousLines.length > 0 ? " La saisie précédente a été rétablie." : ""}`);
+      setSaving(false); return;
+    }
 
     // Trigger stock deductions for sold items — surface failures instead of
     // silently desynchronizing sales and stock.
@@ -265,11 +292,21 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
           })),
         }),
       });
+      const j = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
         setError(`Ventes enregistrées, mais le déstockage a échoué : ${j?.error ?? `erreur ${res.status}`}. Ré-enregistre ce mois pour relancer le déstockage.`);
         setSaving(false);
         return;
+      }
+      // Stock insuffisant sur certains produits : le signaler, sinon l'écart
+      // entre le stock (bloqué à 0) et les mouvements reste inexpliqué.
+      if (Array.isArray(j?.stockInsuffisant) && j.stockInsuffisant.length > 0) {
+        window.alert(
+          "Ventes enregistrées. Attention : le stock était insuffisant pour ces produits, leur stock est donc à 0 :\n\n" +
+          j.stockInsuffisant.slice(0, 10).map((n: string) => `• ${n}`).join("\n") +
+          (j.stockInsuffisant.length > 10 ? `\n…et ${j.stockInsuffisant.length - 10} autre(s)` : "") +
+          "\n\nVérifie tes réceptions ou fais un inventaire pour repartir de chiffres justes."
+        );
       }
     } catch {
       setError("Ventes enregistrées, mais le déstockage a échoué (réseau). Ré-enregistre ce mois pour relancer le déstockage.");

@@ -18,6 +18,7 @@ export default function SuppliersClient({ restaurantId, initialSuppliers }: Prop
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ ...EMPTY });
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   function openAdd() { setEditingId(null); setForm({ ...EMPTY }); setError(null); setShowForm(true); }
@@ -30,6 +31,15 @@ export default function SuppliersClient({ restaurantId, initialSuppliers }: Prop
 
   async function handleSave() {
     if (!form.name.trim()) return setError("Le nom du fournisseur est requis.");
+    // L'email sert à envoyer les bons de commande : une adresse invalide ne se
+    // verrait qu'au moment de commander, bien plus tard.
+    const mail = form.email.trim();
+    if (mail && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(mail)) {
+      return setError("L'adresse email n'est pas valide (ex. commandes@fournisseur.fr).");
+    }
+    if (form.min_order_amount !== "" && !(parseFloat(form.min_order_amount) >= 0)) {
+      return setError("Le franco de port doit être un montant positif.");
+    }
     setSaving(true);
     const payload = {
       name: form.name.trim(), email: form.email || null, contact: form.contact || null, category: form.category,
@@ -53,7 +63,14 @@ export default function SuppliersClient({ restaurantId, initialSuppliers }: Prop
   async function handleDelete(id: string) {
     const name = suppliers.find((s) => s.id === id)?.name ?? "ce fournisseur";
     if (!window.confirm(`Supprimer « ${name} » ? Cette action est irréversible.`)) return;
-    await supabase.from("suppliers").delete().eq("id", id);
+    setDeletingId(id);
+    const { error } = await supabase.from("suppliers").delete().eq("id", id);
+    setDeletingId(null);
+    if (error) {
+      // Très fréquent : le fournisseur est rattaché à des produits/commandes.
+      window.alert(`Suppression impossible : ${error.message}\n\nCe fournisseur est probablement rattaché à des produits ou des commandes. Détache-le d'abord de ses produits.`);
+      return;
+    }
     setSuppliers((p) => p.filter((s) => s.id !== id));
   }
 
@@ -204,9 +221,11 @@ export default function SuppliersClient({ restaurantId, initialSuppliers }: Prop
                     <td className="px-5 py-4 text-right text-sm font-semibold text-on-surface tabular-nums">{s.min_order_amount ? `€${Number(s.min_order_amount).toFixed(0)}` : "—"}</td>
                     <td className="px-5 py-4 text-sm text-on-surface-variant/70">{s.customer_reference ?? "—"}</td>
                     <td className="px-5 py-4">
-                      <div className="flex items-center gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => openEdit(s)} className="p-1.5 text-on-surface-variant/50 hover:text-primary hover:bg-surface-container-high rounded-lg transition"><Pencil size={15} /></button>
-                        <button onClick={() => handleDelete(s.id)} className="p-1.5 text-on-surface-variant/50 hover:text-red hover:bg-red-light rounded-lg transition"><Trash2 size={15} /></button>
+                      {/* Toujours visibles sur écran tactile (pas de survol) et
+                          au focus clavier — sinon ces boutons sont inatteignables. */}
+                      <div className="flex items-center gap-1 justify-end opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity">
+                        <button onClick={() => openEdit(s)} title="Modifier" aria-label={`Modifier ${s.name}`} className="p-1.5 text-on-surface-variant/50 hover:text-primary hover:bg-surface-container-high rounded-lg transition"><Pencil size={15} /></button>
+                        <button onClick={() => handleDelete(s.id)} disabled={deletingId === s.id} title="Supprimer" aria-label={`Supprimer ${s.name}`} className="p-1.5 text-on-surface-variant/50 hover:text-red hover:bg-red-light rounded-lg transition disabled:opacity-40"><Trash2 size={15} /></button>
                       </div>
                     </td>
                   </tr>

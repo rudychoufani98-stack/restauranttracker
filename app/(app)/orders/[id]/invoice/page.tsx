@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import InvoiceClient from "./InvoiceClient";
 import { unitShort } from "@/lib/ingredient-helpers";
 
@@ -24,6 +24,12 @@ export default async function InvoicePage({ params }: { params: { id: string } }
     .single();
 
   if (!po) return notFound();
+
+  // Une facture avant réception ajouterait tout le stock d'un coup (aucune
+  // base de comparaison) : on renvoie vers la liste.
+  if (!["Received", "Partially received", "Invoiced"].includes((po as any).status)) {
+    redirect("/orders?facture_impossible=1");
+  }
 
   // TOUTES les réceptions VALIDÉES de cette commande (une réception partielle
   // suivie d'une seconde : le stock reflète la somme, la facture doit partir

@@ -3,7 +3,7 @@
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Upload, AlertTriangle, Check, Loader2, Plus, Trash2, PackagePlus } from "lucide-react";
+import { Upload, Check, Loader2, Plus, Trash2 } from "lucide-react";
 import clsx from "clsx";
 import { defaultPackType } from "@/lib/order-email";
 import { applyReception } from "@/lib/costing";
@@ -19,6 +19,7 @@ type ReceiveLine = {
   ingredient_name: string;
   expected_price: number;
   qty_ordered: number;
+  qty_already?: number; // déjà reçu lors d'une réception précédente
   qty_received: string;
   actual_price: string;
   unit: string;
@@ -27,9 +28,13 @@ type ReceiveLine = {
 };
 
 type OrderCond = Record<string, { type: string; detail: string; basePerPack?: number; packPrice?: number | null }>;
-interface Props { po: PO; restaurantId: string; allIngredients: IngredientOption[]; orderCond: OrderCond }
+interface Props {
+  po: PO; restaurantId: string; allIngredients: IngredientOption[]; orderCond: OrderCond;
+  /** Quantités déjà reçues (réceptions validées) par ingrédient */
+  alreadyReceived?: Record<string, number>;
+}
 
-export default function ReceiveClient({ po, restaurantId, allIngredients, orderCond }: Props) {
+export default function ReceiveClient({ po, restaurantId, allIngredients, orderCond, alreadyReceived = {} }: Props) {
   // Label a purchase quantity in the supplier's order conditionnement (colis…).
   // Fallback : type déduit de l'unité (bidon / kg / colis), jamais l'unité brute.
   const condType = (ingredientId: string, unit: string, packQty?: number | null) =>
@@ -47,13 +52,18 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
         // (même colisage que la conversion stock), sinon la fiche produit.
         const supplierPrice = orderCond[l.ingredient_id!]?.packPrice;
         const price = l.expected_price ?? (supplierPrice != null && supplierPrice > 0 ? supplierPrice : l.ingredients!.pack_price);
+        // Réception partielle : proposer le RESTE à recevoir, pas la quantité
+        // totale (sinon un clic ajoutait toute la commande une 2ᵉ fois).
+        const deja = Number(alreadyReceived[l.ingredient_id!] ?? 0);
+        const reste = Math.max(0, Number(l.quantity) - deja);
         return {
           po_line_id: l.id,
           ingredient_id: l.ingredient_id!,
           ingredient_name: l.ingredients!.name,
           expected_price: price,
           qty_ordered: l.quantity,
-          qty_received: String(l.quantity), // pre-fill with ordered qty; user corrects if partial
+          qty_already: deja,
+          qty_received: String(deja > 0 ? reste : l.quantity),
           actual_price: String(price),
           unit: l.ingredients!.unit,
           pack_quantity: Number(l.ingredients!.pack_quantity ?? 1) || 1,
@@ -69,7 +79,10 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
   const [scanMessage, setScanMessage] = useState<string | null>(null);
 
   function updateLine(i: number, field: "qty_received" | "actual_price", val: string) {
-    setLines((p) => { const n = [...p]; n[i] = { ...n[i], [field]: val }; return n; });
+    // Jamais de valeur négative : elle serait archivée dans le bon de livraison
+    // et faussererait la facture puis l'annulation.
+    const clean = val === "" || parseFloat(val) >= 0 ? val : "0";
+    setLines((p) => { const n = [...p]; n[i] = { ...n[i], [field]: clean }; return n; });
   }
 
   // Prix retenu pour une ligne : celui saisi/scanné sur le BL (0 € accepté),
@@ -150,7 +163,20 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
   }
 
   async function handleValidate() {
-    setValidating(true); setError(null);
+    setError(null);
+
+    // 0a. Rien de reçu : refuser (sinon on valide une réception vide qui fait
+    //     basculer le statut de la commande sans jamais toucher le stock).
+    const toStock = lines.filter((l) => l.ingredient_id && (parseFloat(l.qty_received) || 0) > 0);
+    if (toStock.length === 0) {
+      setError("Aucune quantité reçue. Renseigne au moins un produit, ou annule la commande depuis la liste si elle n'a pas été livrée.");
+      return;
+    }
+    // 0b. Confirmation : l'action modifie le stock définitivement.
+    const recap = toStock.map((l) => `• ${l.ingredient_name} : ${parseFloat(l.qty_received)} ${condType(l.ingredient_id, l.unit, l.pack_quantity)}`).join("\n");
+    if (!window.confirm(`Valider la réception ?\n\n${recap}\n\nLe stock sera augmenté et le coût moyen (CMUP) recalculé.`)) return;
+
+    setValidating(true);
 
     // 0. Garde anti-double réception : une réception déjà validée sur une
     //    commande qui n'est pas « partiellement reçue » signifie que le stock a
@@ -173,7 +199,14 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
       const safeName = blFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
       const path = `delivery-notes/${restaurantId}/${po.id}-${Date.now()}-${safeName}`;
       const { error: uploadErr } = await supabase.storage.from("invoices").upload(path, blFile);
-      if (!uploadErr) {
+      if (uploadErr) {
+        // Ne pas prétendre que le document est archivé : laisser choisir.
+        const goOn = window.confirm(
+          `La pièce jointe n'a pas pu être envoyée (${uploadErr.message}).\n\n` +
+          "Valider la réception SANS le document ? (le stock sera quand même mis à jour)"
+        );
+        if (!goOn) { setValidating(false); return; }
+      } else {
         blPdfUrl = path;
       }
     }
@@ -191,6 +224,14 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
     }).select().single();
 
     if (dnErr) { setError(dnErr.message); setValidating(false); return; }
+
+    // Stock déjà modifié par cette tentative (pour pouvoir tout remettre).
+    const appliedStock: { id: string; prevStock: number | null; prevCmup: number | null }[] = [];
+    async function undoStock() {
+      for (const a of appliedStock) {
+        await supabase.from("ingredients").update({ stock_qty: a.prevStock, cmup: a.prevCmup }).eq("id", a.id);
+      }
+    }
 
     // Best-effort cleanup when a later step fails: remove what this attempt created.
     async function abort(msg: string) {
@@ -278,27 +319,43 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
       if (movErr) return abort(`Enregistrement des mouvements impossible : ${movErr.message}. Rien n'a été appliqué — corrige puis réessaie.`);
 
       // 4b. Then stock updates; on failure, restore the ones already applied.
-      const applied: typeof patches = [];
       for (const p of patches) {
         const { error: updErr } = await supabase.from("ingredients").update({
           stock_qty: p.newStock, cmup: p.newCmup, updated_at: new Date().toISOString(),
         }).eq("id", p.id);
         if (updErr) {
-          for (const a of applied) {
-            await supabase.from("ingredients").update({ stock_qty: a.prevStock, cmup: a.prevCmup }).eq("id", a.id);
-          }
+          await undoStock();
           return abort(`Mise à jour du stock impossible : ${updErr.message}. Les modifications ont été annulées — réessaie.`);
         }
-        applied.push(p);
+        appliedStock.push(p);
       }
     }
 
-    // 5. Everything is written: mark the delivery note validated, then the PO.
-    await supabase.from("delivery_notes").update({ validated: true, validated_at: new Date().toISOString() }).eq("id", dn.id);
-    const isPartial = lines.some((l) => l.po_line_id && parseFloat(l.qty_received) < l.qty_ordered);
-    await supabase.from("purchase_orders").update({
+    // 5. Tout est écrit : on valide le bon de livraison, puis la commande.
+    //    Si cette validation échoue, le stock est appliqué mais la réception
+    //    resterait invisible pour la facture → elle rajouterait les quantités.
+    //    On annule donc TOUT plutôt que de laisser cet état incohérent.
+    const { error: dnValErr } = await supabase.from("delivery_notes")
+      .update({ validated: true, validated_at: new Date().toISOString() }).eq("id", dn.id);
+    if (dnValErr) {
+      await undoStock();
+      return abort(`Validation de la réception impossible : ${dnValErr.message}. Le stock a été remis comme avant — réessaie.`);
+    }
+
+    const isPartial = lines.some((l) => l.po_line_id && (parseFloat(l.qty_received) || 0) < l.qty_ordered);
+    const { error: poErr } = await supabase.from("purchase_orders").update({
       status: isPartial ? "Partially received" : "Received",
     }).eq("id", po.id);
+    if (poErr) {
+      // Le stock ET la réception sont bons : seul le statut n'a pas suivi.
+      setValidating(false);
+      window.alert(
+        "La réception et le stock ont bien été enregistrés, mais le statut de la commande n'a pas pu être mis à jour " +
+        `(${poErr.message}).\n\nRecharge la page des commandes : ne re-valide PAS cette réception, le stock est déjà à jour.`
+      );
+      router.push("/orders");
+      return;
+    }
 
     setValidating(false);
     router.push("/orders?validated=1");
@@ -398,6 +455,9 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
                 <div className="sm:col-span-2 text-left sm:text-right text-sm text-gray-500">
                   <span className="sm:hidden text-2xs text-gray-400 uppercase mr-1">Cmd</span>
                   {line.added ? "—" : `${line.qty_ordered} ${type}`}
+                  {!line.added && (line.qty_already ?? 0) > 0 && (
+                    <span className="block text-2xs text-blue-600">déjà reçu : {line.qty_already}</span>
+                  )}
                 </div>
                 {/* Reçu */}
                 <div className="sm:col-span-3 flex items-center sm:justify-end gap-1">
@@ -439,7 +499,13 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
       {error && <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2 mb-4">{error}</div>}
 
       <div className="flex gap-3">
-        <a href="/orders" className="flex-1 py-2 text-center text-sm text-gray-600 border border-[#E5E7EB] rounded-lg hover:bg-gray-50 transition">Annuler</a>
+        {/* Désactivé pendant l'écriture : partir en cours de route laisserait
+            le stock appliqué sans réception validée. */}
+        <a href="/orders"
+          onClick={(e) => { if (validating) e.preventDefault(); }}
+          aria-disabled={validating}
+          className={clsx("flex-1 py-2 text-center text-sm border border-[#E5E7EB] rounded-lg transition",
+            validating ? "text-gray-300 pointer-events-none" : "text-gray-600 hover:bg-gray-50")}>Annuler</a>
         <button onClick={handleValidate} disabled={validating}
           className="flex-1 py-2 text-sm text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 disabled:opacity-50 transition flex items-center justify-center gap-2">
           {validating ? <><Loader2 size={14} className="animate-spin" /> Enregistrement…</> : <><Check size={14} /> Valider la réception</>}

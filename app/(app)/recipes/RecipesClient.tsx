@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -143,6 +143,11 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
   const [recalcMsg, setRecalcMsg] = useState<string | null>(null);
 
   const [tab, setTab] = useState<"recipe" | "prep">(lockMode ?? "recipe");
+
+  // Après un recalcul serveur (router.refresh), les coûts arrivent par les
+  // props : on resynchronise, sinon l'écran garderait les coûts provisoires.
+  useEffect(() => { setRecipes(initialRecipes); }, [initialRecipes]);
+  useEffect(() => { setAllRecipes(allRecipesProp); }, [allRecipesProp]);
   const [name, setName] = useState("");
   const [category, setCategory] = useState("Plat");
   const [isPrep, setIsPrep] = useState(false);
@@ -260,8 +265,16 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
     if (!name.trim()) return setError("Le nom de la recette est requis.");
     const yp = parseFloat(yieldPortions);
     if (isNaN(yp) || yp <= 0) return setError("Le nombre de portions doit être supérieur à 0.");
-    const validLines = lines.filter((l) => l.ingredient_id || l.sub_recipe_id);
-    if (validLines.length === 0) return setError("Ajoutez au moins un ingrédient ou une mise en place.");
+    const chosen = lines.filter((l) => l.ingredient_id || l.sub_recipe_id);
+    if (chosen.length === 0) return setError("Ajoutez au moins un ingrédient ou une mise en place.");
+    // Une ligne choisie sans quantité enverrait NaN → quantité nulle en base.
+    const sansQte = chosen.find((l) => !(parseFloat(l.quantity) > 0));
+    if (sansQte) {
+      const nom = ingredients.find((i) => i.id === sansQte.ingredient_id)?.name
+        ?? allRecipes.find((r) => r.id === sansQte.sub_recipe_id)?.name ?? "une ligne";
+      return setError(`Indique une quantité pour « ${nom} » (ou retire la ligne).`);
+    }
+    const validLines = chosen;
 
     setSaving(true);
     const recipePayload = {
@@ -276,11 +289,20 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
 
     let recipeId = editingId;
 
+    // Anciennes lignes conservées : si la réécriture échoue on les remet.
+    let previousLines: any[] = [];
+
     if (editingId) {
       const { error: err } = await supabase.from("recipes").update(recipePayload).eq("id", editingId);
       if (err) { setError(err.message); setSaving(false); return; }
-      // Delete old lines
-      await supabase.from("recipe_lines").delete().eq("recipe_id", editingId);
+      const { data: oldLines } = await supabase
+        .from("recipe_lines").select("ingredient_id, sub_recipe_id, quantity, unit").eq("recipe_id", editingId);
+      previousLines = (oldLines ?? []).map((l) => ({ ...l, recipe_id: editingId }));
+      const { error: delErr } = await supabase.from("recipe_lines").delete().eq("recipe_id", editingId);
+      if (delErr) {
+        setError(`Mise à jour des ingrédients impossible : ${delErr.message}. La recette n'a pas été modifiée.`);
+        setSaving(false); return;
+      }
     } else {
       const { data, error: err } = await supabase.from("recipes").insert(recipePayload).select().single();
       if (err) { setError(err.message); setSaving(false); return; }
@@ -296,7 +318,12 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
       unit: l.unit,
     }));
     const { error: lineErr } = await supabase.from("recipe_lines").insert(linePayload);
-    if (lineErr) { setError(lineErr.message); setSaving(false); return; }
+    if (lineErr) {
+      // Ne jamais laisser la recette sans ingrédients : on restaure l'ancienne version.
+      if (previousLines.length > 0) await supabase.from("recipe_lines").insert(previousLines);
+      setError(`Enregistrement des ingrédients impossible : ${lineErr.message}. ${previousLines.length > 0 ? "La version précédente a été rétablie." : ""}`);
+      setSaving(false); return;
+    }
 
     // Build local recipe object to update UI immediately (no reload needed)
     const builtLines = validLines.map((l) => {
@@ -321,6 +348,9 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
       total_cost: totalCost,
       menu_price: editingId ? (recipes.find((r) => r.id === editingId)?.menu_price ?? null) : null,
       allergens: editingId ? (recipes.find((r) => r.id === editingId)?.allergens ?? []) : [],
+      // Conserver le drapeau inventaire, sinon le bouton « Inventaire ✓ »
+      // repassait à « + Inventaire » après une modification.
+      countable_in_inventory: editingId ? (recipes.find((r) => r.id === editingId)?.countable_in_inventory ?? false) : false,
       recipe_lines: builtLines,
     };
 
@@ -335,34 +365,47 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
     // Recompute authoritative costs server-side (CMUP, sous-recettes en cascade)
     // — attendu AVANT de rendre la main, sinon un départ de page laisse un
     // total_cost provisoire en base.
-    try {
-      await fetch("/api/recalculate-recipes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ restaurantId }),
-      });
-    } catch { /* best-effort : le bouton Recalculer reste disponible */ }
+    const recalc = await recalcServer();
 
     setSaving(false);
     setShowForm(false);
+    if (!recalc.ok) {
+      window.alert(
+        "La recette est enregistrée, mais le recalcul des coûts au CMUP a échoué " +
+        `(${recalc.message}).\n\nUtilise le bouton « Tout recalculer » pour obtenir les coûts définitifs.`
+      );
+    }
     router.refresh();
   }
 
-  async function handleRecalcAll() {
-    setRecalcing(true);
-    setRecalcMsg(null);
+  // Recalcul serveur (CMUP + cascade des MEP) avec un vrai retour d'erreur.
+  async function recalcServer(): Promise<{ ok: boolean; message: string; skipped?: string[] }> {
     try {
       const res = await fetch("/api/recalculate-recipes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ restaurantId }),
       });
-      if (!res.ok) throw new Error();
-      setRecalcMsg("Coûts et allergènes recalculés. Recharge la page pour voir les valeurs à jour.");
+      const json = await res.json().catch(() => null);
+      if (!res.ok) return { ok: false, message: json?.error ?? `erreur ${res.status}` };
+      return { ok: true, message: "", skipped: json?.skipped };
     } catch {
-      setRecalcMsg("Échec du recalcul. Réessaie.");
+      return { ok: false, message: "connexion interrompue" };
     }
+  }
+
+  async function handleRecalcAll() {
+    setRecalcing(true);
+    setRecalcMsg(null);
+    const r = await recalcServer();
     setRecalcing(false);
+    if (!r.ok) { setRecalcMsg(`Échec du recalcul : ${r.message}. Réessaie.`); return; }
+    if (r.skipped && r.skipped.length > 0) {
+      setRecalcMsg(`Coûts recalculés, sauf ${r.skipped.length} recette(s) : une mise en place s'utilise elle-même (boucle). Corrige ces fiches.`);
+    } else {
+      setRecalcMsg("Coûts et allergènes recalculés ✓");
+    }
+    router.refresh();
   }
 
   async function handleDuplicate(recipe: Recipe) {
@@ -382,7 +425,11 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
       })
       .select()
       .single();
-    if (err || !created) { setDuplicatingId(null); return; }
+    if (err || !created) {
+      setDuplicatingId(null);
+      window.alert(`Duplication impossible : ${err?.message ?? "réessaie."}`);
+      return;
+    }
 
     // 2) Copy the lines
     const linePayload = recipe.recipe_lines
@@ -395,7 +442,14 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
         unit: l.unit,
       }));
     if (linePayload.length > 0) {
-      await supabase.from("recipe_lines").insert(linePayload);
+      const { error: cpErr } = await supabase.from("recipe_lines").insert(linePayload);
+      if (cpErr) {
+        // Une copie sans ingrédients afficherait un coût fantôme : on annule.
+        await supabase.from("recipes").delete().eq("id", created.id);
+        setDuplicatingId(null);
+        window.alert(`Duplication impossible : ${cpErr.message}. Rien n'a été créé.`);
+        return;
+      }
     }
 
     // 3) Update local state
@@ -405,6 +459,8 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
       name: `${recipe.name} (copie)`,
       menu_price: null,
       allergens: recipe.allergens ?? [],
+      // La copie n'hérite PAS du comptage d'inventaire (non copié en base)
+      countable_in_inventory: false,
     };
     setRecipes((p) => [...p, builtRecipe].sort((a, b) => a.name.localeCompare(b.name)));
     setAllRecipes((p) => [...p, builtRecipe].sort((a, b) => a.name.localeCompare(b.name)));
@@ -416,12 +472,21 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
 
   async function handleDelete(id: string) {
     const name = recipes.find((r) => r.id === id)?.name ?? (tab === "prep" ? "cette mise en place" : "cette recette");
-    if (!window.confirm(`Supprimer « ${name} » ? Cette action est irréversible.`)) return;
+    // Utilisée comme MEP dans d'autres fiches ? Le dire AVANT de supprimer.
+    const usedIn = allRecipes.filter((r) => r.id !== id && (r.recipe_lines ?? []).some((l) => l.sub_recipe_id === id));
+    const extra = usedIn.length > 0
+      ? `\n\n⚠️ Elle est utilisée dans ${usedIn.length} fiche(s) : ${usedIn.slice(0, 5).map((r) => r.name).join(", ")}${usedIn.length > 5 ? "…" : ""}.\nLeur coût sera recalculé sans cet élément.`
+      : "";
+    if (!window.confirm(`Supprimer « ${name} » ? Cette action est irréversible.${extra}`)) return;
     setDeletingId(id);
-    await supabase.from("recipes").delete().eq("id", id);
+    const { error: delErr } = await supabase.from("recipes").delete().eq("id", id);
+    setDeletingId(null);
+    if (delErr) { window.alert(`Suppression impossible : ${delErr.message}`); return; }
     setRecipes((p) => p.filter((r) => r.id !== id));
     setAllRecipes((p) => p.filter((r) => r.id !== id));
-    setDeletingId(null);
+    // Les parents doivent perdre le coût de l'élément supprimé.
+    if (usedIn.length > 0) await recalcServer();
+    router.refresh();
   }
 
   return (
@@ -536,7 +601,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
           <div className="bg-white rounded-card border border-[#E5E7EB] w-full max-w-2xl shadow-xl my-8">
             <div className="flex items-center justify-between px-5 py-4 border-b border-[#E5E7EB]">
               <h2 className="text-base font-medium text-gray-900">{editingId ? "Modifier" : "Nouveau"} {tab === "prep" ? "— mise en place" : "— fiche technique"}</h2>
-              <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+              <button onClick={() => setShowForm(false)} title="Fermer" aria-label="Fermer" className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
 
             <div className="p-5 space-y-5">
@@ -562,7 +627,11 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                       className="w-28 px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition" />
                     <select value={yieldUnit} onChange={(e) => setYieldUnit(e.target.value)}
                       className="flex-1 px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 bg-white transition">
-                      {YIELD_UNITS.map((u) => <option key={u.value} value={u.value}>{u.label}</option>)}
+                      {/* Un plat VENDU se compte en portions/pièces : avec un
+                          rendement en kg, une vente ne déstockerait qu'une
+                          fraction infime des ingrédients. */}
+                      {(isPrep ? YIELD_UNITS : YIELD_UNITS.filter((u) => u.value === "portion" || u.value === "piece"))
+                        .map((u) => <option key={u.value} value={u.value}>{u.label}</option>)}
                     </select>
                   </div>
                   <p className="text-xs text-gray-400 mt-1">
@@ -657,7 +726,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                         €{calcLineCost(line, ingredients, allRecipes).toFixed(3)}
                       </div>
 
-                      <button onClick={() => removeLine(idx)} className="pt-2 text-gray-300 hover:text-red-400 transition">
+                      <button onClick={() => removeLine(idx)} title="Retirer cette ligne" aria-label="Retirer cette ligne" className="pt-2 text-gray-300 hover:text-red-400 transition">
                         <Trash2 size={14} />
                       </button>
                     </div>
@@ -682,7 +751,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
             </div>
 
             <div className="flex gap-2 px-5 py-4 border-t border-[#E5E7EB]">
-              <button onClick={() => setShowForm(false)}
+              <button onClick={() => setShowForm(false)} title="Fermer" aria-label="Fermer"
                 className="flex-1 py-2 text-sm text-gray-600 border border-[#E5E7EB] rounded-lg hover:bg-gray-50 transition">
                 Annuler
               </button>
@@ -706,7 +775,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
             className="w-full pl-9 pr-8 py-2 text-sm bg-surface-container-low border-none rounded-xl outline-none focus:ring-2 focus:ring-primary/20 placeholder:text-on-surface-variant/40"
           />
           {search && (
-            <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-on-surface-variant/40 hover:text-on-surface-variant">
+            <button onClick={() => setSearch("")} title="Effacer la recherche" aria-label="Effacer la recherche" className="absolute right-2.5 top-1/2 -translate-y-1/2 text-on-surface-variant/40 hover:text-on-surface-variant">
               <X size={14} />
             </button>
           )}
