@@ -2,12 +2,12 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser, isAppAdmin, ADMIN_RESTAURANT_COOKIE } from "@/lib/auth";
-import { openRestaurant, closeRestaurant } from "./actions";
-import { Building2, Package, ShoppingCart, ChefHat, ArrowRight, ArrowLeft, Crown } from "lucide-react";
+import { openRestaurant, closeRestaurant, createCustomer } from "./actions";
+import { Building2, Package, ShoppingCart, ChefHat, ArrowRight, ArrowLeft, Crown, UserPlus } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminPage() {
+export default async function AdminPage({ searchParams }: { searchParams?: { ok?: string; err?: string } }) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   if (!(await isAppAdmin())) redirect("/dashboard");
@@ -75,6 +75,45 @@ export default async function AdminPage() {
           )}
         </div>
 
+        {/* Messages de la création de client */}
+        {searchParams?.ok && (
+          <div className="mb-4 text-sm text-primary bg-emerald-50 border border-primary/20 rounded-xl px-4 py-3">✅ {searchParams.ok}</div>
+        )}
+        {searchParams?.err && (
+          <div className="mb-4 text-sm text-red bg-red-light border border-red/20 rounded-xl px-4 py-3">⚠️ {searchParams.err}</div>
+        )}
+
+        {/* Créer un client — réservé à toi */}
+        <details className="glass-card rounded-2xl mb-6 overflow-hidden group">
+          <summary className="flex items-center gap-2.5 px-5 py-4 cursor-pointer text-sm font-semibold text-primary hover:bg-surface-container-low/40 transition list-none">
+            <UserPlus size={17} /> Créer un nouveau client
+            <span className="ml-auto text-2xs text-on-surface-variant/50 font-normal group-open:hidden">cliquer pour ouvrir</span>
+          </summary>
+          <form action={createCustomer} className="px-5 pb-5 pt-1 flex flex-wrap items-end gap-3 border-t border-outline-variant/20">
+            <div className="flex-1 min-w-[180px]">
+              <label className="block text-2xs font-bold uppercase tracking-wide text-on-surface-variant/60 mb-1 mt-3">Nom du restaurant</label>
+              <input name="restaurant_name" required placeholder="ex. Chez Marco"
+                className="w-full px-3 py-2.5 text-sm bg-surface-container-low border-none rounded-xl outline-none focus:ring-2 focus:ring-primary/20" />
+            </div>
+            <div className="flex-1 min-w-[200px]">
+              <label className="block text-2xs font-bold uppercase tracking-wide text-on-surface-variant/60 mb-1 mt-3">Email du client</label>
+              <input name="email" type="email" required placeholder="patron@chezmarco.fr"
+                className="w-full px-3 py-2.5 text-sm bg-surface-container-low border-none rounded-xl outline-none focus:ring-2 focus:ring-primary/20" />
+            </div>
+            <div className="flex-1 min-w-[180px]">
+              <label className="block text-2xs font-bold uppercase tracking-wide text-on-surface-variant/60 mb-1 mt-3">Mot de passe provisoire</label>
+              <input name="password" type="text" required minLength={8} placeholder="8 caractères min."
+                className="w-full px-3 py-2.5 text-sm bg-surface-container-low border-none rounded-xl outline-none focus:ring-2 focus:ring-primary/20" />
+            </div>
+            <button className="flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary text-sm font-semibold rounded-xl hover:bg-primary-container transition shadow-lg active:scale-[0.98]">
+              <UserPlus size={15} /> Créer le client
+            </button>
+            <p className="w-full text-2xs text-on-surface-variant/50 mt-1">
+              Son espace est créé vierge. Transmets-lui son email + mot de passe provisoire — il pourra le changer via « Mot de passe oublié ? ».
+            </p>
+          </form>
+        </details>
+
         {/* Clients list */}
         <div className="space-y-4">
           {stats.map((r) => (
@@ -111,7 +150,7 @@ export default async function AdminPage() {
         </div>
 
         <p className="text-xs text-on-surface-variant/50 mt-6">
-          💡 Pour ajouter un client : il crée son compte sur la page d&apos;inscription de l&apos;app, et son restaurant apparaît automatiquement ici.
+          💡 L&apos;inscription publique est fermée : seuls les clients que tu crées ici (bouton « Créer un nouveau client ») peuvent accéder à la plateforme.
         </p>
       </div>
     </div>

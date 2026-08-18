@@ -56,9 +56,8 @@ export default function LoginPage() {
           </form>
         </div>
 
-        <p className="text-center text-sm text-gray-500 mt-5">
-          Pas de compte ?{" "}
-          <Link href="/signup" className="text-green font-medium hover:underline">Créer un compte gratuit</Link>
+        <p className="text-center text-xs text-gray-400 mt-5">
+          Accès sur invitation — contactez Restointelligence pour ouvrir votre espace.
         </p>
       </div>
     </div>
