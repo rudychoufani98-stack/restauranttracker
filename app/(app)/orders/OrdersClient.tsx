@@ -6,6 +6,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { buildOrderMailto, defaultPackType } from "@/lib/order-email";
 import { unitShort } from "@/lib/ingredient-helpers";
+import { serviceMomentShort } from "@/lib/service-moment";
 import { Plus, Trash2, X, Send, Download, ChevronDown, ChevronUp, Zap, Check, Pencil, Truck, Search, TrendingUp, Hourglass, Star, ArrowRight, Ban } from "lucide-react";
 import clsx from "clsx";
 
@@ -136,14 +137,17 @@ function condLabel(a: Article): string {
 }
 type Supplier = { id: string; name: string; email: string | null; min_order_amount?: number | null; customer_reference?: string | null };
 type POLine = { id?: string; ingredient_id: string | null; quantity: number; expected_price: number | null; ingredients?: { name: string; unit: string } | null };
-type DeliveryNoteRef = { validated_at: string | null; created_at: string; bl_number?: string | null };
+type DeliveryNoteRef = { validated_at: string | null; created_at: string; bl_number?: string | null; received_at?: string | null; service_moment?: string | null };
 type InvoiceRef = { created_at: string; invoice_number: string | null };
 type OrderEvent = { po_id: string; type: string; detail: string | null; created_at: string };
 type PO = { id: string; order_number?: string | null; supplier_id: string | null; status: string; expected_total: number | null; created_at: string; sent_at: string | null; suppliers?: { name: string } | null; delivery_notes?: DeliveryNoteRef[]; invoices?: InvoiceRef[]; purchase_order_lines: POLine[] };
 
 // Reception month for grouping: latest delivery note date, else the order date.
 function receptionDate(o: PO): string {
-  const dates = (o.delivery_notes ?? []).map((d) => d.validated_at || d.created_at).filter(Boolean) as string[];
+  // received_at = heure RÉELLE de livraison (saisie à la réception). Elle
+  // primes sur la date de validation : une livraison du 30 saisie le 1er reste
+  // rattachée au mois où la marchandise est arrivée.
+  const dates = (o.delivery_notes ?? []).map((d) => d.received_at || d.validated_at || d.created_at).filter(Boolean) as string[];
   dates.sort();
   return dates.length ? dates[dates.length - 1] : o.created_at;
 }
@@ -162,8 +166,13 @@ function buildTimeline(o: PO, events: OrderEvent[]): TimelineItem[] {
   ];
   if (o.sent_at) items.push({ label: "Envoyée au fournisseur", date: o.sent_at, color: "bg-blue-500" });
   for (const dn of o.delivery_notes ?? []) {
-    const d = dn.validated_at || dn.created_at;
-    if (d) items.push({ label: "Réceptionnée", detail: dn.bl_number ? `BL ${dn.bl_number}` : null, date: d, color: "bg-emerald-500" });
+    const d = dn.received_at || dn.validated_at || dn.created_at;
+    if (d) {
+      // Le détail rappelle le moment de service : une livraison arrivée avant
+      // le service n'a pas le même effet sur la journée qu'après.
+      const parts = [dn.bl_number ? `BL ${dn.bl_number}` : null, dn.service_moment ? serviceMomentShort(dn.service_moment) : null].filter(Boolean);
+      items.push({ label: "Réceptionnée", detail: parts.length ? parts.join(" · ") : null, date: d, color: "bg-emerald-500" });
+    }
   }
   const invs = (o.invoices ?? []).slice().sort((a, b) => a.created_at.localeCompare(b.created_at));
   invs.forEach((inv, i) => items.push({

@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Check, Trash2, Mail, KeyRound, LogOut, Loader2, Users, UserPlus, Shield } from "lucide-react";
 import { Card, Button, Input, Select, Alert, Badge } from "@/components/ui";
 import { logout } from "@/app/auth/actions";
+import { parseHHMM, DEFAULT_SERVICE_START, DEFAULT_SERVICE_END, detectServiceMoment, serviceMomentLabel } from "@/lib/service-moment";
 import clsx from "clsx";
 
 const CUISINE_TYPES = ["Française", "Italienne", "Japonaise", "Méditerranéenne", "Mexicaine", "Indienne", "Américaine", "Autre"];
@@ -25,6 +26,7 @@ type Restaurant = {
   id: string; name: string; cuisine_type: string;
   target_food_cost_pct: number; digest_enabled?: boolean; digest_day?: string;
   address?: string; phone?: string; siret?: string; hide_po_prices?: boolean;
+  service_start?: string | null; service_end?: string | null;
 };
 type Member = { id: string; email: string; role: string; status: string; created_at: string };
 
@@ -56,6 +58,10 @@ export default function SettingsClient({ restaurant, email, initialMembers }: Pr
     phone: restaurant.phone ?? "",
     siret: restaurant.siret ?? "",
     hide_po_prices: restaurant.hide_po_prices ?? false,
+    // Horaires de service : servent à dire si une livraison ou un inventaire
+    // a lieu avant, pendant ou après le service.
+    service_start: (restaurant.service_start ?? DEFAULT_SERVICE_START).slice(0, 5),
+    service_end: (restaurant.service_end ?? DEFAULT_SERVICE_END).slice(0, 5),
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -72,6 +78,10 @@ export default function SettingsClient({ restaurant, email, initialMembers }: Pr
       return;
     }
     const day = DAYS.some((d) => d.value === form.digest_day) ? form.digest_day : "Monday";
+    if (parseHHMM(form.service_start) === null || parseHHMM(form.service_end) === null) {
+      setSaveError("Les horaires de service doivent être au format 11:30.");
+      return;
+    }
 
     setSaving(true); setSaved(false);
     const { error } = await supabase.from("restaurants").update({
@@ -84,6 +94,8 @@ export default function SettingsClient({ restaurant, email, initialMembers }: Pr
       phone: form.phone || null,
       siret: form.siret || null,
       hide_po_prices: form.hide_po_prices,
+      service_start: form.service_start,
+      service_end: form.service_end,
     }).eq("id", restaurant.id);
     setSaving(false);
     // Sans ce contrôle, l'écran affichait « Enregistré ✓ » même en cas d'échec.
@@ -231,6 +243,32 @@ export default function SettingsClient({ restaurant, email, initialMembers }: Pr
                 </div>
               </div>
             </div>
+          </Card>
+
+          <Card>
+            <h2 className="text-sm font-semibold text-gray-900 mb-1">Horaires de service</h2>
+            <p className="text-xs text-gray-500 mb-4">
+              Servent à savoir automatiquement si une livraison ou un inventaire a lieu <b>avant</b>, <b>pendant</b> ou <b>après</b> le service —
+              pour que les stocks soient affectés dans le bon ordre. Tu peux toujours corriger au cas par cas.
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Début du service</label>
+                <input type="time" value={form.service_start}
+                  onChange={(e) => setForm({ ...form, service_start: e.target.value })}
+                  className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Fin du service</label>
+                <input type="time" value={form.service_end}
+                  onChange={(e) => setForm({ ...form, service_end: e.target.value })}
+                  className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition" />
+              </div>
+            </div>
+            <p className="text-xs text-gray-400 mt-2">
+              Exemple : une livraison enregistrée à 8 h est « {serviceMomentLabel(detectServiceMoment(new Date(2026, 0, 1, 8, 0), form.service_start, form.service_end)).toLowerCase()} ».
+              Si ton service finit après minuit, indique par exemple 11:30 → 01:00.
+            </p>
           </Card>
 
           <Card>

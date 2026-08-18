@@ -4,6 +4,10 @@ import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { ingredientsPerYieldBase, type RecipeRow } from "@/lib/costing";
+import {
+  detectServiceMoment, toDatetimeLocal, SERVICE_MOMENTS, serviceMomentLabel, serviceMomentShort,
+  type ServiceMoment,
+} from "@/lib/service-moment";
 import { ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Warehouse, TrendingDown, TrendingUp, AlertTriangle, Check, Loader2, History, ClipboardList, Trash2, Download, Search, Package } from "lucide-react";
@@ -85,6 +89,8 @@ type InventorySession = {
   items_counted: number;
   manquant_value: number; surplus_value: number; net_value: number; notes: string | null;
   kind?: string | null;
+  /** avant / pendant / apres le service (voir lib/service-moment.ts) */
+  service_moment?: string | null;
   inventory_lines: InventoryLine[];
 };
 
@@ -95,6 +101,8 @@ interface Props {
   inventorySessions: InventorySession[];
   fournitureIds: string[];
   recipes?: CountRecipe[];
+  serviceStart?: string | null;
+  serviceEnd?: string | null;
 }
 
 // Pretty number: up to 3 decimals, no trailing zeros.
@@ -127,7 +135,7 @@ function displayToBase(qty: number, unit: string): number {
   return isWeightVol ? qty * 1000 : qty;
 }
 
-export default function InventaireClient({ restaurantId, ingredients, recentMovements, inventorySessions, fournitureIds, recipes = [] }: Props) {
+export default function InventaireClient({ restaurantId, ingredients, recentMovements, inventorySessions, fournitureIds, recipes = [], serviceStart = null, serviceEnd = null }: Props) {
   const supabase = createClient();
   const router = useRouter();
   const fournitureSet = useMemo(() => new Set(fournitureIds), [fournitureIds]);
@@ -146,6 +154,14 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
     const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
     return d.toISOString().slice(0, 16); // "YYYY-MM-DDTHH:mm" (local) for datetime-local input
   });
+  // Moment de service du comptage : détecté d'après l'heure choisie, corrigeable.
+  const detectedMoment = useMemo(() => {
+    const d = new Date(newClosingAt);
+    return isNaN(d.getTime()) ? null : detectServiceMoment(d, serviceStart, serviceEnd);
+  }, [newClosingAt, serviceStart, serviceEnd]);
+  const [momentOverride, setMomentOverride] = useState<ServiceMoment | "">("");
+  const serviceMoment: ServiceMoment | null = momentOverride || detectedMoment;
+
   const [creatingDraft, setCreatingDraft] = useState(false);
   const [counts, setCounts] = useState<Record<string, string>>({});
   // Comptage des MEP / recettes (clé = recipe id, valeur saisie en unité de rendement)
@@ -269,6 +285,9 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
     const { data: session, error: crErr } = await supabase.from("inventory_sessions").insert({
       restaurant_id: restaurantId, status: "draft", kind,
       closing_at: newClosingAt ? new Date(newClosingAt).toISOString() : new Date().toISOString(),
+      // Avant / pendant / après le service : un comptage d'ouverture et un
+      // comptage de fermeture ne décrivent pas le même stock.
+      service_moment: serviceMoment,
       items_counted: 0,
     }).select().single();
     setCreatingDraft(false);
@@ -334,7 +353,11 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
 
   async function saveSession(finalize: boolean) {
     if (!activeSessionId) return;
-    const sessionKind: Kind = (sessions.find((s) => s.id === activeSessionId)?.kind as Kind) ?? countKind;
+    const session = sessions.find((s) => s.id === activeSessionId);
+    const sessionKind: Kind = (session?.kind as Kind) ?? countKind;
+    // Les écarts sont datés du MOMENT DU COMPTAGE (pas de la saisie) : le
+    // journal de stock reste chronologique même si tu finalises plus tard.
+    const countedAtIso = session?.closing_at ?? new Date().toISOString();
 
     // Finaliser écrase le stock théorique et écrit des mouvements de perte /
     // ajustement : action irréversible, on demande confirmation.
@@ -365,8 +388,8 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
       if (finalize && diff !== 0) {
         updates.push({ id: ing.id, qty: real, prevQty: ing.stock_qty ?? null });
         movements.push(diff < 0
-          ? { restaurant_id: restaurantId, ingredient_id: ing.id, movement_type: "loss", qty: Math.abs(diff), unit_cost: cmup, reference_type: "inventory", reference_id: activeSessionId, loss_reason: "Écart inventaire", notes: `Inventaire : ${formatQty(theo, ing.unit)} → ${formatQty(real, ing.unit)}` }
-          : { restaurant_id: restaurantId, ingredient_id: ing.id, movement_type: "adjustment", qty: diff, unit_cost: cmup, reference_type: "inventory", reference_id: activeSessionId, notes: `Inventaire : ${formatQty(theo, ing.unit)} → ${formatQty(real, ing.unit)}` });
+          ? { restaurant_id: restaurantId, ingredient_id: ing.id, movement_type: "loss", qty: Math.abs(diff), unit_cost: cmup, reference_type: "inventory", reference_id: activeSessionId, loss_reason: "Écart inventaire", created_at: countedAtIso, notes: `Inventaire ${serviceMomentShort(session?.service_moment)} : ${formatQty(theo, ing.unit)} → ${formatQty(real, ing.unit)}` }
+          : { restaurant_id: restaurantId, ingredient_id: ing.id, movement_type: "adjustment", qty: diff, unit_cost: cmup, reference_type: "inventory", reference_id: activeSessionId, created_at: countedAtIso, notes: `Inventaire ${serviceMomentShort(session?.service_moment)} : ${formatQty(theo, ing.unit)} → ${formatQty(real, ing.unit)}` });
       }
     }
 
@@ -593,18 +616,34 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
               {countKind === "fournitures" && kindIngredients.length === 0 && (
                 <p className="text-sm text-amber-dark mb-3">Aucun ingrédient n&apos;a le tag « Fournitures ». Assigne ce tag à tes fournitures (couverts, emballages…) depuis la page Ingrédients.</p>
               )}
-              <p className="text-sm text-on-surface-variant/70 mb-4">Choisis la date et l&apos;heure de l&apos;inventaire (pour savoir si c&apos;est avant ou après service). Tu peux la laisser en brouillon et la finir plus tard.</p>
+              <p className="text-sm text-on-surface-variant/70 mb-4">Indique quand le comptage est fait : le moment du service est détecté automatiquement, et les écarts seront datés de cette heure-là. Tu peux laisser la fiche en brouillon et la finir plus tard.</p>
               <div className="flex flex-wrap items-end gap-2 justify-center">
                 <div className="text-left">
-                  <label className="block text-2xs font-bold uppercase tracking-wide text-on-surface-variant/60 mb-1">Date &amp; heure de l&apos;inventaire</label>
+                  <label className="block text-2xs font-bold uppercase tracking-wide text-on-surface-variant/60 mb-1">Date &amp; heure du comptage</label>
                   <input type="datetime-local" value={newClosingAt} onChange={(e) => setNewClosingAt(e.target.value)}
                     className="px-3 py-2 text-sm bg-surface-container-low border-none rounded-xl outline-none focus:ring-2 focus:ring-primary/20 text-on-surface" />
+                </div>
+                <div className="text-left">
+                  <label className="block text-2xs font-bold uppercase tracking-wide text-on-surface-variant/60 mb-1">Moment du service</label>
+                  <select value={momentOverride || (detectedMoment ?? "")}
+                    onChange={(e) => setMomentOverride(e.target.value as ServiceMoment | "")}
+                    className="px-3 py-2 text-sm bg-surface-container-low border-none rounded-xl outline-none focus:ring-2 focus:ring-primary/20 text-on-surface">
+                    {SERVICE_MOMENTS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                  </select>
                 </div>
                 <button onClick={createDraft} disabled={creatingDraft}
                   className="px-5 py-2.5 bg-primary text-on-primary text-sm font-semibold rounded-xl hover:bg-primary-container disabled:opacity-50 transition">
                   {creatingDraft ? "Création…" : "Créer la fiche"}
                 </button>
               </div>
+              {serviceMoment && (
+                <p className="text-2xs text-on-surface-variant/60 mt-3">
+                  {momentOverride && momentOverride !== detectedMoment
+                    ? `Corrigé manuellement (détecté : ${serviceMomentLabel(detectedMoment).toLowerCase()}). `
+                    : "Détecté d'après tes horaires de service. "}
+                  {SERVICE_MOMENTS.find((m) => m.value === serviceMoment)?.hint}
+                </p>
+              )}
             </div>
           ) : (
           <>
@@ -614,7 +653,9 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
               <p className="text-base font-semibold text-on-surface">
                 Inventaire du {activeSession.closing_at ? new Date(activeSession.closing_at).toLocaleString("fr-FR", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"}
               </p>
-              <p className="text-2xs text-amber-dark uppercase tracking-wide font-bold">Brouillon · {countSummary.counted} produit(s) compté(s)</p>
+              <p className="text-2xs text-amber-dark uppercase tracking-wide font-bold">
+                Brouillon · {serviceMomentShort(activeSession.service_moment)} · {countSummary.counted} produit(s) compté(s)
+              </p>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -853,6 +894,12 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
                         <span className={clsx("px-2.5 py-1 rounded-full text-2xs font-bold uppercase tracking-wide", draft ? "bg-amber-light text-amber-dark" : "bg-emerald-50 text-primary")}>
                           {draft ? "Brouillon" : "Finalisé"}
                         </span>
+                        {s.service_moment && (
+                          <span className="px-2.5 py-1 rounded-full text-2xs font-bold uppercase tracking-wide bg-blue-light text-blue"
+                            title="Un comptage avant service et un comptage après service ne décrivent pas le même stock">
+                            {serviceMomentShort(s.service_moment)}
+                          </span>
+                        )}
                       </p>
                       <p className="text-2xs text-on-surface-variant/50 mt-0.5">{s.items_counted} produit{s.items_counted !== 1 ? "s" : ""} compté{s.items_counted !== 1 ? "s" : ""}</p>
                     </button>

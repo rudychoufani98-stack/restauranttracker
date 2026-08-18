@@ -1,12 +1,16 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Upload, Check, Loader2, Plus, Trash2 } from "lucide-react";
 import clsx from "clsx";
 import { defaultPackType } from "@/lib/order-email";
 import { applyReception } from "@/lib/costing";
+import {
+  detectServiceMoment, toDatetimeLocal, SERVICE_MOMENTS, serviceMomentLabel,
+  type ServiceMoment,
+} from "@/lib/service-moment";
 
 type IngredientInfo = { id: string; name: string; unit: string; pack_price: number; cost_per_base_unit: number; pack_quantity: number | null };
 type POLine = { id: string; ingredient_id: string | null; quantity: number; expected_price: number | null; ingredients?: IngredientInfo | null };
@@ -32,9 +36,11 @@ interface Props {
   po: PO; restaurantId: string; allIngredients: IngredientOption[]; orderCond: OrderCond;
   /** Quantités déjà reçues (réceptions validées) par ingrédient */
   alreadyReceived?: Record<string, number>;
+  serviceStart?: string | null;
+  serviceEnd?: string | null;
 }
 
-export default function ReceiveClient({ po, restaurantId, allIngredients, orderCond, alreadyReceived = {} }: Props) {
+export default function ReceiveClient({ po, restaurantId, allIngredients, orderCond, alreadyReceived = {}, serviceStart = null, serviceEnd = null }: Props) {
   // Label a purchase quantity in the supplier's order conditionnement (colis…).
   // Fallback : type déduit de l'unité (bidon / kg / colis), jamais l'unité brute.
   const condType = (ingredientId: string, unit: string, packQty?: number | null) =>
@@ -70,6 +76,18 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
         };
       })
   );
+
+  // Heure RÉELLE de la livraison (par défaut maintenant) : c'est elle qui date
+  // les mouvements de stock, pas l'heure de saisie. Une livraison du matin
+  // saisie le soir reste donc datée du matin.
+  const [receivedAt, setReceivedAt] = useState(() => toDatetimeLocal(new Date()));
+  const detectedMoment = useMemo(() => {
+    const d = new Date(receivedAt);
+    return isNaN(d.getTime()) ? null : detectServiceMoment(d, serviceStart, serviceEnd);
+  }, [receivedAt, serviceStart, serviceEnd]);
+  // L'utilisateur peut corriger si la détection ne colle pas à sa réalité.
+  const [momentOverride, setMomentOverride] = useState<ServiceMoment | "">("");
+  const serviceMoment: ServiceMoment | null = momentOverride || detectedMoment;
 
   const [blNumber, setBlNumber] = useState("");
   const [blFile, setBlFile] = useState<File | null>(null);
@@ -174,7 +192,11 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
     }
     // 0b. Confirmation : l'action modifie le stock définitivement.
     const recap = toStock.map((l) => `• ${l.ingredient_name} : ${parseFloat(l.qty_received)} ${condType(l.ingredient_id, l.unit, l.pack_quantity)}`).join("\n");
-    if (!window.confirm(`Valider la réception ?\n\n${recap}\n\nLe stock sera augmenté et le coût moyen (CMUP) recalculé.`)) return;
+    const quand = new Date(receivedAt);
+    const quandTxt = isNaN(quand.getTime())
+      ? "maintenant"
+      : `${quand.toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}${serviceMoment ? ` — ${serviceMomentLabel(serviceMoment).toLowerCase()}` : ""}`;
+    if (!window.confirm(`Valider la réception du ${quandTxt} ?\n\n${recap}\n\nLe stock sera augmenté et le coût moyen (CMUP) recalculé.`)) return;
 
     setValidating(true);
 
@@ -214,6 +236,11 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
     // 2. Create delivery note as a DRAFT (validated only at the very end, once
     //    stock + movements are safely written) so a mid-flight failure never
     //    leaves a "validated" reception with no stock behind it.
+    const receivedIso = (() => {
+      const d = new Date(receivedAt);
+      return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+    })();
+
     const { data: dn, error: dnErr } = await supabase.from("delivery_notes").insert({
       po_id: po.id,
       restaurant_id: restaurantId,
@@ -221,6 +248,9 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
       bl_pdf_url: blPdfUrl,
       validated: false,
       validated_at: null,
+      // Heure réelle de livraison + moment de service (avant / pendant / après)
+      received_at: receivedIso,
+      service_moment: serviceMoment,
     }).select().single();
 
     if (dnErr) { setError(dnErr.message); setValidating(false); return; }
@@ -301,6 +331,10 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
           unit_cost: costPerBase,
           reference_type: "delivery",
           reference_id: dn.id,
+          // Daté de la livraison réelle : le journal et les achats du mois
+          // restent justes même si la saisie est faite plus tard.
+          created_at: receivedIso,
+          notes: serviceMoment ? `Réception ${serviceMomentLabel(serviceMoment).toLowerCase()}` : null,
         });
       }
 
@@ -336,7 +370,7 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
     //    resterait invisible pour la facture → elle rajouterait les quantités.
     //    On annule donc TOUT plutôt que de laisser cet état incohérent.
     const { error: dnValErr } = await supabase.from("delivery_notes")
-      .update({ validated: true, validated_at: new Date().toISOString() }).eq("id", dn.id);
+      .update({ validated: true, validated_at: receivedIso }).eq("id", dn.id);
     if (dnValErr) {
       await undoStock();
       return abort(`Validation de la réception impossible : ${dnValErr.message}. Le stock a été remis comme avant — réessaie.`);
@@ -367,6 +401,45 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
         <a href="/orders" className="text-sm text-gray-400 hover:text-gray-600 mb-2 inline-block">← Bons de commande</a>
         <h1 className="text-xl font-medium text-gray-900">Réception de la commande</h1>
         <p className="text-sm text-gray-500 mt-0.5">Fournisseur : {po.suppliers?.name} · Confirme les quantités reçues — le stock est mis à jour immédiatement, les prix seront ajustés à la facture</p>
+      </div>
+
+      {/* Moment de la livraison : date + heure réelles, moment de service détecté */}
+      <div className="bg-white border border-[#E5E7EB] rounded-card p-5 mb-5">
+        <h2 className="text-sm font-medium text-gray-900 mb-1">Quand la livraison est-elle arrivée ?</h2>
+        <p className="text-xs text-gray-500 mb-3">
+          Le stock est daté de ce moment-là — pas de l&apos;heure de saisie. Tu peux donc enregistrer ce soir une livraison reçue ce matin.
+        </p>
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Date et heure de réception</label>
+            <input type="datetime-local" value={receivedAt} max={toDatetimeLocal(new Date())}
+              onChange={(e) => setReceivedAt(e.target.value)}
+              className="px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500" />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Moment du service</label>
+            <select value={momentOverride || (detectedMoment ?? "")}
+              onChange={(e) => setMomentOverride(e.target.value as ServiceMoment | "")}
+              className="px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg bg-white outline-none focus:border-emerald-500">
+              {SERVICE_MOMENTS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+            </select>
+          </div>
+          {detectedMoment && !momentOverride && (
+            <p className="text-2xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-2.5 py-1.5">
+              Détecté d&apos;après tes horaires de service
+            </p>
+          )}
+          {momentOverride && momentOverride !== detectedMoment && (
+            <p className="text-2xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5">
+              Corrigé manuellement (détecté : {serviceMomentLabel(detectedMoment).toLowerCase()})
+            </p>
+          )}
+        </div>
+        {serviceMoment && (
+          <p className="text-2xs text-gray-400 mt-2">
+            {SERVICE_MOMENTS.find((m) => m.value === serviceMoment)?.hint}
+          </p>
+        )}
       </div>
 
       {/* BL number + upload + scan */}

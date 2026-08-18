@@ -46,6 +46,8 @@ export default async function InventairePage() {
       inventorySessions={(inventorySessions ?? []) as any}
       fournitureIds={fournitureIds}
       recipes={(recipes ?? []) as any}
+      serviceStart={(restaurant as any)?.service_start ?? null}
+      serviceEnd={(restaurant as any)?.service_end ?? null}
     />
   );
 }

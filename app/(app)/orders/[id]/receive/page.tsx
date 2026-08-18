@@ -9,7 +9,7 @@ export default async function ReceivePage({ params }: { params: { id: string } }
 
   const { data: restaurant } = await supabase
     .from("restaurants")
-    .select("id")
+    .select("id, service_start, service_end")
     .eq("owner_id", user!.id)
     .single();
 
@@ -70,5 +70,15 @@ export default async function ReceivePage({ params }: { params: { id: string } }
     : supplierIngredientsQuery.eq("supplier_id", po.supplier_id);
   const { data: allIngredients } = await supplierIngredientsQuery.order("name");
 
-  return <ReceiveClient po={po} restaurantId={restaurant!.id} allIngredients={allIngredients ?? []} orderCond={orderCond} alreadyReceived={alreadyReceived} />;
+  return (
+    <ReceiveClient
+      po={po}
+      restaurantId={restaurant!.id}
+      allIngredients={allIngredients ?? []}
+      orderCond={orderCond}
+      alreadyReceived={alreadyReceived}
+      serviceStart={(restaurant as any)?.service_start ?? null}
+      serviceEnd={(restaurant as any)?.service_end ?? null}
+    />
+  );
 }
