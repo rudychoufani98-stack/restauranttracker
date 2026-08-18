@@ -11,7 +11,7 @@ const hanken = Hanken_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "Amaly",
+  title: "Restointelligence",
   description: "Plateforme de coûts et marges pour restaurateurs",
 };
 

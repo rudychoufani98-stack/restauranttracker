@@ -20,7 +20,7 @@ export default function UpdatePasswordPage() {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="w-full max-w-[360px]">
         <div className="text-center mb-8">
-          <p className="text-4xl font-bold text-gray-900 mb-4" style={{ fontFamily: 'Georgia, "Times New Roman", serif', letterSpacing: "-0.01em" }}>Amaly</p>
+          <p className="text-3xl font-bold text-gray-900 mb-4" style={{ fontFamily: 'Georgia, "Times New Roman", serif', letterSpacing: "-0.01em" }}>Restointelligence</p>
           <h1 className="text-xl font-semibold text-gray-900">Nouveau mot de passe</h1>
           <p className="text-sm text-gray-500 mt-1">Choisis un mot de passe d&apos;au moins 8 caractères</p>
         </div>
