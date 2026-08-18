@@ -8,7 +8,12 @@ import { Plus, Search, Trash2, Check, ChevronDown, Copy, Package, Layers, Trendi
 import { Card, Button, Input, Select, Modal, Alert, EmptyState } from "@/components/ui";
 import clsx from "clsx";
 
-const UNITS = ["g", "kg", "ml", "l", "unit"];
+// L'interface ne parle que kg / L / pièce (g/ml restent internes).
+const UNIT_CHOICES = [
+  { value: "kg", label: "kg" },
+  { value: "l", label: "L" },
+  { value: "unit", label: "pièce" },
+];
 
 // 14 allergènes à déclaration obligatoire (règlement UE 1169/2011)
 const ALLERGENS = [
@@ -77,7 +82,7 @@ type SupplierLine = {
 const EMPTY_FORM = {
   name: "", category: "Légumes/Fruits", supplier_id: "",
   pack_description: "", pack_price: "",
-  pack_units: "1", unit_size: "", unit: "g", supplier_reference: "",
+  pack_units: "1", unit_size: "", unit: "kg", supplier_reference: "",
   yield_pct: "100", reorder_threshold: "0", vat_rate: "0", selling_price: "",
 };
 
@@ -567,7 +572,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                   <label className="block text-2xs text-gray-400 mb-1">en</label>
                   <select value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}
                     className="px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green transition">
-                    {UNITS.map((u) => <option key={u}>{u}</option>)}
+                    {UNIT_CHOICES.map((u) => <option key={u.value} value={u.value}>{u.label}</option>)}
                   </select>
                 </div>
               </div>
@@ -700,7 +705,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                           className="w-16 px-2 py-1 text-xs bg-white border border-gray-200 rounded outline-none focus:border-green transition" />
                         <select value={line.unit} onChange={(e) => updateSupplierLine(idx, "unit", e.target.value)}
                           className="px-1.5 py-1 text-xs bg-white border border-gray-200 rounded outline-none focus:border-green transition">
-                          {UNITS.map((u) => <option key={u}>{u}</option>)}
+                          {UNIT_CHOICES.map((u) => <option key={u.value} value={u.value}>{u.label}</option>)}
                         </select>
                         {parseFloat(line.pack_price) > 0 && parseFloat(line.unit_size) > 0 && (
                           <span className="ml-auto text-green font-medium">
