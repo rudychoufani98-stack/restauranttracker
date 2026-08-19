@@ -300,22 +300,33 @@ export default function SettingsClient({ restaurant, email, initialMembers }: Pr
 
           <Card>
             <h2 className="text-sm font-semibold text-gray-900 mb-1">Bons de commande</h2>
-            <p className="text-xs text-gray-500 mb-4">Personnalise ce qui apparaît sur le PDF envoyé aux fournisseurs.</p>
-            <label className="flex items-start gap-3 cursor-pointer">
-              <button
-                type="button"
-                role="switch"
-                aria-checked={form.hide_po_prices}
-                onClick={() => setForm({ ...form, hide_po_prices: !form.hide_po_prices })}
+            <p className="text-xs text-gray-500 mb-4">
+              Réglage par défaut. Tu pourras toujours le changer <b>commande par commande</b> depuis la liste des bons de commande.
+            </p>
+            {/* Tout le bloc est le bouton : avant, cliquer sur le texte ne
+                faisait rien alors que le curseur indiquait le contraire. */}
+            <button
+              type="button"
+              role="switch"
+              aria-checked={form.hide_po_prices}
+              onClick={() => setForm({ ...form, hide_po_prices: !form.hide_po_prices })}
+              className="w-full flex items-start gap-3 text-left cursor-pointer rounded-lg p-1 -m-1 hover:bg-gray-50 transition"
+            >
+              <span
+                aria-hidden="true"
                 className={clsx("mt-0.5 relative w-10 h-6 rounded-full transition shrink-0", form.hide_po_prices ? "bg-emerald-500" : "bg-gray-300")}
               >
                 <span className={clsx("absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform", form.hide_po_prices && "translate-x-4")} />
-              </button>
-              <span>
-                <span className="block text-sm font-medium text-gray-800">Masquer les prix sur le bon de commande</span>
-                <span className="block text-xs text-gray-500 mt-0.5">Le PDF n&apos;affiche que les produits et quantités commandés, sans prix unitaires, TVA ni total.</span>
               </span>
-            </label>
+              <span>
+                <span className="block text-sm font-medium text-gray-800">Masquer les prix sur les bons de commande</span>
+                <span className="block text-xs text-gray-500 mt-0.5">
+                  {form.hide_po_prices
+                    ? "Actuellement : le PDF et l'email n'affichent que les produits et quantités — sans prix unitaires, TVA ni total."
+                    : "Actuellement : les prix, la TVA et le total figurent sur le PDF et dans l'email au fournisseur."}
+                </span>
+              </span>
+            </button>
           </Card>
 
           <Card>

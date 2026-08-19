@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { PurchaseOrderPDF } from "@/lib/pdf/PurchaseOrderPDF";
+import { resolveHidePrices } from "@/lib/order-email";
 import { defaultPackType } from "@/lib/order-email";
 import { unitShort } from "@/lib/ingredient-helpers";
 import React from "react";
@@ -107,7 +108,8 @@ export async function GET(
         customer_reference: supplier.customer_reference ?? undefined,
       },
       lines,
-      hidePrices: !!(restaurant as any).hide_po_prices,
+      // Choix par commande s'il existe (po.hide_prices), sinon réglage global.
+      hidePrices: resolveHidePrices((po as any).hide_prices, (restaurant as any).hide_po_prices),
     });
 
     const buffer = await renderToBuffer(pdfElement as any);

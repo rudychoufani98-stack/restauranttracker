@@ -47,6 +47,7 @@ export default async function EditOrderPage({ params }: { params: { id: string }
       initialCart={initialCart}
       hidePrices={!!(restaurant as any)?.hide_po_prices}
       existingOrderNumber={(po as any).order_number ?? null}
+      initialHidePrices={(po as any).hide_prices ?? null}
     />
   );
 }

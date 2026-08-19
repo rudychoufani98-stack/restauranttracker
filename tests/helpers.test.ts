@@ -6,7 +6,7 @@ import {
   displayUnitLabel, unitShort, perDisplayUnit, qtyToDisplay, qtyFromDisplay,
   calcCostPerBase, packTotal, priceTTC, UNIT_OPTIONS,
 } from "@/lib/ingredient-helpers";
-import { buildOrderMailto, defaultPackType } from "@/lib/order-email";
+import { buildOrderMailto, defaultPackType, resolveHidePrices } from "@/lib/order-email";
 
 describe("Libellés d'unités (jamais de gramme à l'écran)", () => {
   it("affiche kg / L / pce", () => {
@@ -111,5 +111,21 @@ describe("E-mail de commande (mailto, envoyé par le restaurateur)", () => {
     expect(withPrices).toContain("100");
     expect(hidden).not.toContain("100.00");
     expect(hidden).toContain("Huile olive"); // les produits restent
+  });
+});
+
+describe("Prix sur le bon de commande : par commande ou réglage global", () => {
+  it("sans choix sur la commande, on suit le réglage global", () => {
+    expect(resolveHidePrices(null, true)).toBe(true);
+    expect(resolveHidePrices(null, false)).toBe(false);
+    expect(resolveHidePrices(undefined, true)).toBe(true);
+  });
+  it("un choix sur la commande l'emporte sur le global", () => {
+    expect(resolveHidePrices(false, true)).toBe(false);  // global masque, ce bon affiche
+    expect(resolveHidePrices(true, false)).toBe(true);   // global affiche, ce bon masque
+  });
+  it("aucun réglage du tout : les prix sont affichés", () => {
+    expect(resolveHidePrices(null, null)).toBe(false);
+    expect(resolveHidePrices(undefined, undefined)).toBe(false);
   });
 });

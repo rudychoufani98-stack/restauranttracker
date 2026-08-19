@@ -53,12 +53,17 @@ interface Props {
   orderId?: string;
   initialSupplierId?: string;
   initialCart?: Record<string, CartLine>;
+  /** Réglage global du restaurant (Paramètres) */
   hidePrices?: boolean;
+  /** Choix déjà enregistré sur cette commande : null = suit le global */
+  initialHidePrices?: boolean | null;
   /** Numéro existant (mode modification) : doit figurer dans l'e-mail au fournisseur */
   existingOrderNumber?: string | null;
 }
 
-export default function NewOrderClient({ restaurantId, restaurantName, suppliers, ingredients, orderId, initialSupplierId = "", initialCart, hidePrices = false, existingOrderNumber = null }: Props) {
+export default function NewOrderClient({ restaurantId, restaurantName, suppliers, ingredients, orderId, initialSupplierId = "", initialCart, hidePrices = false, existingOrderNumber = null, initialHidePrices = null }: Props) {
+  // Masquer les prix sur CE bon : part du réglage global, modifiable ici.
+  const [hidePricesOrder, setHidePricesOrder] = useState<boolean>(initialHidePrices ?? hidePrices);
   const supabase = createClient();
   const router = useRouter();
   const isEdit = !!orderId;
@@ -134,6 +139,7 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
     if (isEdit) {
       const { error: upErr } = await supabase.from("purchase_orders").update({
         supplier_id: supplierId, status: "Draft", sent_at: null, expected_total: total,
+        hide_prices: hidePricesOrder,
       }).eq("id", orderId);
       if (upErr) { setError(upErr.message); setSaving(null); return; }
       const { data: oldLines } = await supabase
@@ -162,6 +168,7 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
       const { data: po, error: poErr } = await supabase.from("purchase_orders").insert({
         restaurant_id: restaurantId, supplier_id: supplierId,
         order_number: orderNumber, status: "Draft", expected_total: total,
+        hide_prices: hidePricesOrder,
       }).select().single();
       if (poErr || !po) { setError(poErr?.message ?? "Erreur"); setSaving(null); return; }
       poId = po.id;
@@ -208,7 +215,7 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
           return { name: ing?.name ?? "Produit", qty: l.quantity, packType: packTypeOf(art), ref: art?.supplier_reference };
         }),
         total,
-        hidePrices,
+        hidePrices: hidePricesOrder,
       });
     }
 
@@ -395,6 +402,30 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
                   </>
                 );
               })()}
+              {/* Prix visibles ou non pour CE bon (le défaut vient des Paramètres) */}
+              <button
+                type="button"
+                role="switch"
+                aria-checked={hidePricesOrder}
+                onClick={() => setHidePricesOrder((v) => !v)}
+                className="w-full flex items-start gap-2.5 text-left rounded-lg border border-gray-200 px-3 py-2.5 hover:bg-gray-50 transition"
+              >
+                <span aria-hidden="true"
+                  className={clsx("mt-0.5 relative w-9 h-5 rounded-full transition shrink-0", hidePricesOrder ? "bg-emerald-500" : "bg-gray-300")}>
+                  <span className={clsx("absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform", hidePricesOrder && "translate-x-4")} />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-xs font-semibold text-gray-800">
+                    {hidePricesOrder ? "Prix masqués sur ce bon" : "Prix affichés sur ce bon"}
+                  </span>
+                  <span className="block text-2xs text-gray-500 mt-0.5">
+                    {hidePricesOrder
+                      ? "Le fournisseur ne verra que les produits et les quantités."
+                      : "Le fournisseur verra les prix unitaires et le total."}
+                    {initialHidePrices === null && hidePricesOrder === hidePrices ? " (réglage par défaut)" : " (choix propre à cette commande)"}
+                  </span>
+                </span>
+              </button>
               <button onClick={() => handleCreate(true)} disabled={saving !== null || cartEntries.length === 0}
                 className="w-full mt-1 py-2.5 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition flex items-center justify-center gap-1.5">
                 {saving === "send" ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}

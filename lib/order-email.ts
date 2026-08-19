@@ -20,6 +20,16 @@ export function defaultPackType(unit?: string | null, unitSize?: number | null):
   return "colis";
 }
 
+/**
+ * Les prix figurent-ils sur ce bon de commande ?
+ *   orderValue null/undefined → on suit le réglage global du restaurant
+ *   orderValue true/false     → ce bon déroge au réglage global
+ * Utilisé par l'email ET par le PDF : une seule règle, pas de divergence.
+ */
+export function resolveHidePrices(orderValue: boolean | null | undefined, globalValue: boolean | null | undefined): boolean {
+  return orderValue ?? !!globalValue;
+}
+
 export function buildOrderMailto(opts: {
   to: string;
   restaurantName: string;

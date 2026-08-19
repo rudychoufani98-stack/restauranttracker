@@ -4,10 +4,10 @@ import { useState, Fragment } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { buildOrderMailto, defaultPackType } from "@/lib/order-email";
+import { buildOrderMailto, defaultPackType, resolveHidePrices } from "@/lib/order-email";
 import { unitShort } from "@/lib/ingredient-helpers";
 import { serviceMomentShort } from "@/lib/service-moment";
-import { Plus, Trash2, X, Send, Download, ChevronDown, ChevronUp, Zap, Check, Pencil, Truck, Search, TrendingUp, Hourglass, Star, ArrowRight, Ban, Loader2 } from "lucide-react";
+import { Plus, Trash2, X, Send, Download, ChevronDown, ChevronUp, Zap, Check, Pencil, Truck, Search, TrendingUp, Hourglass, Star, ArrowRight, Ban, Loader2, Eye, EyeOff } from "lucide-react";
 import clsx from "clsx";
 
 const toBase = (qty: number, unit: string) => (unit === "kg" || unit === "l" ? qty * 1000 : qty);
@@ -140,7 +140,7 @@ type POLine = { id?: string; ingredient_id: string | null; quantity: number; exp
 type DeliveryNoteRef = { validated_at: string | null; created_at: string; bl_number?: string | null; received_at?: string | null; service_moment?: string | null };
 type InvoiceRef = { created_at: string; invoice_number: string | null };
 type OrderEvent = { po_id: string; type: string; detail: string | null; created_at: string };
-type PO = { id: string; order_number?: string | null; supplier_id: string | null; status: string; expected_total: number | null; created_at: string; sent_at: string | null; suppliers?: { name: string } | null; delivery_notes?: DeliveryNoteRef[]; invoices?: InvoiceRef[]; purchase_order_lines: POLine[] };
+type PO = { id: string; order_number?: string | null; supplier_id: string | null; status: string; expected_total: number | null; created_at: string; sent_at: string | null; suppliers?: { name: string } | null; delivery_notes?: DeliveryNoteRef[]; invoices?: InvoiceRef[]; purchase_order_lines: POLine[]; hide_prices?: boolean | null };
 
 // Reception month for grouping: latest delivery note date, else the order date.
 function receptionDate(o: PO): string {
@@ -215,6 +215,7 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [sending, setSending] = useState<string | null>(null);
   const [pdfLoading, setPdfLoading] = useState<string | null>(null);
+  const [priceBusy, setPriceBusy] = useState<string | null>(null);
   const [showRestock, setShowRestock] = useState(false);
   const [restocking, setRestocking] = useState(false);
 
@@ -264,6 +265,28 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
     // router.refresh() recharge la liste avec TOUTES ses données (réceptions,
     // factures) — une requête partielle ici faisait disparaître ces infos.
     router.refresh();
+  }
+
+  // Prix visibles ou non pour UNE commande. null en base = suit le réglage
+  // global des Paramètres ; ici on écrit une valeur explicite.
+  function pricesHiddenFor(po: PO): boolean {
+    return resolveHidePrices(po.hide_prices, hidePrices);
+  }
+
+  async function togglePrices(po: PO) {
+    const next = !pricesHiddenFor(po);
+    setPriceBusy(po.id);
+    // Optimiste : l'écran réagit tout de suite, on annule si la base refuse.
+    setOrders((p) => p.map((o) => (o.id === po.id ? { ...o, hide_prices: next } : o)));
+    const { error } = await supabase.from("purchase_orders").update({ hide_prices: next }).eq("id", po.id);
+    setPriceBusy(null);
+    if (error) {
+      setOrders((p) => p.map((o) => (o.id === po.id ? { ...o, hide_prices: po.hide_prices ?? null } : o)));
+      window.alert(
+        `Impossible de changer l'affichage des prix : ${error.message}\n\n` +
+        "Si le message parle d'une colonne « hide_prices », lance le script supabase/prix_par_commande.sql."
+      );
+    }
   }
 
   // Téléchargement du PDF par fetch : en cas d'erreur serveur, un simple lien
@@ -326,7 +349,7 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
         return { name: l.ingredients?.name ?? "Produit", qty: l.quantity, packType: art ? packTypeOf(art) : "colis", ref: art?.supplier_reference };
       }),
       total: Number(po.expected_total ?? 0),
-      hidePrices,
+      hidePrices: pricesHiddenFor(po),
     });
 
     if (window.confirm("Ton logiciel email vient de s'ouvrir avec la commande pré-remplie (tu peux y joindre le PDF téléchargé si besoin).\n\nMarquer la commande comme envoyée ?")) {
@@ -754,6 +777,21 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
                                 <td className="px-5 py-4 text-right text-sm font-bold text-on-surface tabular-nums whitespace-nowrap">€{Number(order.expected_total ?? 0).toFixed(2)}</td>
                                 <td className="px-5 py-4">
                                   <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                                    {/* Prix visibles ou masqués pour ce bon (PDF + email) */}
+                                    <button onClick={() => togglePrices(order)} disabled={priceBusy === order.id}
+                                      title={pricesHiddenFor(order)
+                                        ? "Prix MASQUÉS sur ce bon — cliquer pour les afficher"
+                                        : "Prix AFFICHÉS sur ce bon — cliquer pour les masquer"}
+                                      aria-label={pricesHiddenFor(order) ? "Afficher les prix sur ce bon" : "Masquer les prix sur ce bon"}
+                                      className={clsx("flex items-center gap-1 px-2.5 py-1.5 text-2xs font-semibold rounded-lg border transition disabled:opacity-50",
+                                        pricesHiddenFor(order)
+                                          ? "text-on-surface-variant border-outline-variant/40 hover:bg-surface-container-low"
+                                          : "text-primary border-primary/30 bg-emerald-50 hover:bg-emerald-100")}>
+                                      {priceBusy === order.id
+                                        ? <Loader2 size={12} className="animate-spin" />
+                                        : pricesHiddenFor(order) ? <EyeOff size={12} /> : <Eye size={12} />}
+                                      {pricesHiddenFor(order) ? "Prix masqués" : "Prix affichés"}
+                                    </button>
                                     <button onClick={() => downloadPdf(order)} disabled={pdfLoading === order.id}
                                       title="Télécharger le bon de commande en PDF"
                                       className="flex items-center gap-1 px-2.5 py-1.5 text-2xs font-semibold text-on-surface-variant border border-outline-variant/40 rounded-lg hover:bg-surface-container-low transition disabled:opacity-50">
