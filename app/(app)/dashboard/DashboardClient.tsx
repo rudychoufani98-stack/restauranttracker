@@ -19,6 +19,8 @@ interface Props {
   periods: Period[];
   movements: Movement[];
   fournitureIds: string[];
+  /** true si le plafond de lecture des mouvements a été atteint */
+  movementsTruncated?: boolean;
 }
 
 const MONTHS_FR = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
@@ -31,7 +33,7 @@ const monthLabel = (key: string) => {
 const eur = (n: number) => `€${n.toLocaleString("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 const eur2 = (n: number) => `€${n.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-export default function DashboardClient({ restaurantName, targetFoodCost, recipes, ingredients, periods, movements, fournitureIds }: Props) {
+export default function DashboardClient({ restaurantName, targetFoodCost, recipes, ingredients, periods, movements, fournitureIds, movementsTruncated = false }: Props) {
   const recipeMap = useMemo(() => new Map(recipes.map((r) => [r.id, r])), [recipes]);
   const ingMap = useMemo(() => new Map(ingredients.map((i) => [i.id, i])), [ingredients]);
   const fournitureSet = useMemo(() => new Set(fournitureIds), [fournitureIds]);
@@ -181,7 +183,27 @@ export default function DashboardClient({ restaurantName, targetFoodCost, recipe
 
       <div className="p-6 lg:p-8">
       <div className="max-w-6xl mx-auto">
-        {/* KPI grid */}
+        {/* Avertissements d'échelle : ne jamais laisser croire à une précision
+          que les données n'ont pas. */}
+      {(rangeActive || movementsTruncated) && (
+        <div className="mb-4 space-y-2">
+          {rangeActive && (
+            <div className="text-xs text-amber-dark bg-amber-light border border-amber/30 rounded-xl px-4 py-2.5">
+              Les ventes sont saisies <b>au mois</b> : le CA, la marge et le food cost couvrent les <b>mois entiers</b>
+              touchés par cette plage. Les achats et les pertes, eux, suivent les dates exactes — ne compare donc pas
+              directement les deux sur une plage de quelques jours.
+            </div>
+          )}
+          {movementsTruncated && (
+            <div className="text-xs text-on-surface-variant/70 bg-surface-container-low border border-outline-variant/30 rounded-xl px-4 py-2.5">
+              Beaucoup de mouvements de stock sur la période : seuls les plus récents sont pris en compte ici.
+              Utilise les <b>exports Excel</b> pour un historique complet.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* KPI grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <Kpi label="Chiffre d'affaires" value={eur(ca)} icon={<Receipt size={15} />} accent="emerald" sub={`${platsVendus} vente${platsVendus !== 1 ? "s" : ""}`} big />
           <Kpi label="Marge brute" value={eur(marge)} icon={<TrendingUp size={15} />} accent="emerald" sub={ca > 0 ? `${(100 - foodCost).toFixed(0)}% du CA` : "—"} />

@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useMemo, Fragment } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Check, Loader2, ChevronDown, ChevronUp, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { Plus, Check, Loader2, ChevronDown, ChevronUp, TrendingUp, TrendingDown, Minus, Trash2 } from "lucide-react";
 import clsx from "clsx";
 import { perDisplayUnit } from "@/lib/ingredient-helpers";
 
@@ -92,10 +93,12 @@ function calcPeriodStats(period: Period, recipes: Recipe[], simpleProducts: Simp
 
 export default function RentabiliteClient({ restaurantId, targetFoodCostPct, recipes, simpleProducts, initialPeriods }: Props) {
   const supabase = createClient();
+  const router = useRouter();
   const [periods, setPeriods] = useState<Period[]>(initialPeriods);
   const [showForm, setShowForm] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [deletingPeriodId, setDeletingPeriodId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Form state
@@ -330,6 +333,59 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
 
     setSaving(false);
     setShowForm(false);
+  }
+
+  // Supprimer une saisie de ventes (mois + canal) : on remet d'abord en stock
+  // ce qui avait été déstocké — en rappelant la route de déstockage avec ZÉRO
+  // vente, qui réconcilie par différence — puis on efface la période.
+  async function handleDeletePeriod(period: Period) {
+    const stats = calcPeriodStats(period, recipes, simpleProducts);
+    const ok = window.confirm(
+      `Supprimer la saisie de ${monthLabel(period.month)} (${channelLabel(period.channel)}) ?\n\n` +
+      `CA €${stats.ca.toFixed(2)} · ${stats.totalCouverts} article(s) vendu(s)\n\n` +
+      "Les ingrédients déstockés pour ces ventes seront REMIS en stock. Cette action est irréversible."
+    );
+    if (!ok) return;
+
+    setDeletingPeriodId(period.id);
+    setError(null);
+
+    // 1) Remise en stock via la réconciliation (aucune vente → écart négatif).
+    try {
+      const res = await fetch("/api/record-sale-movements", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ restaurantId, periodId: period.id, salesLines: [] }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        setError(`Remise en stock impossible : ${j?.error ?? `erreur ${res.status}`}. La saisie n'a pas été supprimée.`);
+        setDeletingPeriodId(null);
+        return;
+      }
+    } catch {
+      setError("Remise en stock impossible (réseau). La saisie n'a pas été supprimée.");
+      setDeletingPeriodId(null);
+      return;
+    }
+
+    // 2) Lignes puis période.
+    const { error: linesErr } = await supabase.from("sales_lines").delete().eq("period_id", period.id);
+    if (linesErr) {
+      setError(`Suppression impossible : ${linesErr.message}. Le stock a été remis — relance la suppression.`);
+      setDeletingPeriodId(null);
+      return;
+    }
+    const { error: perErr } = await supabase.from("sales_periods").delete().eq("id", period.id);
+    if (perErr) {
+      setError(`Suppression impossible : ${perErr.message}. Le stock a été remis — relance la suppression.`);
+      setDeletingPeriodId(null);
+      return;
+    }
+
+    setPeriods((p) => p.filter((x) => x.id !== period.id));
+    setDeletingPeriodId(null);
+    router.refresh();
   }
 
   // Trend arrow between last two periods
@@ -762,7 +818,15 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
                                   ) : <span className="text-on-surface-variant/40 text-sm">—</span>}
                                 </td>
                                 <td className="px-5 py-4 text-center text-sm text-on-surface-variant/80 tabular-nums">{stats.totalCouverts}</td>
-                                <td className="px-5 py-4 text-right">
+                                <td className="px-5 py-4 text-right whitespace-nowrap">
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleDeletePeriod(period); }}
+                                    disabled={deletingPeriodId === period.id}
+                                    title="Supprimer cette saisie et remettre les ingrédients en stock"
+                                    aria-label="Supprimer cette saisie de ventes"
+                                    className="p-1.5 rounded-lg text-on-surface-variant/40 hover:text-red hover:bg-red-light transition disabled:opacity-40 mr-1">
+                                    {deletingPeriodId === period.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                                  </button>
                                   {isExpanded ? <ChevronUp size={16} className="text-on-surface-variant/40 inline" /> : <ChevronDown size={16} className="text-on-surface-variant/40 inline" />}
                                 </td>
                               </tr>

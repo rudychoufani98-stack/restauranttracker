@@ -11,6 +11,12 @@ export default async function DashboardPage() {
 
   const rid = restaurant.id;
 
+  // Plafond de lecture des mouvements (protection mémoire) + fenêtre de 24 mois.
+  const MOVEMENT_CAP = 20000;
+  const horizonDate = new Date();
+  horizonDate.setMonth(horizonDate.getMonth() - 24);
+  const horizon = horizonDate.toISOString();
+
   const [
     { data: recipes },
     { data: ingredients },
@@ -33,11 +39,15 @@ export default async function DashboardPage() {
       // "adjustment" : corrections de facture et annulations de commande, qui
       // RÉDUISENT les achats du mois (les ajustements d'inventaire sont exclus côté client).
       .in("movement_type", ["in", "loss", "adjustment"])
+      // Bornage explicite : 24 derniers mois, plafond haut. Si le plafond est
+      // atteint, on le DIT au lieu de tronquer les totaux en silence.
+      .gte("created_at", horizon)
       .order("created_at", { ascending: false })
-      .limit(5000),
+      .limit(MOVEMENT_CAP),
   ]);
 
   const fournitureIds = await getFournitureIds(rid);
+  const movementsTruncated = (movements ?? []).length >= MOVEMENT_CAP;
 
   return (
     <DashboardClient
@@ -48,6 +58,7 @@ export default async function DashboardPage() {
       periods={(periods ?? []) as any}
       movements={(movements ?? []) as any}
       fournitureIds={fournitureIds}
+      movementsTruncated={movementsTruncated}
     />
   );
 }

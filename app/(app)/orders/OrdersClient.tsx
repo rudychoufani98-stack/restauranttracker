@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { buildOrderMailto, defaultPackType } from "@/lib/order-email";
 import { unitShort } from "@/lib/ingredient-helpers";
 import { serviceMomentShort } from "@/lib/service-moment";
-import { Plus, Trash2, X, Send, Download, ChevronDown, ChevronUp, Zap, Check, Pencil, Truck, Search, TrendingUp, Hourglass, Star, ArrowRight, Ban } from "lucide-react";
+import { Plus, Trash2, X, Send, Download, ChevronDown, ChevronUp, Zap, Check, Pencil, Truck, Search, TrendingUp, Hourglass, Star, ArrowRight, Ban, Loader2 } from "lucide-react";
 import clsx from "clsx";
 
 const toBase = (qty: number, unit: string) => (unit === "kg" || unit === "l" ? qty * 1000 : qty);
@@ -214,6 +214,7 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
   const [toDate, setToDate] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [sending, setSending] = useState<string | null>(null);
+  const [pdfLoading, setPdfLoading] = useState<string | null>(null);
   const [showRestock, setShowRestock] = useState(false);
   const [restocking, setRestocking] = useState(false);
 
@@ -263,6 +264,35 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
     // router.refresh() recharge la liste avec TOUTES ses données (réceptions,
     // factures) — une requête partielle ici faisait disparaître ces infos.
     router.refresh();
+  }
+
+  // Téléchargement du PDF par fetch : en cas d'erreur serveur, un simple lien
+  // ouvrait un onglet avec du texte technique. Ici on affiche un vrai message.
+  async function downloadPdf(po: PO) {
+    setPdfLoading(po.id);
+    try {
+      const res = await fetch(`/api/orders/${po.id}/pdf`);
+      if (!res.ok) {
+        window.alert(
+          res.status === 401
+            ? "Ta session a expiré — recharge la page et reconnecte-toi."
+            : `Le PDF n'a pas pu être généré (erreur ${res.status}). Réessaie dans un instant.`
+        );
+        return;
+      }
+      const blob = await res.blob();
+      const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") ?? "")?.[1]
+        ?? `${po.order_number ?? "bon-de-commande"}.pdf`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      window.alert("Téléchargement interrompu (connexion). Réessaie.");
+    } finally {
+      setPdfLoading(null);
+    }
   }
 
   async function handleMarkSent(id: string) {
@@ -724,10 +754,13 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
                                 <td className="px-5 py-4 text-right text-sm font-bold text-on-surface tabular-nums whitespace-nowrap">€{Number(order.expected_total ?? 0).toFixed(2)}</td>
                                 <td className="px-5 py-4">
                                   <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                                    <a href={`/api/orders/${order.id}/pdf`} target="_blank" rel="noopener noreferrer" title="Télécharger le PDF"
-                                      className="flex items-center gap-1 px-2.5 py-1.5 text-2xs font-semibold text-on-surface-variant border border-outline-variant/40 rounded-lg hover:bg-surface-container-low transition">
-                                      <Download size={12} /> PDF
-                                    </a>
+                                    <button onClick={() => downloadPdf(order)} disabled={pdfLoading === order.id}
+                                      title="Télécharger le bon de commande en PDF"
+                                      className="flex items-center gap-1 px-2.5 py-1.5 text-2xs font-semibold text-on-surface-variant border border-outline-variant/40 rounded-lg hover:bg-surface-container-low transition disabled:opacity-50">
+                                      {pdfLoading === order.id
+                                        ? <><Loader2 size={12} className="animate-spin" /> PDF…</>
+                                        : <><Download size={12} /> PDF</>}
+                                    </button>
                                     {order.status === "Draft" && (<>
                                       <a href={`/orders/${order.id}/edit`} title="Modifier"
                                         className="flex items-center gap-1 px-2.5 py-1.5 text-2xs font-semibold text-on-surface-variant border border-outline-variant/40 rounded-lg hover:bg-surface-container-low transition">

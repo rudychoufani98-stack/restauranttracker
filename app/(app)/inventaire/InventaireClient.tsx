@@ -171,6 +171,8 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
   const [localIngredients, setLocalIngredients] = useState<Ingredient[]>(ingredients);
   const [filterCat, setFilterCat] = useState("Toutes");
   const [search, setSearch] = useState("");
+  // Recherche dans l'historique des inventaires (date, moment, produit compté)
+  const [sessionSearch, setSessionSearch] = useState("");
 
   // Which kind of stock the count/sessions tabs are working on right now.
   const countKind: Kind = tab === "count-f" || tab === "sessions-f" ? "fournitures" : "food";
@@ -259,7 +261,8 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
       const real = countedBase(ing);
       if (real === null) continue;
       counted++;
-      const theo = Number(ing.stock_qty ?? 0);
+      // Théorique = stock relu à l instant (si finalisation), sinon celui chargé.
+      const theo = freshStock?.has(ing.id) ? freshStock.get(ing.id)! : Number(ing.stock_qty ?? 0);
       const cmup = Number(ing.cmup ?? ing.cost_per_base_unit ?? 0);
       const diff = real - theo;
       if (diff < 0) manque += Math.abs(diff) * cmup;
@@ -272,6 +275,28 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
   const foodSessions = useMemo(() => sessions.filter((s) => (s.kind ?? "food") !== "fournitures"), [sessions]);
   const fournitureSessions = useMemo(() => sessions.filter((s) => s.kind === "fournitures"), [sessions]);
+
+  // Historique filtré par la recherche : on cherche dans la date écrite en
+  // clair (« 18 août 2026 »), le statut, le moment de service, la note et le
+  // nom des produits comptés — pour retrouver « quand ai-je compté le saumon ? ».
+  const visibleSessions = useMemo(() => {
+    const base = tab === "sessions-f" ? fournitureSessions : foodSessions;
+    const q = sessionSearch.trim().toLowerCase();
+    if (!q) return base;
+    return base.filter((s) => {
+      const d = new Date(s.closing_at ?? s.created_at);
+      const haystack = [
+        d.toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" }),
+        d.toLocaleDateString("fr-FR"),
+        d.toISOString().slice(0, 10),
+        s.status === "draft" ? "brouillon" : "finalisé finalise",
+        serviceMomentShort(s.service_moment),
+        s.notes ?? "",
+        ...(s.inventory_lines ?? []).map((l) => l.ingredient_name ?? ""),
+      ].join(" ").toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [tab, foodSessions, fournitureSessions, sessionSearch]);
 
   // Base (g/ml/pièce) → the display value the user typed (kg/L/pièce)
   function baseToDisplay(qty: number, unit: string): number {
@@ -371,6 +396,40 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
     }
 
     setValidatingCount(true);
+
+    // Le stock « théorique » affiché date de l'ouverture de la fiche. Un
+    // comptage peut durer une heure : entre-temps une réception, une vente ou
+    // une perte a pu passer. On relit donc le stock JUSTE AVANT de finaliser,
+    // sinon on écraserait ces mouvements en silence.
+    let freshStock: Map<string, number> | null = null;
+    if (finalize) {
+      const ids = localIngredients.filter((i) => matchKind(i.id, sessionKind)).map((i) => i.id);
+      const { data: fresh, error: freshErr } = await supabase
+        .from("ingredients").select("id, stock_qty, cmup, cost_per_base_unit").in("id", ids);
+      if (freshErr) {
+        setValidatingCount(false);
+        window.alert(`Impossible de relire le stock avant finalisation : ${freshErr.message}. Rien n'a été modifié — réessaie.`);
+        return;
+      }
+      freshStock = new Map((fresh ?? []).map((r: any) => [r.id, Number(r.stock_qty ?? 0)]));
+      // Signaler les produits dont le stock a bougé pendant le comptage.
+      const bouges = (fresh ?? []).filter((r: any) => {
+        const avant = Number(localIngredients.find((i) => i.id === r.id)?.stock_qty ?? 0);
+        return Math.abs(avant - Number(r.stock_qty ?? 0)) > 0.0001 && counts[r.id] !== undefined && counts[r.id] !== "";
+      });
+      if (bouges.length > 0) {
+        const noms = bouges.slice(0, 8).map((r: any) => localIngredients.find((i) => i.id === r.id)?.name ?? r.id);
+        const ok = window.confirm(
+          "Le stock de ces produits a changé pendant ton comptage (réception, vente ou perte enregistrée entre-temps) :\n\n" +
+          noms.map((n: string) => `• ${n}`).join("\n") + (bouges.length > 8 ? `\n…et ${bouges.length - 8} autre(s)` : "") +
+          "\n\nLes écarts seront calculés sur le stock À JOUR. Continuer ?"
+        );
+        if (!ok) { setValidatingCount(false); return; }
+      }
+      // Rafraîchir l'affichage pour que les écarts montrés correspondent.
+      setLocalIngredients((prev) => prev.map((i) => (freshStock!.has(i.id) ? { ...i, stock_qty: freshStock!.get(i.id)! } : i)));
+    }
+
     const movements: any[] = [];
     const updates: { id: string; qty: number; prevQty: number | null }[] = [];
     const sessionLines: InventoryLine[] = [];
@@ -870,19 +929,33 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
       {/* SESSIONS TAB — saved inventories (alimentaire + fournitures) */}
       {isInventaire && (tab === "sessions" || tab === "sessions-f") && (
         <div className="space-y-3">
-          <div className="flex justify-end">
+          <div className="flex flex-wrap items-center gap-2 justify-between">
+            <div className="relative flex-1 min-w-[240px]">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/40" />
+              <input value={sessionSearch} onChange={(e) => setSessionSearch(e.target.value)}
+                placeholder="Rechercher : date, mois, « avant service », un produit compté…"
+                aria-label="Rechercher un inventaire"
+                className="w-full pl-9 pr-3 py-2 text-sm glass-card rounded-xl border-none outline-none focus:ring-2 focus:ring-primary/20" />
+            </div>
+            {sessionSearch.trim() && (
+              <span className="text-2xs text-on-surface-variant/50">{visibleSessions.length} fiche(s) trouvée(s)</span>
+            )}
             <button onClick={() => { setActiveSessionId(null); setCountDone(null); setTab(tab === "sessions-f" ? "count-f" : "count"); }}
               className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-on-primary bg-primary rounded-xl hover:bg-primary-container transition">
               <ClipboardList size={14} /> Nouvel inventaire{tab === "sessions-f" ? " fournitures" : ""}
             </button>
           </div>
-          {(tab === "sessions-f" ? fournitureSessions : foodSessions).length === 0 ? (
+          {visibleSessions.length === 0 ? (
             <div className="glass-card rounded-2xl p-10 text-center">
               <ClipboardList size={28} className="text-on-surface-variant/30 mx-auto mb-3" />
-              <p className="text-sm text-on-surface-variant/70">Aucun inventaire pour l'instant. Crée ta première fiche.</p>
+              <p className="text-sm text-on-surface-variant/70">
+                {sessionSearch.trim()
+                  ? `Aucun inventaire ne correspond à « ${sessionSearch.trim()} ».`
+                  : "Aucun inventaire pour l'instant. Crée ta première fiche."}
+              </p>
             </div>
           ) : (
-            (tab === "sessions-f" ? fournitureSessions : foodSessions).map((s) => {
+            visibleSessions.map((s) => {
               const open = expandedSession === s.id;
               const draft = s.status === "draft";
               return (

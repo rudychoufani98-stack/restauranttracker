@@ -18,6 +18,8 @@ type Ingredient = {
 };
 
 type Loss = {
+  id?: string;
+  reference_type?: string | null;
   ingredient_id: string;
   qty: number;
   unit_cost: number | null;
@@ -58,12 +60,17 @@ interface Props {
   restaurantId: string;
   ingredients: Ingredient[];
   recentLosses: Loss[];
+  /** Toutes les pertes du mois en cours (totaux complets, sans plafond) */
+  monthLosses?: Loss[];
 }
 
-export default function PertesClient({ restaurantId, ingredients, recentLosses }: Props) {
+export default function PertesClient({ restaurantId, ingredients, recentLosses, monthLosses }: Props) {
   const supabase = createClient();
   const router = useRouter();
   const [losses, setLosses] = useState<Loss[]>(recentLosses);
+  // Base des totaux du mois : liste complète si le serveur l'a fournie.
+  const [monthRows, setMonthRows] = useState<Loss[]>(monthLosses ?? recentLosses);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [ingredientId, setIngredientId] = useState("");
   const [qty, setQty] = useState("");
@@ -78,7 +85,7 @@ export default function PertesClient({ restaurantId, ingredients, recentLosses }
   // This-month summary
   const monthKey = new Date().toISOString().slice(0, 7);
   const summary = useMemo(() => {
-    const thisMonth = losses.filter((l) => l.created_at.slice(0, 7) === monthKey);
+    const thisMonth = monthRows.filter((l) => l.created_at.slice(0, 7) === monthKey);
     const total = thisMonth.reduce((s, l) => s + Number(l.qty) * Number(l.unit_cost ?? 0), 0);
     const byReason = new Map<string, number>();
     for (const l of thisMonth) {
@@ -86,7 +93,7 @@ export default function PertesClient({ restaurantId, ingredients, recentLosses }
       byReason.set(r, (byReason.get(r) ?? 0) + Number(l.qty) * Number(l.unit_cost ?? 0));
     }
     return { total, byReason, count: thisMonth.length };
-  }, [losses, monthKey]);
+  }, [monthRows, monthKey]);
 
   function resetForm() {
     setIngredientId(""); setQty(""); setReason(REASONS[0]); setNote(""); setError(null);
@@ -148,13 +155,76 @@ export default function PertesClient({ restaurantId, ingredients, recentLosses }
     // Le stock des autres écrans doit refléter la perte (pages serveur).
     ing.stock_qty = newStock;
     router.refresh();
-    setLosses((prev) => [
-      { ingredient_id: ingredientId, qty: baseQty, unit_cost: cmup, loss_reason: reason, notes: note || null, created_at: new Date().toISOString() },
-      ...prev,
-    ]);
+    const nouvelle: Loss = {
+      id: mov?.id, reference_type: "loss",
+      ingredient_id: ingredientId, qty: baseQty, unit_cost: cmup,
+      loss_reason: reason, notes: note || null, created_at: new Date().toISOString(),
+    };
+    setLosses((prev) => [nouvelle, ...prev]);
+    setMonthRows((prev) => [nouvelle, ...prev]);
     setSaving(false);
     setShowForm(false);
     resetForm();
+  }
+
+  // Annuler une perte saisie par erreur : le stock est remis, puis le
+  // mouvement supprimé. Un écart d'inventaire ne se supprime PAS ici (il
+  // appartient à une fiche d'inventaire finalisée) — on le refuse clairement.
+  async function handleDeleteLoss(l: Loss) {
+    if (!l.id) {
+      window.alert("Cette perte vient d'être enregistrée : recharge la page pour pouvoir l'annuler.");
+      return;
+    }
+    if ((l.reference_type ?? "loss") === "inventory") {
+      window.alert(
+        "Cet écart provient d'une fiche d'inventaire finalisée : il ne peut pas être annulé ici.\n\n" +
+        "Pour corriger, refais une prise d'inventaire avec les bonnes quantités."
+      );
+      return;
+    }
+    const ing = ingMap.get(l.ingredient_id);
+    const valeur = Number(l.qty) * Number(l.unit_cost ?? 0);
+    const ok = window.confirm(
+      `Annuler cette perte ?\n\n${ing?.name ?? "Produit"} — ${fmtQty(Number(l.qty), ing?.unit ?? "unit")} · €${valeur.toFixed(2)}\n\n` +
+      "La quantité sera REMISE en stock et la perte disparaîtra de l'historique."
+    );
+    if (!ok) return;
+
+    setDeletingId(l.id);
+    setError(null);
+
+    // 1) Remettre le stock (lecture fraîche : il a pu bouger depuis).
+    const { data: cur, error: readErr } = await supabase
+      .from("ingredients").select("stock_qty").eq("id", l.ingredient_id).maybeSingle();
+    if (readErr || !cur) {
+      setDeletingId(null);
+      setError(`Annulation impossible : ${readErr?.message ?? "produit introuvable"}.`);
+      return;
+    }
+    const avant = Number(cur.stock_qty ?? 0);
+    const restored = avant + Number(l.qty);
+    const { error: upErr } = await supabase.from("ingredients").update({ stock_qty: restored }).eq("id", l.ingredient_id);
+    if (upErr) {
+      setDeletingId(null);
+      setError(`Remise en stock impossible : ${upErr.message}. La perte n'a pas été annulée.`);
+      return;
+    }
+
+    // 2) Supprimer le mouvement ; si ça échoue, on remet le stock comme avant
+    //    (sinon la quantité serait comptée deux fois).
+    const { error: delErr } = await supabase.from("stock_movements").delete().eq("id", l.id);
+    if (delErr) {
+      await supabase.from("ingredients").update({ stock_qty: avant }).eq("id", l.ingredient_id);
+      setDeletingId(null);
+      setError(`Annulation impossible : ${delErr.message}. Rien n'a été modifié.`);
+      return;
+    }
+
+    if (ing) ing.stock_qty = restored;
+    setLosses((prev) => prev.filter((x) => x.id !== l.id));
+    setMonthRows((prev) => prev.filter((x) => x.id !== l.id));
+    setDeletingId(null);
+    router.refresh();
   }
 
   function fmtQty(baseQty: number, unit: string) {
@@ -299,6 +369,7 @@ export default function PertesClient({ restaurantId, ingredients, recentLosses }
                   <th className="px-5 py-3 text-left text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Cause</th>
                   <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Quantité</th>
                   <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Coût</th>
+                  <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Annuler</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant/10">
@@ -314,6 +385,20 @@ export default function PertesClient({ restaurantId, ingredients, recentLosses }
                       </td>
                       <td className="px-5 py-4 text-right text-sm text-on-surface-variant/80 tabular-nums whitespace-nowrap">{ing ? fmtQty(Number(l.qty), ing.unit) : Number(l.qty).toFixed(0)}</td>
                       <td className="px-5 py-4 text-right text-sm font-bold text-red tabular-nums whitespace-nowrap">€{cost.toFixed(2)}</td>
+                      <td className="px-5 py-4 text-right">
+                        {(l.reference_type ?? "loss") === "inventory" ? (
+                          <span className="text-2xs text-on-surface-variant/40" title="Écart d'une fiche d'inventaire : corrige-le par un nouvel inventaire">inventaire</span>
+                        ) : (
+                          <button
+                            onClick={() => handleDeleteLoss(l)}
+                            disabled={deletingId === l.id}
+                            title="Annuler cette perte et remettre la quantité en stock"
+                            aria-label="Annuler cette perte"
+                            className="p-1.5 rounded-lg text-on-surface-variant/40 hover:text-red hover:bg-red-light transition disabled:opacity-40">
+                            {deletingId === l.id ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
