@@ -177,13 +177,33 @@ export default function InvoiceClient({ po, deliveryNote, deliveryNotes, restaur
       };
       const baseOf = (id: string, qtyColis: number) => qtyColis * packBase(id);
       // Cumul (jamais d'écrasement) : deux lignes du même produit s'additionnent.
+      // On mémorise AUSSI la valeur déjà appliquée, pour connaître le prix
+      // auquel cette marchandise est entrée en stock : sans lui, revaloriser
+      // une facture inventerait de la valeur quand le stock contient plusieurs
+      // lots à des prix différents (voir tests/periode-complete.test.ts).
+      const prevValue = new Map<string, number>();
       if (priorInvoice) {
-        for (const l of priorInvoice.invoice_lines) if (l.ingredient_id) prevBase.set(l.ingredient_id, (prevBase.get(l.ingredient_id) ?? 0) + baseOf(l.ingredient_id, Number(l.quantity)));
+        for (const l of priorInvoice.invoice_lines) {
+          if (!l.ingredient_id) continue;
+          const q = Number(l.quantity) || 0;
+          prevBase.set(l.ingredient_id, (prevBase.get(l.ingredient_id) ?? 0) + baseOf(l.ingredient_id, q));
+          prevValue.set(l.ingredient_id, (prevValue.get(l.ingredient_id) ?? 0) + q * Number(l.unit_price ?? 0));
+        }
       } else {
         for (const d of allDnLines) {
-          if (d.ingredient_id && Number(d.quantity_received) > 0) prevBase.set(d.ingredient_id, (prevBase.get(d.ingredient_id) ?? 0) + baseOf(d.ingredient_id, Number(d.quantity_received)));
+          if (!d.ingredient_id || !(Number(d.quantity_received) > 0)) continue;
+          const q = Number(d.quantity_received);
+          const prixColis = Number((d as any).actual_price ?? d.ingredients?.pack_price ?? 0);
+          prevBase.set(d.ingredient_id, (prevBase.get(d.ingredient_id) ?? 0) + baseOf(d.ingredient_id, q));
+          prevValue.set(d.ingredient_id, (prevValue.get(d.ingredient_id) ?? 0) + q * prixColis);
         }
       }
+      /** Prix d'entrée en stock, par unité de base (null si inconnu). */
+      const prevCostOf = (id: string): number | null => {
+        const b = prevBase.get(id) ?? 0;
+        const v = prevValue.get(id) ?? 0;
+        return b > 0 && v > 0 ? v / b : null;
+      };
 
       // 3. New target base quantity per ingredient (from the editable lines).
       const newBase = new Map<string, number>();
@@ -200,6 +220,8 @@ export default function InvoiceClient({ po, deliveryNote, deliveryNotes, restaur
       const movements: any[] = [];
       const invoiceLines: any[] = [];
       const priceHistory: any[] = [];
+      // Produits dont le prix facturé doit être répercuté sur le journal d'achat.
+      const priceUpdates: { id: string; costPerBase: number }[] = [];
       const patches: { id: string; patch: any; prev: any }[] = [];
 
       for (const id of allIds) {
@@ -223,7 +245,8 @@ export default function InvoiceClient({ po, deliveryNote, deliveryNotes, restaur
         const { newStock, newCmup } = revalueOnInvoice({
           currentStock: curStock, currentCmup: cur?.cmup ?? null,
           prevBase: prev, targetBase: target,
-          newCostPerBase, invoiced: !!line,
+          newCostPerBase, prevCostPerBase: prevCostOf(id),
+          invoiced: !!line,
         });
 
         const patch: any = { stock_qty: newStock, cmup: newCmup, updated_at: new Date().toISOString() };
@@ -241,6 +264,7 @@ export default function InvoiceClient({ po, deliveryNote, deliveryNotes, restaur
         });
 
         if (line) {
+          priceUpdates.push({ id, costPerBase: newCostPerBase });
           invoiceLines.push({
             invoice_id: invoice.id, ingredient_id: id,
             quantity: parseFloat(line.qty) || 0, unit_price: invoicePrice,
@@ -277,6 +301,26 @@ export default function InvoiceClient({ po, deliveryNote, deliveryNotes, restaur
       }
       if (priceHistory.length > 0) {
         await supabase.from("ingredient_price_history").insert(priceHistory); // best-effort (historique)
+      }
+
+      // 5 bis. Aligner le JOURNAL D'ACHAT sur le prix facturé.
+      //   Une correction de prix sans changement de quantité n'écrit aucun
+      //   mouvement (écart nul) : les « Achats du mois » et le journal
+      //   restaient donc au prix de la livraison, pas au prix payé. On met à
+      //   jour le coût unitaire des mouvements de réception concernés.
+      const dnIds = (deliveryNotes ?? (deliveryNote ? [deliveryNote] : [])).map((d) => d.id).filter(Boolean);
+      if (dnIds.length > 0) {
+        for (const p of priceUpdates) {
+          const { error: mvErr } = await supabase.from("stock_movements")
+            .update({ unit_cost: p.costPerBase })
+            .eq("restaurant_id", restaurantId)
+            .eq("reference_type", "delivery")
+            .eq("ingredient_id", p.id)
+            .in("reference_id", dnIds);
+          // Best-effort : le stock et les coûts produits sont déjà justes ;
+          // seul le montant des achats du mois resterait à l'ancien prix.
+          if (mvErr) console.error("[facture] journal d'achat non aligné:", mvErr.message);
+        }
       }
 
       // 6. Stock updates; on failure, restore the ones already applied.

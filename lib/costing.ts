@@ -59,12 +59,20 @@ export function applyReception(
  * appliquée à la réception) est REVALORISÉE au prix facturé, et la quantité
  * ajustée par l'écart. Sans cela, une simple correction de prix (écart de
  * quantité nul, le cas le plus courant) n'atteindrait jamais le CMUP.
+ *
+ * `prevCostPerBase` = prix auquel cette marchandise est ENTRÉE en stock
+ * (relu sur les mouvements de la réception). C'est important : sans lui, on
+ * revaloriserait le reste du stock au CMUP mélangé et on inventerait de la
+ * valeur dès qu'il y a plusieurs lots à des prix différents.
+ * Exemple : 20 kg à 2 € + 20 kg à 2,40 €, facture corrigée à 2,50 € sur le
+ * 2ᵉ lot → 2,25 €/kg avec le prix d'entrée, 2,35 €/kg sans (4 € inventés).
  */
 export function revalueOnInvoice(args: {
   currentStock: number; currentCmup: number | null;
   prevBase: number;            // quantité de cette commande déjà dans le stock
   targetBase: number;          // quantité facturée (nouvelle vérité)
   newCostPerBase: number;      // prix facturé ramené à l'unité de base
+  prevCostPerBase?: number | null; // prix d'entrée de prevBase (mouvements de la réception)
   invoiced: boolean;           // false = produit absent de la facture (quantité retirée)
 }): { newStock: number; newCmup: number } {
   const { currentStock, prevBase, targetBase, newCostPerBase, invoiced } = args;
@@ -73,7 +81,19 @@ export function revalueOnInvoice(args: {
   const newStock = Math.max(0, currentStock + delta);
   if (!invoiced) return { newStock, newCmup: cur }; // retrait pur : le coût moyen ne bouge pas
   if (newStock <= 0) return { newStock, newCmup: newCostPerBase };
-  const rest = Math.max(0, currentStock - prevBase); // stock étranger à cette commande
+
+  // Cas exact : on connaît le prix d'entrée → on corrige la VALEUR du stock
+  // par la seule différence facturée, sans toucher au reste.
+  if (args.prevCostPerBase != null && Number.isFinite(args.prevCostPerBase)) {
+    const valeurActuelle = currentStock * cur;
+    const correction = targetBase * newCostPerBase - prevBase * Number(args.prevCostPerBase);
+    const nouvelleValeur = Math.max(0, valeurActuelle + correction);
+    return { newStock, newCmup: nouvelleValeur / newStock };
+  }
+
+  // Repli (prix d'entrée inconnu) : on re-pondère la part de cette commande
+  // au prix facturé et le reste au coût moyen courant.
+  const rest = Math.max(0, currentStock - prevBase);
   const denom = rest + targetBase;
   const newCmup = denom > 0 ? (rest * cur + targetBase * newCostPerBase) / denom : newCostPerBase;
   return { newStock, newCmup };
