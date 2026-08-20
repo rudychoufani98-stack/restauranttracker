@@ -55,6 +55,23 @@ export function applyReception(
 }
 
 /**
+ * Annulation d'une réception : on retire la quantité ET la valeur au prix
+ * auquel la marchandise est entrée. Retirer la quantité en laissant le coût
+ * moyen inchangé laisserait le stock survalorisé (ou sous-valorisé) : après
+ * annulation d'un lot cher, le CMUP doit revenir à celui des lots restants.
+ */
+export function reverseReception(
+  currentStock: number, currentCmup: number | null,
+  qtyBase: number, costPerBase: number
+): { newStock: number; newCmup: number } {
+  const cur = Number(currentCmup ?? costPerBase);
+  const newStock = Math.max(0, currentStock - qtyBase);
+  if (newStock <= 0) return { newStock: 0, newCmup: cur };
+  const valeurRestante = currentStock * cur - qtyBase * costPerBase;
+  return { newStock, newCmup: Math.max(0, valeurRestante) / newStock };
+}
+
+/**
  * Facture : la part de stock venant de CETTE commande (`prevBase`, déjà
  * appliquée à la réception) est REVALORISÉE au prix facturé, et la quantité
  * ajustée par l'écart. Sans cela, une simple correction de prix (écart de

@@ -35,6 +35,12 @@ export default async function InventairePage() {
       .order("name"),
   ]);
 
+  // Mois ayant des ventes saisies : sert à prévenir qu'un comptage AVANT
+  // service serait trompeur (le stock théorique a déjà déduit le service).
+  const { data: salesPeriods } = await supabase
+    .from("sales_periods").select("month").eq("restaurant_id", restaurant!.id);
+  const salesMonths = Array.from(new Set((salesPeriods ?? []).map((s: any) => String(s.month).slice(0, 7))));
+
   // Ensure the "Fournitures" tag exists + load which ingredients carry it.
   const fournitureIds = await getFournitureIds(restaurant!.id);
 
@@ -46,6 +52,7 @@ export default async function InventairePage() {
       inventorySessions={(inventorySessions ?? []) as any}
       fournitureIds={fournitureIds}
       recipes={(recipes ?? []) as any}
+      salesMonths={salesMonths}
       serviceStart={(restaurant as any)?.service_start ?? null}
       serviceEnd={(restaurant as any)?.service_end ?? null}
     />

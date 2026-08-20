@@ -8,6 +8,7 @@ import {
   detectServiceMoment, toDatetimeLocal, SERVICE_MOMENTS, serviceMomentLabel, serviceMomentShort,
   type ServiceMoment,
 } from "@/lib/service-moment";
+import { inventoryMomentAdvice } from "@/lib/inventory-moment";
 import { ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Warehouse, TrendingDown, TrendingUp, AlertTriangle, Check, Loader2, History, ClipboardList, Trash2, Download, Search, Package } from "lucide-react";
@@ -103,6 +104,8 @@ interface Props {
   recipes?: CountRecipe[];
   serviceStart?: string | null;
   serviceEnd?: string | null;
+  /** Mois « YYYY-MM » pour lesquels des ventes sont saisies */
+  salesMonths?: string[];
 }
 
 // Pretty number: up to 3 decimals, no trailing zeros.
@@ -135,7 +138,7 @@ function displayToBase(qty: number, unit: string): number {
   return isWeightVol ? qty * 1000 : qty;
 }
 
-export default function InventaireClient({ restaurantId, ingredients, recentMovements, inventorySessions, fournitureIds, recipes = [], serviceStart = null, serviceEnd = null }: Props) {
+export default function InventaireClient({ restaurantId, ingredients, recentMovements, inventorySessions, fournitureIds, recipes = [], serviceStart = null, serviceEnd = null, salesMonths = [] }: Props) {
   const supabase = createClient();
   const router = useRouter();
   const fournitureSet = useMemo(() => new Set(fournitureIds), [fournitureIds]);
@@ -161,6 +164,12 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
   }, [newClosingAt, serviceStart, serviceEnd]);
   const [momentOverride, setMomentOverride] = useState<ServiceMoment | "">("");
   const serviceMoment: ServiceMoment | null = momentOverride || detectedMoment;
+
+  // Un comptage AVANT service alors que les ventes du mois sont saisies fait
+  // apparaître un faux surplus : on le dit avant de finaliser.
+  const ventesSaisiesPour = (iso?: string | null) =>
+    !!iso && salesMonths.includes(String(iso).slice(0, 7));
+  const avisNouvelle = inventoryMomentAdvice(serviceMoment, ventesSaisiesPour(newClosingAt));
 
   const [creatingDraft, setCreatingDraft] = useState(false);
   const [counts, setCounts] = useState<Record<string, string>>({});
@@ -387,7 +396,14 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
     // Finaliser écrase le stock théorique et écrit des mouvements de perte /
     // ajustement : action irréversible, on demande confirmation.
     if (finalize) {
+      const avis = inventoryMomentAdvice(
+        (session?.service_moment as any) ?? null,
+        salesMonths.includes(String(session?.closing_at ?? "").slice(0, 7)),
+      );
       const ok = window.confirm(
+        (avis.level === "attention" ? `⚠️ ${avis.message}
+
+` : "") +
         `Finaliser l'inventaire ?\n\n${countSummary.counted} produit(s) compté(s) · écart net €${countSummary.net.toFixed(2)} ` +
         `(manquant €${countSummary.manque.toFixed(2)} / surplus €${countSummary.surplus.toFixed(2)})\n\n` +
         "Le stock théorique sera REMPLACÉ par les quantités comptées et les écarts seront enregistrés en pertes/ajustements. Cette action ne peut pas être annulée."
@@ -703,6 +719,12 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
                   {SERVICE_MOMENTS.find((m) => m.value === serviceMoment)?.hint}
                 </p>
               )}
+              <p className={clsx("text-2xs mt-2 rounded-lg px-3 py-2 text-left",
+                avisNouvelle.level === "attention"
+                  ? "bg-amber-light text-amber-dark border border-amber/30"
+                  : "bg-emerald-50 text-primary border border-primary/20")}>
+                {avisNouvelle.message}
+              </p>
             </div>
           ) : (
           <>

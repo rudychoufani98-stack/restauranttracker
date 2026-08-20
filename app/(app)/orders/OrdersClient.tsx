@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { buildOrderMailto, defaultPackType, resolveHidePrices } from "@/lib/order-email";
 import { unitShort } from "@/lib/ingredient-helpers";
 import { serviceMomentShort } from "@/lib/service-moment";
+import { reverseReception } from "@/lib/costing";
 import { Plus, Trash2, X, Send, Download, ChevronDown, ChevronUp, Zap, Check, Pencil, Truck, Search, TrendingUp, Hourglass, Star, ArrowRight, Ban, Loader2, Eye, EyeOff } from "lucide-react";
 import clsx from "clsx";
 
@@ -370,41 +371,39 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
 
     try {
       if (applied) {
-        // Quantités déjà appliquées au stock : la dernière facture validée,
-        // sinon les lignes des bons de livraison validés.
-        const prevBase = new Map<string, number>();
-        // Contenu d'UN colis en unités de base : priorité au conditionnement de
-        // CE fournisseur (article), sinon celui de la fiche produit.
-        const baseFactorOf = (ingredientId: string) => {
-          const ing = ingredients.find((i) => i.id === ingredientId);
-          if (!ing) return 1;
-          const art = po.supplier_id ? articleFor(ing, po.supplier_id) : null;
-          if (art && Number(art.unit_size ?? 0) > 0) {
-            const u = art.unit ?? ing.unit;
-            const factor = u === "kg" || u === "l" ? 1000 : 1;
-            return (Number(art.pack_units ?? 1) || 1) * Number(art.unit_size) * factor;
+        // Ce qui a RÉELLEMENT été appliqué au stock par cette commande, lu sur
+        // les mouvements : ils portent la quantité ET le prix d'entrée. Repartir
+        // des lignes de livraison et du CMUP courant faussait la valeur retirée
+        // (et laissait un coût moyen incohérent après annulation d'un lot cher).
+        const { data: dns } = await supabase
+          .from("delivery_notes").select("id").eq("po_id", po.id).eq("validated", true);
+        const { data: invs } = await supabase
+          .from("invoices").select("id").eq("po_id", po.id).eq("validated", true);
+        const refIds = [...(dns ?? []).map((d: any) => d.id), ...(invs ?? []).map((i: any) => i.id)];
+
+        const prevBase = new Map<string, number>();   // quantité nette entrée
+        const prevValue = new Map<string, number>();  // valeur nette entrée
+
+        if (refIds.length > 0) {
+          const { data: movs, error: movReadErr } = await supabase
+            .from("stock_movements")
+            .select("ingredient_id, movement_type, qty, unit_cost, reference_type, reference_id")
+            .eq("restaurant_id", restaurantId)
+            .in("reference_type", ["delivery", "invoice"])
+            .in("reference_id", refIds);
+          if (movReadErr) {
+            window.alert(`Annulation impossible : ${movReadErr.message}. Rien n'a été modifié.`);
+            setSending(null);
+            return;
           }
-          const pack = Number(ing.pack_quantity ?? 1) || 1;
-          return ing.unit === "kg" || ing.unit === "l" ? pack * 1000 : pack;
-        };
-        const { data: inv } = await supabase
-          .from("invoices")
-          .select("id, invoice_lines(ingredient_id, quantity)")
-          .eq("po_id", po.id).eq("validated", true)
-          .order("created_at", { ascending: false }).limit(1).maybeSingle();
-        if (inv) {
-          for (const l of (inv as any).invoice_lines ?? []) {
-            if (l.ingredient_id) prevBase.set(l.ingredient_id, (prevBase.get(l.ingredient_id) ?? 0) + Number(l.quantity ?? 0) * baseFactorOf(l.ingredient_id));
-          }
-        } else {
-          const { data: dns } = await supabase
-            .from("delivery_notes")
-            .select("id, validated, delivery_note_lines(ingredient_id, quantity_received)")
-            .eq("po_id", po.id).eq("validated", true);
-          for (const dn of dns ?? []) {
-            for (const l of (dn as any).delivery_note_lines ?? []) {
-              if (l.ingredient_id) prevBase.set(l.ingredient_id, (prevBase.get(l.ingredient_id) ?? 0) + Number(l.quantity_received ?? 0) * baseFactorOf(l.ingredient_id));
-            }
+          for (const m of movs ?? []) {
+            const id = (m as any).ingredient_id;
+            if (!id) continue;
+            // « in » = entré en stock ; « adjustment » sur une facture = retiré.
+            const sign = (m as any).movement_type === "in" ? 1 : -1;
+            const q = sign * Number((m as any).qty ?? 0);
+            prevBase.set(id, (prevBase.get(id) ?? 0) + q);
+            prevValue.set(id, (prevValue.get(id) ?? 0) + q * Number((m as any).unit_cost ?? 0));
           }
         }
 
@@ -413,28 +412,40 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
           const { data: cur } = await supabase.from("ingredients").select("id, stock_qty, cmup, cost_per_base_unit").in("id", ids);
           const curMap = new Map((cur ?? []).map((i) => [i.id, i]));
 
+          // Le mouvement de sortie est valorisé au PRIX D'ENTRÉE : les achats du
+          // mois sont ainsi diminués exactement du montant qui y était entré.
+          const coutEntree = (id: string) => {
+            const q = prevBase.get(id) ?? 0;
+            const v = prevValue.get(id) ?? 0;
+            return q > 0 && v !== 0 ? v / q : Number((curMap.get(id) as any)?.cmup ?? (curMap.get(id) as any)?.cost_per_base_unit ?? 0);
+          };
+
           const movements = ids.map((id) => ({
             restaurant_id: restaurantId, ingredient_id: id,
             movement_type: "adjustment", qty: prevBase.get(id)!,
-            unit_cost: Number((curMap.get(id) as any)?.cmup ?? (curMap.get(id) as any)?.cost_per_base_unit ?? 0),
+            unit_cost: coutEntree(id),
             reference_type: "adjustment", reference_id: po.id,
             notes: `Annulation commande ${po.order_number ?? ""} : stock retiré`,
           }));
           const { error: movErr } = await supabase.from("stock_movements").insert(movements);
           if (movErr) { window.alert(`Annulation impossible : ${movErr.message}`); setSending(null); return; }
 
-          const done: string[] = [];
+          const done: { id: string; stock: number | null; cmup: number | null }[] = [];
           for (const id of ids) {
-            const prevStock = Number((curMap.get(id) as any)?.stock_qty ?? 0);
+            const c = curMap.get(id) as any;
+            const prevStock = Number(c?.stock_qty ?? 0);
+            // Retirer la quantité ET sa valeur : sinon le coût moyen resterait
+            // celui du lot annulé (stock survalorisé après coup).
+            const r = reverseReception(prevStock, c?.cmup ?? null, prevBase.get(id)!, coutEntree(id));
             const { error: upErr } = await supabase.from("ingredients")
-              .update({ stock_qty: Math.max(0, prevStock - prevBase.get(id)!) }).eq("id", id);
+              .update({ stock_qty: r.newStock, cmup: r.newCmup }).eq("id", id);
             if (upErr) {
-              for (const d of done) await supabase.from("ingredients").update({ stock_qty: (curMap.get(d) as any)?.stock_qty ?? 0 }).eq("id", d);
+              for (const d of done) await supabase.from("ingredients").update({ stock_qty: d.stock, cmup: d.cmup }).eq("id", d.id);
               await supabase.from("stock_movements").delete().eq("reference_type", "adjustment").eq("reference_id", po.id);
               window.alert(`Annulation impossible : ${upErr.message}. Rien n'a été modifié.`);
               setSending(null); return;
             }
-            done.push(id);
+            done.push({ id, stock: c?.stock_qty ?? null, cmup: c?.cmup ?? null });
           }
         }
       }
