@@ -270,8 +270,9 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
       const real = countedBase(ing);
       if (real === null) continue;
       counted++;
-      // Théorique = stock relu à l instant (si finalisation), sinon celui chargé.
-      const theo = freshStock?.has(ing.id) ? freshStock.get(ing.id)! : Number(ing.stock_qty ?? 0);
+      // Affichage temps réel : stock tel que chargé (la relecture à jour se
+      // fait au moment de finaliser, dans saveSession).
+      const theo = Number(ing.stock_qty ?? 0);
       const cmup = Number(ing.cmup ?? ing.cost_per_base_unit ?? 0);
       const diff = real - theo;
       if (diff < 0) manque += Math.abs(diff) * cmup;
@@ -453,7 +454,9 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
     for (const ing of localIngredients.filter((i) => matchKind(i.id, sessionKind))) {
       const real = countedBase(ing);
       if (real === null) continue;
-      const theo = Number(ing.stock_qty ?? 0);
+      // Théorique = stock relu juste avant la finalisation (voir plus haut),
+      // sinon celui chargé à l'ouverture de la fiche.
+      const theo = freshStock?.has(ing.id) ? freshStock.get(ing.id)! : Number(ing.stock_qty ?? 0);
       const cmup = Number(ing.cmup ?? ing.cost_per_base_unit ?? 0);
       const diff = real - theo;
       sessionLines.push({

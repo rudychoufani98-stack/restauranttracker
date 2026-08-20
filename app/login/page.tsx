@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { login } from "@/app/auth/actions";
 
 const LINK_ERRORS: Record<string, string> = {
@@ -12,14 +11,20 @@ const LINK_ERRORS: Record<string, string> = {
 export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const params = useSearchParams();
+  // Chemin demandé avant la connexion, transmis par le middleware.
+  const [nextPath, setNextPath] = useState("");
 
   // Un lien de réinitialisation expiré renvoyait ici SANS aucune explication :
   // l'utilisateur réessayait indéfiniment.
   useEffect(() => {
-    const code = params.get("error");
-    if (code) setError(LINK_ERRORS[code] ?? decodeURIComponent(params.get("error_description") ?? code));
-  }, [params]);
+    const sp = new URLSearchParams(window.location.search);
+    const code = sp.get("error");
+    if (code) setError(LINK_ERRORS[code] ?? decodeURIComponent(sp.get("error_description") ?? code));
+    // On n'accepte qu'un chemin interne : une URL externe permettrait une
+    // redirection malveillante après connexion.
+    const n = sp.get("next");
+    if (n && n.startsWith("/") && !n.startsWith("//")) setNextPath(n);
+  }, []);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -53,7 +58,7 @@ export default function LoginPage() {
         <div className="bg-white rounded-card border border-gray-200 shadow-card p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Page demandée avant la connexion (posée par le middleware) */}
-            <input type="hidden" name="next" value={params.get("next") ?? ""} />
+            <input type="hidden" name="next" value={nextPath} />
             {error && (
               <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2.5">{error}</div>
             )}
