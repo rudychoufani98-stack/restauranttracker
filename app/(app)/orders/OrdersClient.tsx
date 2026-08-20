@@ -138,7 +138,7 @@ function condLabel(a: Article): string {
 }
 type Supplier = { id: string; name: string; email: string | null; min_order_amount?: number | null; customer_reference?: string | null };
 type POLine = { id?: string; ingredient_id: string | null; quantity: number; expected_price: number | null; ingredients?: { name: string; unit: string } | null };
-type DeliveryNoteRef = { validated_at: string | null; created_at: string; bl_number?: string | null; received_at?: string | null; service_moment?: string | null };
+type DeliveryNoteRef = { id?: string; bl_pdf_url?: string | null; validated_at: string | null; created_at: string; bl_number?: string | null; received_at?: string | null; service_moment?: string | null };
 type InvoiceRef = { created_at: string; invoice_number: string | null };
 type OrderEvent = { po_id: string; type: string; detail: string | null; created_at: string };
 type PO = { id: string; order_number?: string | null; supplier_id: string | null; status: string; expected_total: number | null; created_at: string; sent_at: string | null; suppliers?: { name: string } | null; delivery_notes?: DeliveryNoteRef[]; invoices?: InvoiceRef[]; purchase_order_lines: POLine[]; hide_prices?: boolean | null };
@@ -217,6 +217,7 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
   const [sending, setSending] = useState<string | null>(null);
   const [pdfLoading, setPdfLoading] = useState<string | null>(null);
   const [priceBusy, setPriceBusy] = useState<string | null>(null);
+  const [blBusy, setBlBusy] = useState<string | null>(null);
   const [showRestock, setShowRestock] = useState(false);
   const [restocking, setRestocking] = useState(false);
 
@@ -287,6 +288,28 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
         `Impossible de changer l'affichage des prix : ${error.message}\n\n` +
         "Si le message parle d'une colonne « hide_prices », lance le script supabase/prix_par_commande.sql."
       );
+    }
+  }
+
+  // Supprime la pièce jointe d'une réception : c'est ce qui libère réellement
+  // de l'espace de stockage (le PDF du bon de commande, lui, est généré à la
+  // demande et n'occupe rien).
+  async function deleteAttachment(dnId: string) {
+    if (!window.confirm(
+      "Supprimer la pièce jointe de ce bon de livraison ?\n\n" +
+      "Le fichier sera définitivement effacé du stockage (la réception et le stock ne changent pas). " +
+      "Pense à le télécharger avant si tu dois le garder pour ta comptabilité."
+    )) return;
+    setBlBusy(dnId);
+    try {
+      const res = await fetch(`/api/delivery-notes/${dnId}/file`, { method: "DELETE" });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) { window.alert(j?.error ?? `Suppression impossible (erreur ${res.status}).`); return; }
+      router.refresh();
+    } catch {
+      window.alert("Suppression impossible (connexion). Réessaie.");
+    } finally {
+      setBlBusy(null);
     }
   }
 
@@ -803,6 +826,25 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
                                         : pricesHiddenFor(order) ? <EyeOff size={12} /> : <Eye size={12} />}
                                       {pricesHiddenFor(order) ? "Prix masqués" : "Prix affichés"}
                                     </button>
+                                    {/* Pièces jointes des réceptions : consulter / supprimer
+                                        (le fichier occupe l'espace de stockage) */}
+                                    {(order.delivery_notes ?? []).filter((d) => d.bl_pdf_url && d.id).map((d) => (
+                                      <span key={d.id} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-outline-variant/40 text-2xs">
+                                        <a href={`/api/delivery-notes/${d.id}/file`} target="_blank" rel="noopener noreferrer"
+                                          title="Ouvrir la pièce jointe du bon de livraison"
+                                          className="font-semibold text-on-surface-variant hover:text-primary">
+                                          BL{d.bl_number ? ` ${d.bl_number}` : ""} 📎
+                                        </a>
+                                        <button
+                                          onClick={() => deleteAttachment(d.id!)}
+                                          disabled={blBusy === d.id}
+                                          title="Supprimer la pièce jointe pour libérer de l'espace de stockage"
+                                          aria-label="Supprimer la pièce jointe"
+                                          className="text-on-surface-variant/40 hover:text-red transition disabled:opacity-40">
+                                          {blBusy === d.id ? <Loader2 size={11} className="animate-spin" /> : <X size={11} />}
+                                        </button>
+                                      </span>
+                                    ))}
                                     <button onClick={() => downloadPdf(order)} disabled={pdfLoading === order.id}
                                       title="Télécharger le bon de commande en PDF"
                                       className="flex items-center gap-1 px-2.5 py-1.5 text-2xs font-semibold text-on-surface-variant border border-outline-variant/40 rounded-lg hover:bg-surface-container-low transition disabled:opacity-50">

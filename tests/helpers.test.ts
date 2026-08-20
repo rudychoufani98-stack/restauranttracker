@@ -7,6 +7,7 @@ import {
   calcCostPerBase, packTotal, priceTTC, UNIT_OPTIONS,
 } from "@/lib/ingredient-helpers";
 import { buildOrderMailto, defaultPackType, resolveHidePrices } from "@/lib/order-email";
+import { doitCompresser, dimensionsCibles, poidsLisible } from "@/lib/compress-image";
 
 describe("Libellés d'unités (jamais de gramme à l'écran)", () => {
   it("affiche kg / L / pce", () => {
@@ -127,5 +128,31 @@ describe("Prix sur le bon de commande : par commande ou réglage global", () => 
   it("aucun réglage du tout : les prix sont affichés", () => {
     expect(resolveHidePrices(null, null)).toBe(false);
     expect(resolveHidePrices(undefined, undefined)).toBe(false);
+  });
+});
+
+describe("Compression des photos de bons de livraison", () => {
+  it("compresse une photo de téléphone (2 MB)", () => {
+    expect(doitCompresser("image/jpeg", 2 * 1024 * 1024)).toBe(true);
+    expect(doitCompresser("image/png", 3 * 1024 * 1024)).toBe(true);
+  });
+  it("ne touche PAS un PDF fournisseur (document officiel)", () => {
+    expect(doitCompresser("application/pdf", 5 * 1024 * 1024)).toBe(false);
+  });
+  it("laisse tranquille une image déjà légère", () => {
+    expect(doitCompresser("image/jpeg", 150 * 1024)).toBe(false);
+  });
+  it("ne casse pas un GIF animé", () => {
+    expect(doitCompresser("image/gif", 2 * 1024 * 1024)).toBe(false);
+  });
+  it("réduit le plus grand côté à 1600 px en gardant les proportions", () => {
+    expect(dimensionsCibles(4032, 3024)).toEqual({ largeur: 1600, hauteur: 1200 });
+    expect(dimensionsCibles(3024, 4032)).toEqual({ largeur: 1200, hauteur: 1600 });
+    // Une image déjà petite n'est pas agrandie
+    expect(dimensionsCibles(800, 600)).toEqual({ largeur: 800, hauteur: 600 });
+  });
+  it("affiche un poids lisible", () => {
+    expect(poidsLisible(2 * 1024 * 1024)).toBe("2.0 MB");
+    expect(poidsLisible(300 * 1024)).toBe("300 KB");
   });
 });

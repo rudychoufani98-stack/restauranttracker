@@ -7,6 +7,7 @@ import { Upload, Check, Loader2, Plus, Trash2 } from "lucide-react";
 import clsx from "clsx";
 import { defaultPackType } from "@/lib/order-email";
 import { applyReception } from "@/lib/costing";
+import { compresserImage, poidsLisible } from "@/lib/compress-image";
 import {
   detectServiceMoment, toDatetimeLocal, SERVICE_MOMENTS, serviceMomentLabel,
   type ServiceMoment,
@@ -218,9 +219,12 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
     // private. Generate a short-lived signed URL on demand when viewing the file.
     let blPdfUrl: string | null = null;
     if (blFile) {
-      const safeName = blFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      // Photo de téléphone : on la réduit avant envoi (2-4 MB → ~300 KB).
+      // Un PDF fournisseur n'est pas touché.
+      const aEnvoyer = await compresserImage(blFile);
+      const safeName = aEnvoyer.name.replace(/[^a-zA-Z0-9._-]/g, "_");
       const path = `delivery-notes/${restaurantId}/${po.id}-${Date.now()}-${safeName}`;
-      const { error: uploadErr } = await supabase.storage.from("invoices").upload(path, blFile);
+      const { error: uploadErr } = await supabase.storage.from("invoices").upload(path, aEnvoyer);
       if (uploadErr) {
         // Ne pas prétendre que le document est archivé : laisser choisir.
         const goOn = window.confirm(
@@ -265,6 +269,10 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
 
     // Best-effort cleanup when a later step fails: remove what this attempt created.
     async function abort(msg: string) {
+      // Le fichier joint a été envoyé AVANT la création de la réception : sans
+      // ce nettoyage, chaque échec laisserait un fichier orphelin qui occupe
+      // l'espace de stockage pour toujours.
+      if (blPdfUrl) await supabase.storage.from("invoices").remove([blPdfUrl]);
       await supabase.from("stock_movements").delete().eq("reference_id", dn.id).eq("reference_type", "delivery");
       await supabase.from("delivery_note_lines").delete().eq("delivery_note_id", dn.id);
       await supabase.from("delivery_notes").delete().eq("id", dn.id);
