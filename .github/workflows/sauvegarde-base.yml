@@ -1,0 +1,78 @@
+# =====================================================================
+#  Sauvegarde quotidienne de la base — gratuite, via GitHub Actions.
+#
+#  Pourquoi : le plan gratuit Supabase ne fait AUCUNE sauvegarde. Une
+#  suppression malheureuse et les données d'un client sont perdues.
+#  Ce workflow prend un instantané complet chaque nuit et le garde 30 jours.
+#
+#  ── Mise en route (une seule fois) ──────────────────────────────────
+#  1. Supabase → Project Settings → Database → Connection string → URI
+#     (mode « Session pooler » si le direct est bloqué). Copie-la.
+#  2. GitHub → ce dépôt → Settings → Secrets and variables → Actions →
+#     New repository secret :
+#        Nom    : SUPABASE_DB_URL
+#        Valeur : la chaîne copiée (elle contient le mot de passe)
+#  3. C'est tout. Onglet Actions → « Sauvegarde base » → Run workflow
+#     pour tester immédiatement.
+#
+#  Ne colle JAMAIS cette chaîne ailleurs que dans les secrets GitHub :
+#  elle donne un accès complet à la base.
+#
+#  ── Restauration ────────────────────────────────────────────────────
+#  Télécharge l'artefact du jour voulu, décompresse, puis :
+#     psql "<CONNECTION_STRING>" < sauvegarde.sql
+# =====================================================================
+name: Sauvegarde base
+
+on:
+  schedule:
+    - cron: "30 2 * * *" # chaque nuit à 2 h 30 UTC
+  workflow_dispatch: {}   # bouton « Run workflow » pour un test manuel
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    # pg_dump doit être de la même version majeure que Postgres (Supabase = 15/16)
+    container: postgres:16-alpine
+
+    steps:
+      - name: Vérifier que le secret est configuré
+        id: check
+        run: |
+          if [ -z "${{ secrets.SUPABASE_DB_URL }}" ]; then
+            echo "::warning::Secret SUPABASE_DB_URL absent — sauvegarde ignorée. Voir les instructions en tête de ce fichier."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Instantané de la base
+        if: steps.check.outputs.ok == 'true'
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          horodatage="$(date -u +%Y-%m-%d)"
+          # --no-owner / --no-privileges : le dump se restaure sur n'importe
+          # quel hôte Postgres, pas seulement sur ce projet Supabase.
+          pg_dump "$DB_URL" \
+            --no-owner --no-privileges \
+            --schema=public --schema=auth \
+            --file="sauvegarde-${horodatage}.sql"
+          gzip -9 "sauvegarde-${horodatage}.sql"
+          ls -lh sauvegarde-*.sql.gz
+          # Garde-fou : un dump anormalement petit signale un problème.
+          taille=$(stat -c%s sauvegarde-*.sql.gz)
+          if [ "$taille" -lt 10240 ]; then
+            echo "::error::Sauvegarde suspecte (${taille} octets) — vérifie la connexion."
+            exit 1
+          fi
+
+      - name: Conserver l'instantané (30 jours)
+        if: steps.check.outputs.ok == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sauvegarde-base
+          path: sauvegarde-*.sql.gz
+          retention-days: 30
+          if-no-files-found: error
