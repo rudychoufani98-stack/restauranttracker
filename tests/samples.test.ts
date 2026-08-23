@@ -1,5 +1,5 @@
 // =====================================================================
-//  Génère les 7 fichiers Excel sur disque pour inspection humaine.
+//  Génère les 8 fichiers Excel sur disque pour inspection humaine.
 //  Ne tourne QUE sur demande :  GEN_SAMPLES=1 npx vitest run tests/samples
 // =====================================================================
 import { describe, it, expect, vi } from "vitest";
@@ -62,10 +62,10 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 vi.mock("@/lib/auth", () => ({ getRestaurant: async () => RESTAURANT }));
 
-const TYPES = ["inventaire", "achats", "recettes", "commandes", "pertes", "ventes", "mouvements"];
+const TYPES = ["inventaire", "achats", "recettes", "commandes", "pertes", "ventes", "mouvements", "cout-produit"];
 
 describe.skipIf(!process.env.GEN_SAMPLES)("Génération des fichiers d'exemple", () => {
-  it("écrit les 7 exports sur disque", async () => {
+  it("écrit les 8 exports sur disque", async () => {
     const { GET } = await import("@/app/api/export/[type]/route");
     fs.mkdirSync(OUT, { recursive: true });
     for (const type of TYPES) {

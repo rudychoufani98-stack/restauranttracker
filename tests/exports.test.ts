@@ -1,5 +1,6 @@
 // =====================================================================
-//  Test de bout en bout des 7 exports Excel.
+//  Test de bout en bout des exports Excel (hors « Coût produit », couvert
+//  par tests/cout-produit.test.ts qui a besoin de son propre jeu de factures).
 //  On génère de VRAIS fichiers .xlsx (exceljs) à partir de données
 //  piégeuses (produit legacy en g, produit à la pièce revendu, rendement
 //  < 100 %, commande annulée, MEP à exclure, TVA 5,5 %) puis on relit

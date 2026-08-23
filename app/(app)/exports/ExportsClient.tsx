@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Download, Loader2, Warehouse, ShoppingBasket, ChefHat, ShoppingCart, Trash2, TrendingUp, History } from "lucide-react";
+import { Download, Loader2, Warehouse, ShoppingBasket, ChefHat, ShoppingCart, Trash2, TrendingUp, History, LineChart } from "lucide-react";
 
-const ICONS = { Warehouse, ShoppingBasket, ChefHat, ShoppingCart, Trash2, TrendingUp, History };
+const ICONS = { Warehouse, ShoppingBasket, ChefHat, ShoppingCart, Trash2, TrendingUp, History, LineChart };
 export type ExportDef = { type: string; icon: keyof typeof ICONS; titre: string; desc: string };
 
 export default function ExportsClient({ exports: defs }: { exports: ExportDef[] }) {

@@ -3,9 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 import { getRestaurant } from "@/lib/auth";
 import { unitShort } from "@/lib/ingredient-helpers";
 import {
-  newWorkbook, addTitle, styleHeader, styleSubtotal, autoWidth,
+  newWorkbook, addTitle, styleHeader, styleSubtotal, styleDelta, autoWidth,
   workbookToResponse, FMT, todayStamp,
 } from "@/lib/excel";
+import { buildPurchaseHistory, summarizePurchases, packSize } from "@/lib/cost-history";
 
 const displayUnit = (u: string) => (u === "g" || u === "kg" ? "kg" : u === "ml" || u === "l" ? "L" : u === "unit" || u === "piece" ? "pce" : u);
 const qtyDisplay = (base: number, u: string) => (["g", "kg", "ml", "l"].includes(u) ? base / 1000 : base);
@@ -34,6 +35,7 @@ export async function GET(req: NextRequest, { params }: { params: { type: string
       case "pertes":     return await exportPertes(supabase, restaurant, stamp, dateLabel);
       case "ventes":     return await exportVentes(supabase, restaurant, stamp, dateLabel);
       case "mouvements": return await exportMouvements(supabase, restaurant, stamp, dateLabel);
+      case "cout-produit": return await exportCoutProduit(supabase, restaurant, stamp, dateLabel);
       default: return new Response("Type d'export inconnu", { status: 404 });
     }
   } catch (e) {
@@ -371,4 +373,208 @@ async function exportMouvements(supabase: any, restaurant: any, stamp: string, d
     row.getCell(8).numFmt = FMT.eur;
   }
   return workbookToResponse(wb, `Mouvements_${stamp}.xlsx`);
+}
+
+// ── Coût produit — évolution du prix d'achat au fil des commandes ──────
+// Source de vérité : les factures VALIDÉES (`invoices` / `invoice_lines`).
+// C'est à l'étape facture que le prix réellement payé est confirmé ; une
+// facture non validée est un brouillon abandonné en cours de route.
+// L'agrégation vit dans lib/cost-history.ts (testée à part) ; ici on ne fait
+// que charger les données et les mettre en forme.
+
+/** `.in()` par lots : évite une URL trop longue quand l'historique est gros. */
+async function fetchIn(supabase: any, table: string, select: string, column: string, ids: string[]) {
+  const out: any[] = [];
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data } = await supabase.from(table).select(select).in(column, ids.slice(i, i + 200));
+    if (data) out.push(...data);
+  }
+  return out;
+}
+
+async function exportCoutProduit(supabase: any, restaurant: any, stamp: string, dateLabel: string) {
+  const { data: invoices } = await supabase
+    .from("invoices")
+    .select("id, invoice_number, invoice_date, created_at, po_id")
+    .eq("restaurant_id", restaurant.id)
+    .eq("validated", true)
+    .order("invoice_date", { ascending: true });
+
+  const invoiceIds = (invoices ?? []).map((i: any) => i.id);
+  const poIds = Array.from(new Set((invoices ?? []).map((i: any) => i.po_id).filter(Boolean))) as string[];
+
+  const [invLines, pos, poLines, ingRes] = await Promise.all([
+    invoiceIds.length
+      ? fetchIn(supabase, "invoice_lines", "invoice_id, ingredient_id, quantity, unit_price", "invoice_id", invoiceIds)
+      : Promise.resolve([] as any[]),
+    poIds.length
+      ? fetchIn(supabase, "purchase_orders", "id, order_number, suppliers(name)", "id", poIds)
+      : Promise.resolve([] as any[]),
+    poIds.length
+      ? fetchIn(supabase, "purchase_order_lines", "po_id, ingredient_id, expected_price", "po_id", poIds)
+      : Promise.resolve([] as any[]),
+    supabase
+      .from("ingredients")
+      .select("id, name, category, unit, pack_units, unit_size, pack_quantity, cmup, cost_per_base_unit, suppliers(name)")
+      .eq("restaurant_id", restaurant.id),
+  ]);
+
+  const ingById = new Map<string, any>((ingRes.data ?? []).map((i: any) => [i.id, i]));
+  const byIngredient = buildPurchaseHistory({
+    invoices: invoices ?? [],
+    invoiceLines: invLines,
+    purchaseOrders: pos,
+    poLines,
+  });
+  const frDate = (iso: string) => (iso ? new Date(iso).toLocaleDateString("fr-FR") : "—");
+
+  const wb = newWorkbook();
+
+  // ── Feuille 1 : synthèse par produit ────────────────────────────────
+  const ws = wb.addWorksheet("Synthèse");
+  const headers = [
+    "Catégorie", "Ingrédient", "Fournisseur", "Colis", "Nb achats",
+    "1er prix", "Dernier prix", "Variation", "Variation %",
+    "Prix mini", "Prix maxi", "Prix moyen pondéré",
+    "Coût actuel / kg·L·pce", "Dernier achat", "Total acheté",
+  ];
+  autoWidth(ws, [18, 28, 20, 14, 10, 12, 13, 12, 12, 12, 12, 17, 19, 13, 14]);
+
+  let r = addTitle(
+    ws,
+    `Coût produit — ${restaurant.name}`,
+    `Au ${dateLabel} · évolution du prix d'achat facturé, colis par colis · ${invoiceIds.length} facture${invoiceIds.length !== 1 ? "s" : ""}`,
+    headers.length,
+  );
+  ws.getRow(r).values = headers;
+  styleHeader(ws, r);
+  r++;
+
+  if (byIngredient.size === 0) {
+    ws.addRow(["", "Aucun achat facturé pour l'instant — valide une facture depuis une commande reçue."]);
+    // Le classeur garde ses deux feuilles : le fichier a toujours la même forme.
+    const empty = wb.addWorksheet("Détail achats");
+    addTitle(empty, "Coût produit — détail des achats", "Rien à afficher tant qu'aucune facture n'est validée.", 4);
+    return workbookToResponse(wb, `Cout_produit_${stamp}.xlsx`);
+  }
+
+  // Groupé par catégorie (comme les autres exports).
+  const groups = new Map<string, string[]>();
+  for (const id of Array.from(byIngredient.keys())) {
+    const c = ingById.get(id)?.category || "Autre";
+    if (!groups.has(c)) groups.set(c, []);
+    groups.get(c)!.push(id);
+  }
+
+  const statsById = new Map(
+    Array.from(byIngredient.entries()).map(([id, p]) => [id, summarizePurchases(p)]),
+  );
+
+  let grandSpend = 0;
+  for (const category of Array.from(groups.keys()).sort((a, b) => a.localeCompare(b))) {
+    // Plus fortes hausses en tête : c'est ce qu'on veut voir en premier.
+    const ids = groups.get(category)!.sort((a, b) => statsById.get(b)!.deltaPct - statsById.get(a)!.deltaPct);
+    let catSpend = 0;
+
+    for (const id of ids) {
+      const ing = ingById.get(id);
+      const p = byIngredient.get(id)!;
+      const s = statsById.get(id)!;
+      const size = packSize(ing);
+      catSpend += s.spend;
+
+      const row = ws.addRow([
+        category,
+        ing?.name ?? "Produit supprimé",
+        ing?.suppliers?.name ?? p[p.length - 1].supplier,
+        `${size} ${displayUnit(ing?.unit ?? "unit")}`,
+        s.count,
+        s.first, s.last, s.deltaEur, s.deltaPct,
+        s.min, s.max, s.wavg,
+        s.last / size,
+        frDate(p[p.length - 1].date),
+        s.spend,
+      ]);
+      [6, 7, 10, 11, 12, 13, 15].forEach((c) => { row.getCell(c).numFmt = FMT.eur; });
+      row.getCell(8).numFmt = FMT.eurSigned;
+      row.getCell(9).numFmt = FMT.pctSigned;
+      styleDelta(row.getCell(8), s.deltaEur);
+      styleDelta(row.getCell(9), s.deltaEur);
+      r++;
+    }
+
+    const sub = ws.addRow(["", `Sous-total ${category}`, "", "", "", "", "", "", "", "", "", "", "", "", catSpend]);
+    sub.getCell(15).numFmt = FMT.eur;
+    styleSubtotal(sub);
+    r++;
+    grandSpend += catSpend;
+  }
+
+  const total = ws.addRow(["", "TOTAL ACHATS FACTURÉS", "", "", "", "", "", "", "", "", "", "", "", "", grandSpend]);
+  total.eachCell((c: any) => { c.font = { bold: true, size: 11 }; });
+  total.getCell(15).numFmt = FMT.eur;
+
+  // ── Feuille 2 : détail achat par achat ──────────────────────────────
+  const wd = wb.addWorksheet("Détail achats");
+  const dHeaders = [
+    "Ingrédient", "Date", "N° facture", "Fournisseur", "Qté (colis)",
+    "Prix colis", "Coût / kg·L·pce", "Écart vs achat précédent", "Écart %",
+    "Prix commandé", "Écart vs commande",
+  ];
+  autoWidth(wd, [28, 12, 16, 20, 12, 12, 17, 22, 11, 14, 18]);
+
+  const dr = addTitle(
+    wd,
+    "Coût produit — détail des achats",
+    "Chaque ligne de facture, du plus ancien au plus récent, par produit",
+    dHeaders.length,
+  );
+  wd.getRow(dr).values = dHeaders;
+  styleHeader(wd, dr);
+
+  const sortedIds = Array.from(byIngredient.keys()).sort((a, b) =>
+    (ingById.get(a)?.name ?? "").localeCompare(ingById.get(b)?.name ?? ""),
+  );
+
+  for (const id of sortedIds) {
+    const ing = ingById.get(id);
+    const p = byIngredient.get(id)!;
+    const size = packSize(ing);
+
+    const head = wd.addRow([ing?.name ?? "Produit supprimé", `${p.length} achat${p.length !== 1 ? "s" : ""}`]);
+    styleSubtotal(head);
+
+    let prev: number | null = null;
+    for (const buy of p) {
+      const deltaEur = prev === null ? 0 : buy.unitPrice - prev;
+      const deltaPct = prev && prev > 0 ? (deltaEur / prev) * 100 : 0;
+      const vsOrder = buy.expected === null ? null : buy.unitPrice - buy.expected;
+
+      const row = wd.addRow([
+        "", frDate(buy.date), buy.invoiceNumber, buy.supplier, buy.qty,
+        buy.unitPrice, buy.unitPrice / size,
+        prev === null ? "—" : deltaEur,
+        prev === null ? "—" : deltaPct,
+        buy.expected === null ? "—" : buy.expected,
+        vsOrder === null ? "—" : vsOrder,
+      ]);
+      row.getCell(5).numFmt = FMT.qty;
+      row.getCell(6).numFmt = FMT.eur;
+      row.getCell(7).numFmt = FMT.eur;
+      if (prev !== null) {
+        row.getCell(8).numFmt = FMT.eurSigned;
+        row.getCell(9).numFmt = FMT.pctSigned;
+        styleDelta(row.getCell(8), deltaEur);
+        styleDelta(row.getCell(9), deltaEur);
+      }
+      if (buy.expected !== null) {
+        row.getCell(10).numFmt = FMT.eur;
+        row.getCell(11).numFmt = FMT.eurSigned;
+        styleDelta(row.getCell(11), vsOrder ?? 0);
+      }
+      prev = buy.unitPrice;
+    }
+  }
+
+  return workbookToResponse(wb, `Cout_produit_${stamp}.xlsx`);
 }

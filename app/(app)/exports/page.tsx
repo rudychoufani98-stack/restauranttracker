@@ -33,6 +33,10 @@ const EXPORTS: ExportDef[] = [
     type: "mouvements", icon: "History", titre: "Journal des mouvements de stock",
     desc: "Chaque entrée et sortie de stock tracée : réceptions, ventes, pertes, ajustements, inventaires.",
   },
+  {
+    type: "cout-produit", icon: "LineChart", titre: "Coût produit — évolution des prix",
+    desc: "Comment le prix d'achat de chaque produit a bougé au fil de tes commandes : variation depuis le premier achat, prix mini/maxi, moyenne pondérée, et le détail facture par facture.",
+  },
 ];
 
 export default function ExportsPage() {

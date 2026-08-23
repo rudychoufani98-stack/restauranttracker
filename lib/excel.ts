@@ -8,6 +8,9 @@ export const FMT = {
   pct: '0\\ "%"',
   pct1: '0.0\\ "%"',
   qty: "#,##0.###",
+  // Variantes signées pour les écarts : une hausse doit se lire comme une hausse.
+  eurSigned: '+#,##0.00\\ "€";-#,##0.00\\ "€";0.00\\ "€"',
+  pctSigned: '+0.0\\ "%";-0.0\\ "%";0.0\\ "%"',
 };
 
 const BRAND = "FF059669"; // emerald-600
@@ -61,6 +64,13 @@ export function styleSubtotal(row: ExcelJS.Row) {
     cell.font = { bold: true, size: 10 };
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: SUBTOTAL_BG } };
   });
+}
+
+/** Colore une cellule d'écart : rouge quand ça monte (ça coûte plus), vert quand ça baisse. */
+export function styleDelta(cell: ExcelJS.Cell, value: number) {
+  if (value > 0.0001) cell.font = { color: { argb: "FFDC2626" }, size: 10, bold: true };
+  else if (value < -0.0001) cell.font = { color: { argb: "FF059669" }, size: 10, bold: true };
+  else cell.font = { color: { argb: "FF9CA3AF" }, size: 10 };
 }
 
 export function autoWidth(ws: ExcelJS.Worksheet, widths: number[]) {
