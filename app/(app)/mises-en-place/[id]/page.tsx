@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { notFound, redirect } from "next/navigation";
 import { getRecipeUsage } from "@/lib/usage";
 import RecipeClient from "../../recipes/[id]/RecipeClient";
+import { selectIngredients } from "@/lib/ingredients-query";
 
 // Page détail d'une MISE EN PLACE — route séparée des recettes pour rester
 // dans la section "Mises en place" (URL + menu actif corrects). Réutilise
@@ -23,11 +24,7 @@ export default async function MiseEnPlaceDetailPage({ params }: { params: { id: 
       .eq("id", params.id)
       .eq("restaurant_id", restaurant!.id)
       .single(),
-    supabase
-      .from("ingredients")
-      .select("id, name, cost_per_base_unit, cmup, unit, yield_pct")
-      .eq("restaurant_id", restaurant!.id)
-      .order("name"),
+    selectIngredients(supabase, restaurant!.id, "id, name, cost_per_base_unit, cmup, unit, yield_pct, is_active"),
     supabase
       .from("recipes")
       .select("id, name, total_cost, yield_portions, yield_unit, is_prep")

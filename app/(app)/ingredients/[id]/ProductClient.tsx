@@ -290,8 +290,11 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
       .update({ stock_qty: newStock, cmup: newCmup, allergens: mergedAllergens }).eq("id", targetId);
     if (updErr) return fail(`stock cumulé non enregistré (${updErr.message})`);
 
-    // Tout est transféré : on peut supprimer le doublon.
-    const { error: delErr } = await supabase.from("ingredients").delete().eq("id", src.id);
+    // Tout est transféré : on DÉSACTIVE le doublon au lieu de l’effacer.
+    // Le supprimer emporterait ce qui n’a pas pu être transféré (lignes de
+    // commande, de facture, de bon de livraison) et laisserait des trous
+    // dans l’historique d’achat.
+    const { error: delErr } = await supabase.from("ingredients").update({ is_active: false }).eq("id", src.id);
     if (delErr) {
       setMerging(false);
       setError(`Les données ont été transférées vers « ${mergeTargets.find((t) => t.id === targetId)?.name ?? "le produit cible"} », mais l'ancien produit n'a pas pu être supprimé (${delErr.message}). Supprime-le manuellement.`);

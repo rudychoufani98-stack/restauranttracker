@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { ArrowLeft, Check, Plus, Trash2, Loader2, Scale, ListChecks, ChefHat, Soup, Link2 } from "lucide-react";
 import clsx from "clsx";
 
-type Ingredient = { id: string; name: string; cost_per_base_unit: number; cmup?: number | null; unit: string; yield_pct?: number | null };
+type Ingredient = { id: string; name: string; cost_per_base_unit: number; cmup?: number | null; unit: string; yield_pct?: number | null; is_active?: boolean };
 type RecipeRef = { id: string; name: string; total_cost: number; yield_portions: number; yield_unit: string; is_prep: boolean };
 type RecipeLine = { ingredient_id: string | null; sub_recipe_id: string | null; quantity: number; unit: string };
 type Recipe = {
@@ -369,7 +369,16 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
                     </optgroup>
                   )}
                   <optgroup label="Ingrédients">
-                    {ingredients.map((i) => <option key={i.id} value={`ing:${i.id}`}>{i.name}</option>)}
+                    {/* Un produit désactivé ne peut plus être AJOUTÉ. On le garde tout de même
+                        dans la liste s’il est déjà choisi sur cette ligne : sinon le sélecteur
+                        s’afficherait vide et un enregistrement effacerait la ligne sans le dire. */}
+                    {ingredients
+                      .filter((i) => i.is_active !== false || line.ingredient_id === i.id)
+                      .map((i) => (
+                        <option key={i.id} value={`ing:${i.id}`}>
+                          {i.name}{i.is_active === false ? " — inactif, à remplacer" : ""}
+                        </option>
+                      ))}
                   </optgroup>
                 </select>
                 <input type="number" min="0" step="any" value={line.quantity} onChange={(e) => updateLine(idx, "quantity", e.target.value)} placeholder="Qté" className="w-20 px-2 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-primary" />

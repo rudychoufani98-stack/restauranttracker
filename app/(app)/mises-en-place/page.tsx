@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getRestaurant } from "@/lib/auth";
 import RecipesClient from "../recipes/RecipesClient";
+import { selectIngredients } from "@/lib/ingredients-query";
 
 export default async function MisesEnPlacePage() {
   const supabase = createClient();
@@ -12,11 +13,7 @@ export default async function MisesEnPlacePage() {
       .select("*, recipe_lines!recipe_id(*, ingredients(name, cost_per_base_unit, cmup, unit))")
       .eq("restaurant_id", restaurant!.id)
       .order("name"),
-    supabase
-      .from("ingredients")
-      .select("id, name, cost_per_base_unit, cmup, unit, yield_pct")
-      .eq("restaurant_id", restaurant!.id)
-      .order("name"),
+    selectIngredients(supabase, restaurant!.id, "id, name, cost_per_base_unit, cmup, unit, yield_pct, is_active"),
     supabase
       .from("categories")
       .select("type, name, position")

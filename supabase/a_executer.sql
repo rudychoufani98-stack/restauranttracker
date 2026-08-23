@@ -73,3 +73,12 @@ create index if not exists idx_sales_lines_period         on sales_lines(period_
 create index if not exists idx_stock_movements_rest_date  on stock_movements(restaurant_id, created_at desc);
 create index if not exists idx_stock_movements_ingredient on stock_movements(ingredient_id);
 create index if not exists idx_ingredient_suppliers_supplier on ingredient_suppliers(supplier_id);
+
+-- ---------------------------------------------------------------------
+--  Produits actifs / inactifs (voir aussi supabase/ingredient_actif.sql)
+--  On ne supprime plus un produit : on le désactive. Il garde son
+--  historique d'achat et ses mouvements, mais ne peut plus être ajouté
+--  à une recette ou une mise en place.
+-- ---------------------------------------------------------------------
+alter table ingredients add column if not exists is_active boolean not null default true;
+create index if not exists idx_ingredients_active on ingredients(restaurant_id, is_active);

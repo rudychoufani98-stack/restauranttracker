@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import NewOrderClient from "./NewOrderClient";
+import { selectIngredients } from "@/lib/ingredients-query";
 
 export const dynamic = "force-dynamic";
 
@@ -15,9 +16,7 @@ export default async function NewOrderPage() {
 
   const [{ data: suppliers }, { data: ingredients }] = await Promise.all([
     supabase.from("suppliers").select("*").eq("restaurant_id", restaurant!.id).order("name"),
-    supabase.from("ingredients")
-      .select("id, name, unit, category, pack_price, pack_units, unit_size, pack_quantity, supplier_id, supplier_reference, secondary_unit_label, secondary_unit_size, ingredient_suppliers(*)")
-      .eq("restaurant_id", restaurant!.id).order("name"),
+    selectIngredients(supabase, restaurant!.id, "id, name, unit, category, pack_price, pack_units, unit_size, pack_quantity, supplier_id, supplier_reference, secondary_unit_label, secondary_unit_size, is_active, ingredient_suppliers(*)"),
   ]);
 
   return (

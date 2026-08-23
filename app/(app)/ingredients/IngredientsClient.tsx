@@ -4,7 +4,7 @@ import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Search, Trash2, Check, ChevronDown, Copy, Package, Layers, TrendingUp } from "lucide-react";
+import { Plus, Search, Trash2, Check, ChevronDown, Copy, Package, Layers, TrendingUp, Archive, RotateCcw } from "lucide-react";
 import { Card, Button, Input, Select, Modal, Alert, EmptyState } from "@/components/ui";
 import clsx from "clsx";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -41,6 +41,8 @@ type Ingredient = {
   reorder_threshold?: number | null;
   supplier_reference?: string | null;
   allergens?: string[] | null;
+  /** Un produit désactivé garde tout son historique mais ne peut plus être ajouté à une recette. */
+  is_active?: boolean;
   suppliers?: { name: string } | null;
   ingredient_tags?: { tag_id: string; tags: TagInfo }[];
   ingredient_suppliers?: SupplierRef[];
@@ -149,6 +151,8 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
   const [search, setSearch] = useState("");
   const [filterCategory, setFilterCategory] = useState("All");
   const [filterTagId, setFilterTagId] = useState("All");
+  // Par défaut on ne montre que les produits actifs : les désactivés sont du passé.
+  const [filterState, setFilterState] = useState<"active" | "inactive" | "all">("active");
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
@@ -179,8 +183,10 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
       const matchSearch = i.name.toLowerCase().includes(search.toLowerCase());
       const matchCat = filterCategory === "All" || i.category === filterCategory;
       const matchTag = filterTagId === "All" || (i.ingredient_tags ?? []).some((it) => it.tag_id === filterTagId);
-      return matchSearch && matchCat && matchTag;
-    }), [ingredients, search, filterCategory, filterTagId]);
+      const active = i.is_active !== false;
+      const matchState = filterState === "all" || (filterState === "active" ? active : !active);
+      return matchSearch && matchCat && matchTag && matchState;
+    }), [ingredients, search, filterCategory, filterTagId, filterState]);
 
   function openAdd() {
     setEditingId(null);
@@ -423,23 +429,38 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
     router.refresh();
   }
 
-  async function handleDelete(id: string) {
-    const name = ingredients.find((i) => i.id === id)?.name ?? "cet ingrédient";
-    if (!(await confirm({
-      title: `Supprimer « ${name} » ?`,
-      message: "Cette action est irréversible.",
-      consequences: ["Le produit disparaît du catalogue, du stock et des listes d'achat.", "Les recettes qui l'utilisent perdront cette ligne."],
-    }))) return;
+  // Un produit ne se supprime pas : il se désactive. Le supprimer effacerait
+  // son historique d'achat et ses mouvements de stock, et casserait les fiches
+  // techniques qui l'utilisent. Désactiver garde tout, et le rend simplement
+  // inutilisable dans les nouvelles recettes et mises en place.
+  async function handleToggleActive(id: string) {
+    const ing = ingredients.find((i) => i.id === id);
+    if (!ing) return;
+    const name = ing.name;
+    const active = ing.is_active !== false;
+
+    if (active) {
+      if (!(await confirm({
+        title: `Désactiver « ${name} » ?`,
+        consequences: [
+          "Il ne pourra plus être ajouté à une recette ou une mise en place.",
+          "Les fiches qui l'utilisent déjà continuent de fonctionner, mais seront signalées.",
+          "Son historique d'achat, son stock et ses mouvements sont conservés.",
+          "Réversible à tout moment : tu peux le réactiver d'un clic.",
+        ],
+        confirmLabel: "Désactiver",
+        tone: "default",
+      }))) return;
+    }
+
     setDeletingId(id);
-    const { error } = await supabase.from("ingredients").delete().eq("id", id);
+    const { error } = await supabase.from("ingredients").update({ is_active: !active }).eq("id", id);
     setDeletingId(null);
     if (error) {
-      // Typiquement un produit utilisé dans une recette ou une commande : sans
-      // ce message, il disparaissait de l'écran puis réapparaissait au rechargement.
-      window.alert(`Suppression impossible : ${error.message}\n\nCe produit est probablement utilisé dans une recette, une commande ou un mouvement de stock.`);
+      window.alert(`Changement d'état impossible : ${error.message}`);
       return;
     }
-    setIngredients((p) => p.filter((i) => i.id !== id));
+    setIngredients((p) => p.map((i) => (i.id === id ? { ...i, is_active: !active } : i)));
   }
 
   async function handleDuplicate(ing: Ingredient) {
@@ -569,6 +590,22 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/40" />
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher un ingrédient…"
             className="w-full pl-9 pr-3 py-2 text-sm bg-surface-container-low border-none rounded-xl outline-none focus:ring-2 focus:ring-primary/20 placeholder:text-on-surface-variant/40 text-on-surface" />
+        </div>
+        {/* Actifs / inactifs — les désactivés sont masqués par défaut. */}
+        <div className="flex rounded-xl bg-surface-container-low p-1 gap-0.5">
+          {([
+            { key: "active", label: "Actifs", n: ingredients.filter((i) => i.is_active !== false).length },
+            { key: "inactive", label: "Inactifs", n: ingredients.filter((i) => i.is_active === false).length },
+            { key: "all", label: "Tous", n: ingredients.length },
+          ] as const).map((o) => (
+            <button key={o.key} onClick={() => setFilterState(o.key)}
+              className={clsx(
+                "px-3 py-1.5 rounded-lg text-2xs font-bold uppercase tracking-wider transition",
+                filterState === o.key ? "bg-primary-container text-on-primary-container" : "text-on-surface-variant/60 hover:bg-surface-container",
+              )}>
+              {o.label} <span className="tabular-nums opacity-70">{o.n}</span>
+            </button>
+          ))}
         </div>
         <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}
           className="bg-surface-container-low border-none rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20 text-on-surface-variant cursor-pointer">
@@ -953,7 +990,11 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                     const ttc = priceTTC(ing.pack_price, ing.vat_rate ?? 0);
                     const tags = (ing.ingredient_tags ?? []).map((it) => it.tags).filter(Boolean);
                     return (
-                      <tr key={ing.id} className="group cursor-pointer transition-colors hover:bg-surface-container-low/40"
+                      <tr key={ing.id}
+                        className={clsx(
+                          "group cursor-pointer transition-colors hover:bg-surface-container-low/40",
+                          ing.is_active === false && "opacity-55",
+                        )}
                         onClick={() => router.push(`/ingredients/${ing.id}`)}>
                         <td className="px-5 py-4">
                           <div className="flex items-center gap-3">
@@ -964,6 +1005,11 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                               className="font-semibold text-primary hover:text-primary-container transition whitespace-nowrap">
                               {ing.name}
                             </Link>
+                            {ing.is_active === false && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-light text-amber-dark text-2xs font-bold uppercase tracking-wide shrink-0">
+                                <Archive size={10} /> Inactif
+                              </span>
+                            )}
                           </div>
                         </td>
                         <td className="px-5 py-4">
@@ -1052,10 +1098,19 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                               className="p-1.5 rounded-md text-on-surface-variant/50 hover:text-primary hover:bg-surface-container-low transition disabled:opacity-50">
                               <Copy size={13} />
                             </button>
-                            <button onClick={(e) => { e.stopPropagation(); handleDelete(ing.id); }} title="Supprimer" aria-label={`Supprimer ${ing.name}`} disabled={deletingId === ing.id}
-                              className="p-1.5 rounded-md text-on-surface-variant/50 hover:text-red hover:bg-red-light transition">
-                              <Trash2 size={13} />
-                            </button>
+                            {ing.is_active === false ? (
+                              <button onClick={(e) => { e.stopPropagation(); handleToggleActive(ing.id); }}
+                                title="Réactiver ce produit" aria-label={`Réactiver ${ing.name}`} disabled={deletingId === ing.id}
+                                className="p-1.5 rounded-md text-primary hover:bg-primary/10 transition disabled:opacity-50">
+                                <RotateCcw size={13} />
+                              </button>
+                            ) : (
+                              <button onClick={(e) => { e.stopPropagation(); handleToggleActive(ing.id); }}
+                                title="Désactiver ce produit" aria-label={`Désactiver ${ing.name}`} disabled={deletingId === ing.id}
+                                className="p-1.5 rounded-md text-on-surface-variant/50 hover:text-amber-dark hover:bg-amber-light transition disabled:opacity-50">
+                                <Archive size={13} />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>

@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import { getRecipeUsage } from "@/lib/usage";
 import RecipeClient from "./RecipeClient";
+import { selectIngredients } from "@/lib/ingredients-query";
 
 export default async function RecipePage({ params }: { params: { id: string } }) {
   const supabase = createClient();
@@ -20,11 +21,7 @@ export default async function RecipePage({ params }: { params: { id: string } })
       .eq("id", params.id)
       .eq("restaurant_id", restaurant!.id)
       .single(),
-    supabase
-      .from("ingredients")
-      .select("id, name, cost_per_base_unit, cmup, unit, yield_pct")
-      .eq("restaurant_id", restaurant!.id)
-      .order("name"),
+    selectIngredients(supabase, restaurant!.id, "id, name, cost_per_base_unit, cmup, unit, yield_pct, is_active"),
     supabase
       .from("recipes")
       .select("id, name, total_cost, yield_portions, yield_unit, is_prep")

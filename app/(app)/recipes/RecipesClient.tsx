@@ -9,7 +9,7 @@ import clsx from "clsx";
 import { useConfirm } from "@/components/ConfirmDialog";
 
 
-type Ingredient = { id: string; name: string; cost_per_base_unit: number; cmup?: number | null; unit: string; yield_pct?: number | null };
+type Ingredient = { id: string; name: string; cost_per_base_unit: number; cmup?: number | null; unit: string; yield_pct?: number | null; is_active?: boolean };
 type RecipeLine = {
   id?: string;
   ingredient_id: string | null;
@@ -697,7 +697,16 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                           ) : null;
                         })()}
                         <optgroup label="Ingrédients">
-                          {ingredients.map((i) => <option key={i.id} value={`ing:${i.id}`}>{i.name}</option>)}
+                          {/* Un produit désactivé ne peut plus être AJOUTÉ. On le garde tout de même
+                              dans la liste s’il est déjà choisi sur cette ligne : sinon le sélecteur
+                              s’afficherait vide et un enregistrement effacerait la ligne sans le dire. */}
+                          {ingredients
+                            .filter((i) => i.is_active !== false || line.ingredient_id === i.id)
+                            .map((i) => (
+                              <option key={i.id} value={`ing:${i.id}`}>
+                                {i.name}{i.is_active === false ? " — inactif, à remplacer" : ""}
+                              </option>
+                            ))}
                         </optgroup>
                       </select>
 

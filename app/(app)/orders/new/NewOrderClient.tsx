@@ -15,6 +15,7 @@ type Article = {
   pack_price: number | null; pack_label: string | null; pack_type?: string | null;
 };
 type Ingredient = {
+  is_active?: boolean;
   id: string; name: string; unit: string; category?: string | null; pack_price: number; pack_units?: number | null; unit_size?: number | null; pack_quantity?: number | null;
   supplier_id?: string | null; supplier_reference?: string | null;
   secondary_unit_label?: string | null; secondary_unit_size?: number | null;
@@ -78,7 +79,10 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
   const franco = Number(sup?.min_order_amount ?? 0);
 
   // Products for the chosen supplier (fallback to all if none linked yet).
-  const linked = supplierId ? ingredients.filter((ing) => articleFor(ing, supplierId)) : [];
+  // Un produit désactivé n’est plus commandable : il sort du catalogue.
+  const linked = supplierId
+    ? ingredients.filter((ing) => ing.is_active !== false && articleFor(ing, supplierId))
+    : [];
   const usingFallback = supplierId !== "" && linked.length === 0;
   const products = supplierId ? (linked.length > 0 ? linked : ingredients) : [];
 

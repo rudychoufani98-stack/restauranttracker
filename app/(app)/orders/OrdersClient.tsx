@@ -225,7 +225,7 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
 
   // Group low-stock ingredients by supplier for the auto-restock preview
   const restockGroups = (() => {
-    const low = ingredients.filter((i) => needsReorder(i) && i.supplier_id);
+    const low = ingredients.filter((i) => needsReorder(i) && i.supplier_id && (i as any).is_active !== false);
     const map = new Map<string, { supplierName: string; items: Ingredient[] }>();
     for (const ing of low) {
       const sid = ing.supplier_id!;
