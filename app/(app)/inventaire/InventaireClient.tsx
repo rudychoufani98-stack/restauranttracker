@@ -11,8 +11,9 @@ import {
 import { inventoryMomentAdvice } from "@/lib/inventory-moment";
 import { ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { Warehouse, TrendingDown, TrendingUp, AlertTriangle, Check, Loader2, History, ClipboardList, Trash2, Download, Search, Package } from "lucide-react";
+import { Warehouse, TrendingDown, TrendingUp, AlertTriangle, Check, Loader2, History, ClipboardList, Trash2, Download, Search, Package, BarChart3 } from "lucide-react";
 import clsx from "clsx";
+import StatsTab from "./StatsTab";
 
 type Ingredient = {
   id: string;
@@ -148,6 +149,8 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
   const searchParams = useSearchParams();
   const isInventaire = searchParams.get("vue") === "inventaire";
   const [tab, setTab] = useState<"count" | "sessions" | "history" | "count-f" | "sessions-f">("count");
+  // Vue Stock : la liste des produits, ou les statistiques dans le temps.
+  const [stockTab, setStockTab] = useState<"stock" | "stats">("stock");
   const [expandedIng, setExpandedIng] = useState<string | null>(null);
   const [moveSearch, setMoveSearch] = useState("");
   const [sessions, setSessions] = useState<InventorySession[]>(inventorySessions);
@@ -1073,7 +1076,37 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
       )}
 
       {/* STOCK VIEW — état des stocks & mouvements */}
+      {/* Sub-tabs de la vue Stock : la liste, ou les statistiques dans le temps */}
       {!isInventaire && (
+        <div className="glass-card rounded-2xl p-2 mb-5 flex flex-wrap gap-1">
+          {[
+            { key: "stock", label: "État des stocks", icon: Package },
+            { key: "stats", label: "Statistiques", icon: BarChart3 },
+          ].map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              onClick={() => setStockTab(key as "stock" | "stats")}
+              className={clsx(
+                "flex items-center gap-1.5 px-4 py-2 rounded-xl text-2xs font-bold uppercase tracking-wider transition-all duration-300",
+                stockTab === key ? "bg-primary-container text-on-primary-container nav-active-glow" : "text-on-surface-variant/60 hover:bg-surface-container-low"
+              )}
+            >
+              <Icon size={14} /> {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {!isInventaire && stockTab === "stats" && (
+        <StatsTab
+          ingredients={ingredients.map((i) => ({ id: i.id, name: i.name, unit: i.unit, category: i.category, cmup: i.cmup }))}
+          movements={recentMovements}
+          sessions={inventorySessions as any}
+          movementsCapped={recentMovements.length >= 5000}
+        />
+      )}
+
+      {!isInventaire && stockTab === "stock" && (
         <div className="space-y-4">
           <div className="relative max-w-sm">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/40" />
