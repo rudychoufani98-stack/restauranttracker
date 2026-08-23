@@ -79,6 +79,7 @@ export default function CategoriesClient({ restaurantId, initialCategories, init
     if (!(await confirm({
       title: `Supprimer le tag « ${name} » ?`,
       consequences: ["Il sera retiré de tous les produits qui le portent.", "Les produits, eux, ne sont pas supprimés."],
+      tone: "danger",
     }))) return;
     setBusy(true);
     const { error: err } = await supabase.from("tags").delete().eq("id", id);
@@ -136,6 +137,7 @@ export default function CategoriesClient({ restaurantId, initialCategories, init
         "Les produits et recettes qui l’utilisent ne sont pas supprimés.",
         "Ils se retrouveront sans catégorie : il faudra leur en réattribuer une.",
       ],
+      tone: "danger",
     }))) return;
     setBusy(true);
     const { error: err } = await supabase.from("categories").delete().eq("id", id);

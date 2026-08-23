@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Plus, Search, Trash2, Check, ChevronDown, Copy, Package, Layers, TrendingUp, Archive, RotateCcw } from "lucide-react";
 import { Card, Button, Input, Select, Modal, Alert, EmptyState } from "@/components/ui";
 import clsx from "clsx";
-import { useConfirm } from "@/components/ConfirmDialog";
+import { useConfirm, useAlert } from "@/components/ConfirmDialog";
 
 // L'interface ne parle que kg / L / pièce (g/ml restent internes).
 const UNIT_CHOICES = [
@@ -144,6 +144,7 @@ interface Props {
 }
 
 export default function IngredientsClient({ restaurantId, initialIngredients, suppliers, allTags, categories: CATEGORIES }: Props) {
+  const notify = useAlert();
   const confirm = useConfirm();
   const supabase = createClient();
   const router = useRouter();
@@ -424,7 +425,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
     setSaving(false);
     setShowForm(false);
     if (!recalcOk) {
-      window.alert("Produit enregistré, mais le recalcul des coûts de recettes a échoué. Lance « Tout recalculer » depuis les recettes.");
+      notify("Produit enregistré, mais le recalcul des coûts de recettes a échoué. Lance « Tout recalculer » depuis les recettes.");
     }
     router.refresh();
   }
@@ -457,7 +458,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
     const { error } = await supabase.from("ingredients").update({ is_active: !active }).eq("id", id);
     setDeletingId(null);
     if (error) {
-      window.alert(`Changement d'état impossible : ${error.message}`);
+      notify(`Changement d'état impossible : ${error.message}`);
       return;
     }
     setIngredients((p) => p.map((i) => (i.id === id ? { ...i, is_active: !active } : i)));
@@ -489,7 +490,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
       .from("ingredients").insert(payload).select("*, suppliers(name)").single();
     if (err || !created) {
       setDuplicatingId(null);
-      window.alert(`Duplication impossible : ${err?.message ?? "réessaie."}`);
+      notify(`Duplication impossible : ${err?.message ?? "réessaie."}`);
       return;
     }
 

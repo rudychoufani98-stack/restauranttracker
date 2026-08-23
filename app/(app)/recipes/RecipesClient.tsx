@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Plus, Trash2, X, ChevronDown, ChevronUp, RefreshCw, Copy, Search, ChefHat, Percent, Coins, Layers, ClipboardCheck } from "lucide-react";
 import clsx from "clsx";
-import { useConfirm } from "@/components/ConfirmDialog";
+import { useConfirm, useAlert } from "@/components/ConfirmDialog";
 
 
 type Ingredient = { id: string; name: string; cost_per_base_unit: number; cmup?: number | null; unit: string; yield_pct?: number | null; is_active?: boolean };
@@ -128,6 +128,7 @@ interface Props {
 }
 
 export default function RecipesClient({ restaurantId, initialRecipes, ingredients, allRecipes: allRecipesProp, menuCategories, prepCategories, lockMode }: Props) {
+  const notify = useAlert();
   const confirm = useConfirm();
   const supabase = createClient();
   const router = useRouter();
@@ -372,7 +373,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
     setSaving(false);
     setShowForm(false);
     if (!recalc.ok) {
-      window.alert(
+      notify(
         "La recette est enregistrée, mais le recalcul des coûts au CMUP a échoué " +
         `(${recalc.message}).\n\nUtilise le bouton « Tout recalculer » pour obtenir les coûts définitifs.`
       );
@@ -429,7 +430,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
       .single();
     if (err || !created) {
       setDuplicatingId(null);
-      window.alert(`Duplication impossible : ${err?.message ?? "réessaie."}`);
+      notify(`Duplication impossible : ${err?.message ?? "réessaie."}`);
       return;
     }
 
@@ -449,7 +450,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
         // Une copie sans ingrédients afficherait un coût fantôme : on annule.
         await supabase.from("recipes").delete().eq("id", created.id);
         setDuplicatingId(null);
-        window.alert(`Duplication impossible : ${cpErr.message}. Rien n'a été créé.`);
+        notify(`Duplication impossible : ${cpErr.message}. Rien n'a été créé.`);
         return;
       }
     }
@@ -486,11 +487,12 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
       title: `Supprimer « ${name} » ?`,
       message: "Cette action est irréversible.",
       consequences: extra,
+      tone: "danger",
     }))) return;
     setDeletingId(id);
     const { error: delErr } = await supabase.from("recipes").delete().eq("id", id);
     setDeletingId(null);
-    if (delErr) { window.alert(`Suppression impossible : ${delErr.message}`); return; }
+    if (delErr) { notify(`Suppression impossible : ${delErr.message}`); return; }
     setRecipes((p) => p.filter((r) => r.id !== id));
     setAllRecipes((p) => p.filter((r) => r.id !== id));
     // Les parents doivent perdre le coût de l'élément supprimé.
@@ -886,7 +888,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                           const { error: tErr } = await supabase.from("recipes").update({ countable_in_inventory: next }).eq("id", recipe.id);
                           if (tErr) {
                             setRecipes((p) => p.map((r) => r.id === recipe.id ? { ...r, countable_in_inventory: !next } : r));
-                            window.alert(`Impossible de modifier : ${tErr.message}`);
+                            notify(`Impossible de modifier : ${tErr.message}`);
                           }
                         }}
                         title={recipe.countable_in_inventory ? "Cette recette est comptée à l'inventaire — clique pour la retirer" : "Ajouter au comptage d'inventaire"}

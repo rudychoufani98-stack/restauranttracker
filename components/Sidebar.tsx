@@ -1,5 +1,7 @@
 "use client";
 
+import { useRef } from "react";
+
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { logout } from "@/app/auth/actions";
@@ -23,6 +25,7 @@ import {
   FileSpreadsheet,
 } from "lucide-react";
 import clsx from "clsx";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 const NAV_GROUPS = [
   {
@@ -62,6 +65,9 @@ const NAV_GROUPS = [
 ];
 
 export default function Sidebar({ restaurantName, isAdmin = false }: { restaurantName: string; isAdmin?: boolean }) {
+  const confirm = useConfirm();
+  // Laisse passer la seconde soumission, celle qu'on déclenche après accord.
+  const deconnexionOk = useRef(false);
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const vue = searchParams.get("vue");
@@ -150,8 +156,22 @@ export default function Sidebar({ restaurantName, isAdmin = false }: { restauran
         </Link>
         <form
           action={logout}
-          onSubmit={(e) => {
-            if (!window.confirm("Es-tu sûr de vouloir te déconnecter ?")) e.preventDefault();
+          onSubmit={async (e) => {
+            // Même schéma que l'ouverture d'un client : on bloque l'envoi le
+            // temps de la question, puis on resoumet si l'utilisateur accepte.
+            if (deconnexionOk.current) { deconnexionOk.current = false; return; }
+            e.preventDefault();
+            const form = e.currentTarget;
+            const ok = await confirm({
+              title: "Se déconnecter ?",
+              message: "Tu devras te reconnecter pour revenir sur la plateforme.",
+              confirmLabel: "Se déconnecter",
+              cancelLabel: "Rester connecté",
+              tone: "default",
+            });
+            if (!ok) return;
+            deconnexionOk.current = true;
+            form.requestSubmit();
           }}
         >
           <button

@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Plus, Check, Loader2, ChevronDown, ChevronUp, TrendingUp, TrendingDown, Minus, Trash2 } from "lucide-react";
 import clsx from "clsx";
 import { perDisplayUnit } from "@/lib/ingredient-helpers";
+import { useConfirm, useAlert } from "@/components/ConfirmDialog";
 
 type Recipe = {
   id: string;
@@ -92,6 +93,8 @@ function calcPeriodStats(period: Period, recipes: Recipe[], simpleProducts: Simp
 }
 
 export default function RentabiliteClient({ restaurantId, targetFoodCostPct, recipes, simpleProducts, initialPeriods }: Props) {
+  const confirm = useConfirm();
+  const notify = useAlert();
   const supabase = createClient();
   const router = useRouter();
   const [periods, setPeriods] = useState<Period[]>(initialPeriods);
@@ -228,7 +231,7 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
       `${nbLignes} article(s) · CA €${preview.ca.toFixed(2)}\n\n` +
       "Les ingrédients des plats vendus (y compris ceux des mises en place) seront DÉSTOCKÉS." +
       (existing ? "\n\n⚠️ Une saisie existe déjà pour ce mois et ce canal : elle sera REMPLACÉE (le stock est réajusté par différence)." : "");
-    if (!window.confirm(confirmMsg)) return;
+    if (!(await confirm(confirmMsg))) return;
 
     setSaving(true);
     setError(null);
@@ -304,7 +307,7 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
       // Stock insuffisant sur certains produits : le signaler, sinon l'écart
       // entre le stock (bloqué à 0) et les mouvements reste inexpliqué.
       if (Array.isArray(j?.stockInsuffisant) && j.stockInsuffisant.length > 0) {
-        window.alert(
+        notify(
           "Ventes enregistrées. Attention : le stock était insuffisant pour ces produits, leur stock est donc à 0 :\n\n" +
           j.stockInsuffisant.slice(0, 10).map((n: string) => `• ${n}`).join("\n") +
           (j.stockInsuffisant.length > 10 ? `\n…et ${j.stockInsuffisant.length - 10} autre(s)` : "") +
@@ -340,11 +343,11 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
   // vente, qui réconcilie par différence — puis on efface la période.
   async function handleDeletePeriod(period: Period) {
     const stats = calcPeriodStats(period, recipes, simpleProducts);
-    const ok = window.confirm(
+    const ok = (await confirm(
       `Supprimer la saisie de ${monthLabel(period.month)} (${channelLabel(period.channel)}) ?\n\n` +
       `CA €${stats.ca.toFixed(2)} · ${stats.totalCouverts} article(s) vendu(s)\n\n` +
       "Les ingrédients déstockés pour ces ventes seront REMIS en stock. Cette action est irréversible."
-    );
+    ));
     if (!ok) return;
 
     setDeletingPeriodId(period.id);

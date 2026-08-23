@@ -1,77 +1,133 @@
 "use client";
 
-// Remplace le `window.confirm()` du navigateur, qui affiche le nom de domaine,
-// ignore la charte et tronque tout retour à la ligne.
+// Remplace `window.confirm()` et `window.alert()`, qui affichent le nom de
+// domaine Vercel, ignorent la charte et écrasent la mise en forme du texte.
 //
-// L'API reste celle du natif — une promesse de booléen — pour que les appels
-// existants deviennent simplement :
-//     if (!(await confirm({ ... }))) return;
+// Deux hooks :
+//   const confirm = useConfirm();   // promesse de booléen, comme le natif
+//   const notify  = useAlert();     // message simple, ne bloque pas le code
 //
-// Utilisation :
-//     const confirm = useConfirm();
-//     const ok = await confirm({ title: "Supprimer « X » ?", tone: "danger" });
+//   if (!(await confirm({ title: "Supprimer « X » ?" }))) return;
+//   notify(`Suppression impossible : ${error.message}`);
+//
+// Les deux acceptent aussi une simple chaîne : la première ligne devient le
+// titre, le reste le corps. C'est ce qui a permis de reprendre tels quels les
+// messages déjà écrits pour les boîtes natives.
 
 import {
   createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode,
 } from "react";
-import { AlertTriangle, Trash2 } from "lucide-react";
+import { AlertTriangle, Trash2, Info, CheckCircle2, XCircle } from "lucide-react";
 import clsx from "clsx";
+
+export type Tone = "danger" | "default" | "error" | "success" | "info";
 
 export type ConfirmOptions = {
   /** La question, en une ligne. Ex. « Supprimer « Acide citrique » ? » */
   title: string;
-  /** Ce que ça implique, en une phrase. */
+  /** Ce que ça implique. Les retours à la ligne sont conservés. */
   message?: string;
   /** Les conséquences précises, une par puce. */
   consequences?: string[];
   confirmLabel?: string;
   cancelLabel?: string;
-  /** `danger` = action destructrice : rouge, et le bouton d'annulation prend le focus. */
-  tone?: "danger" | "default";
+  /** `danger` = destructeur : rouge, et « Annuler » prend le focus. */
+  tone?: Tone;
 };
 
-type Pending = ConfirmOptions & { resolve: (ok: boolean) => void };
+export type ConfirmInput = string | ConfirmOptions;
 
-const ConfirmContext = createContext<((o: ConfirmOptions) => Promise<boolean>) | null>(null);
-
-export function useConfirm() {
-  const ctx = useContext(ConfirmContext);
-  if (!ctx) throw new Error("useConfirm doit être utilisé dans un <ConfirmProvider>");
-  return ctx;
+/** Première ligne = titre, le reste = corps. Une ligne unique et longue part
+ *  dans le corps : un pavé en gras se lit mal. */
+function parse(input: ConfirmInput): ConfirmOptions {
+  if (typeof input !== "string") return input;
+  const [head, ...rest] = input.split(/\n{2,}/);
+  const body = rest.join("\n\n").trim();
+  const title = head.trim();
+  if (body) return { title, message: body };
+  return title.length <= 90 ? { title } : { title: "Information", message: title };
 }
 
+type Job =
+  | ({ kind: "confirm"; resolve: (ok: boolean) => void } & ConfirmOptions)
+  | ({ kind: "alert" } & ConfirmOptions);
+
+type Api = {
+  confirm: (o: ConfirmInput) => Promise<boolean>;
+  notify: (o: ConfirmInput) => void;
+};
+
+const Ctx = createContext<Api | null>(null);
+
+export function useConfirm() {
+  const api = useContext(Ctx);
+  if (!api) throw new Error("useConfirm doit être utilisé dans un <ConfirmProvider>");
+  return api.confirm;
+}
+export function useAlert() {
+  const api = useContext(Ctx);
+  if (!api) throw new Error("useAlert doit être utilisé dans un <ConfirmProvider>");
+  return api.notify;
+}
+
+const ICONS: Record<Tone, typeof Info> = {
+  danger: Trash2,
+  default: AlertTriangle,
+  error: XCircle,
+  success: CheckCircle2,
+  info: Info,
+};
+
 export function ConfirmProvider({ children }: { children: ReactNode }) {
-  const [pending, setPending] = useState<Pending | null>(null);
+  // Une file d'attente : deux messages coup sur coup ne doivent pas s'écraser.
+  const [queue, setQueue] = useState<Job[]>([]);
+  const job = queue[0] ?? null;
+
   const cancelRef = useRef<HTMLButtonElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  // On rend la main au bouton qui a ouvert la boîte : sans ça, le focus
-  // repart en haut de page et la navigation au clavier est perdue.
+  // On rend la main au bouton qui a ouvert la boîte : sans ça le focus repart
+  // en haut de page et la navigation au clavier est perdue.
   const openerRef = useRef<HTMLElement | null>(null);
 
-  const confirm = useCallback((options: ConfirmOptions) => {
+  const push = useCallback((j: Job) => {
     openerRef.current = document.activeElement as HTMLElement | null;
-    return new Promise<boolean>((resolve) => setPending({ ...options, resolve }));
+    setQueue((q) => [...q, j]);
   }, []);
+
+  const confirm = useCallback(
+    (input: ConfirmInput) =>
+      new Promise<boolean>((resolve) => push({ kind: "confirm", resolve, ...parse(input) })),
+    [push],
+  );
+  const notify = useCallback((input: ConfirmInput) => push({ kind: "alert", ...parse(input) }), [push]);
 
   const close = useCallback((ok: boolean) => {
-    setPending((p) => { p?.resolve(ok); return null; });
-    openerRef.current?.focus?.();
+    setQueue((q) => {
+      const [head, ...rest] = q;
+      if (head?.kind === "confirm") head.resolve(ok);
+      if (rest.length === 0) openerRef.current?.focus?.();
+      return rest;
+    });
   }, []);
 
-  const danger = pending?.tone !== "default";
+  const isConfirm = job?.kind === "confirm";
+  // Le rouge et le mot « Supprimer » ne s’appliquent QUE si on les demande :
+  // une confirmation ordinaire (valider, quitter, envoyer) ne doit pas crier.
+  const tone: Tone = job?.tone ?? (isConfirm ? "default" : "info");
+  const destructive = tone === "danger";
+  const Icon = ICONS[tone];
 
   useEffect(() => {
-    if (!pending) return;
+    if (!job) return;
 
     // Sur une action destructrice, le focus va sur « Annuler » : une frappe
     // réflexe sur Entrée ne doit pas supprimer.
-    (danger ? cancelRef : confirmRef).current?.focus();
+    (destructive && isConfirm ? cancelRef : confirmRef).current?.focus();
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") { e.preventDefault(); close(false); return; }
-      if (e.key === "Enter" && !danger) { e.preventDefault(); close(true); return; }
-      // Piège à focus : la tabulation ne doit pas sortir de la boîte.
+      if (e.key === "Enter" && !(destructive && isConfirm)) { e.preventDefault(); close(true); return; }
       if (e.key === "Tab") {
         const nodes = panelRef.current?.querySelectorAll<HTMLElement>("button");
         if (!nodes || nodes.length === 0) return;
@@ -82,18 +138,26 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
     };
     document.addEventListener("keydown", onKey);
 
-    const prevOverflow = document.body.style.overflow;
+    const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prevOverflow;
+      document.body.style.overflow = prev;
     };
-  }, [pending, danger, close]);
+  }, [job, destructive, isConfirm, close]);
+
+  const accent = {
+    danger:  { chip: "bg-red-light text-red",            list: "bg-red-light/50 text-red-dark",             dot: "bg-red" },
+    error:   { chip: "bg-red-light text-red",            list: "bg-red-light/50 text-red-dark",             dot: "bg-red" },
+    default: { chip: "bg-amber-light text-amber-dark",   list: "bg-amber-light/50 text-amber-dark",         dot: "bg-amber" },
+    success: { chip: "bg-green-light text-green-dark",   list: "bg-green-light/60 text-green-dark",         dot: "bg-emerald-600" },
+    info:    { chip: "bg-tertiary-fixed text-primary",   list: "bg-surface-container-low text-on-surface-variant", dot: "bg-outline" },
+  }[tone];
 
   return (
-    <ConfirmContext.Provider value={confirm}>
+    <Ctx.Provider value={{ confirm, notify }}>
       {children}
-      {pending && (
+      {job && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-on-surface/40 backdrop-blur-sm dialog-backdrop"
           onMouseDown={(e) => { if (e.target === e.currentTarget) close(false); }}
@@ -103,37 +167,29 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
             role="alertdialog"
             aria-modal="true"
             aria-labelledby="confirm-title"
-            aria-describedby={pending.message ? "confirm-message" : undefined}
-            className="dialog-panel w-full max-w-[420px] bg-surface-container-lowest rounded-2xl shadow-modal overflow-hidden"
+            aria-describedby={job.message ? "confirm-message" : undefined}
+            className="dialog-panel w-full max-w-[440px] bg-surface-container-lowest rounded-2xl shadow-modal overflow-hidden"
           >
-            <div className="p-6 pb-5">
+            <div className="p-6 pb-5 max-h-[60vh] overflow-y-auto">
               <div className="flex gap-4">
-                <div className={clsx(
-                  "w-11 h-11 rounded-full flex items-center justify-center shrink-0",
-                  danger ? "bg-red-light text-red" : "bg-tertiary-fixed text-primary",
-                )}>
-                  {danger ? <Trash2 size={19} /> : <AlertTriangle size={19} />}
+                <div className={clsx("w-11 h-11 rounded-full flex items-center justify-center shrink-0", accent.chip)}>
+                  <Icon size={19} />
                 </div>
                 <div className="min-w-0 pt-0.5">
-                  <h2 id="confirm-title" className="text-base font-bold text-on-surface leading-snug">
-                    {pending.title}
-                  </h2>
-                  {pending.message && (
-                    <p id="confirm-message" className="text-sm text-on-surface-variant/80 mt-1.5 leading-relaxed">
-                      {pending.message}
+                  <h2 id="confirm-title" className="text-base font-bold text-on-surface leading-snug">{job.title}</h2>
+                  {job.message && (
+                    <p id="confirm-message" className="text-sm text-on-surface-variant/80 mt-1.5 leading-relaxed whitespace-pre-line">
+                      {job.message}
                     </p>
                   )}
                 </div>
               </div>
 
-              {pending.consequences && pending.consequences.length > 0 && (
-                <ul className={clsx(
-                  "mt-4 rounded-xl px-4 py-3 space-y-1.5 text-sm",
-                  danger ? "bg-red-light/50 text-red-dark" : "bg-surface-container-low text-on-surface-variant",
-                )}>
-                  {pending.consequences.map((c, i) => (
+              {job.consequences && job.consequences.length > 0 && (
+                <ul className={clsx("mt-4 rounded-xl px-4 py-3 space-y-1.5 text-sm", accent.list)}>
+                  {job.consequences.map((c, i) => (
                     <li key={i} className="flex gap-2.5 leading-relaxed">
-                      <span className={clsx("mt-[7px] w-1.5 h-1.5 rounded-full shrink-0", danger ? "bg-red" : "bg-outline")} />
+                      <span className={clsx("mt-[7px] w-1.5 h-1.5 rounded-full shrink-0", accent.dot)} />
                       <span>{c}</span>
                     </li>
                   ))}
@@ -142,29 +198,31 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
             </div>
 
             <div className="flex gap-2.5 px-6 py-4 bg-surface-container-low/60 border-t border-outline-variant/30">
-              <button
-                ref={cancelRef}
-                onClick={() => close(false)}
-                className="flex-1 py-3 text-sm font-semibold text-on-surface-variant bg-surface-container-lowest border border-outline-variant/60 rounded-xl hover:bg-surface-container transition outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-              >
-                {pending.cancelLabel ?? "Annuler"}
-              </button>
+              {isConfirm && (
+                <button
+                  ref={cancelRef}
+                  onClick={() => close(false)}
+                  className="flex-1 py-3 text-sm font-semibold text-on-surface-variant bg-surface-container-lowest border border-outline-variant/60 rounded-xl hover:bg-surface-container transition outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                >
+                  {job.cancelLabel ?? "Annuler"}
+                </button>
+              )}
               <button
                 ref={confirmRef}
                 onClick={() => close(true)}
                 className={clsx(
                   "flex-1 py-3 text-sm font-semibold text-white rounded-xl transition shadow-sm active:scale-[0.98] outline-none focus-visible:ring-2 focus-visible:ring-offset-1",
-                  danger
+                  destructive || tone === "error"
                     ? "bg-red hover:bg-red-dark focus-visible:ring-red/50"
                     : "bg-primary hover:bg-primary-container focus-visible:ring-primary/50",
                 )}
               >
-                {pending.confirmLabel ?? (danger ? "Supprimer" : "Confirmer")}
+                {job.confirmLabel ?? (isConfirm ? (destructive ? "Supprimer" : "Confirmer") : "J’ai compris")}
               </button>
             </div>
           </div>
         </div>
       )}
-    </ConfirmContext.Provider>
+    </Ctx.Provider>
   );
 }

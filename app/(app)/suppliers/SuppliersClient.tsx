@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Plus, Pencil, Trash2, X, Truck, Mail, BadgeEuro } from "lucide-react";
-import { useConfirm } from "@/components/ConfirmDialog";
+import { useConfirm, useAlert } from "@/components/ConfirmDialog";
 
 const CATEGORIES = ["Légumes/Fruits", "Viande", "Poisson", "Produits laitiers", "Épicerie", "Boissons", "Autre"];
 
@@ -13,6 +13,7 @@ const EMPTY = { name: "", email: "", contact: "", category: "Autre", min_order_a
 interface Props { restaurantId: string; initialSuppliers: Supplier[] }
 
 export default function SuppliersClient({ restaurantId, initialSuppliers }: Props) {
+  const notify = useAlert();
   const confirm = useConfirm();
   const supabase = createClient();
   const [suppliers, setSuppliers] = useState<Supplier[]>(initialSuppliers);
@@ -68,13 +69,14 @@ export default function SuppliersClient({ restaurantId, initialSuppliers }: Prop
       title: `Supprimer « ${name} » ?`,
       message: "Cette action est irréversible.",
       consequences: ["Impossible s'il reste des produits ou des commandes rattachés à ce fournisseur."],
+      tone: "danger",
     }))) return;
     setDeletingId(id);
     const { error } = await supabase.from("suppliers").delete().eq("id", id);
     setDeletingId(null);
     if (error) {
       // Très fréquent : le fournisseur est rattaché à des produits/commandes.
-      window.alert(`Suppression impossible : ${error.message}\n\nCe fournisseur est probablement rattaché à des produits ou des commandes. Détache-le d'abord de ses produits.`);
+      notify(`Suppression impossible : ${error.message}\n\nCe fournisseur est probablement rattaché à des produits ou des commandes. Détache-le d'abord de ses produits.`);
       return;
     }
     setSuppliers((p) => p.filter((s) => s.id !== id));

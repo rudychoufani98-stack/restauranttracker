@@ -10,7 +10,7 @@ import { serviceMomentShort } from "@/lib/service-moment";
 import { reverseReception } from "@/lib/costing";
 import { Plus, Trash2, X, Send, Download, ChevronDown, ChevronUp, Zap, Check, Pencil, Truck, Search, TrendingUp, Hourglass, Star, ArrowRight, Ban, Loader2, Eye, EyeOff } from "lucide-react";
 import clsx from "clsx";
-import { useConfirm } from "@/components/ConfirmDialog";
+import { useConfirm, useAlert } from "@/components/ConfirmDialog";
 
 const toBase = (qty: number, unit: string) => (unit === "kg" || unit === "l" ? qty * 1000 : qty);
 function needsReorder(i: { stock_qty?: number | null; reorder_threshold?: number | null }) {
@@ -201,6 +201,7 @@ interface Props {
 }
 
 export default function OrdersClient({ restaurantId, restaurantName, initialOrders, suppliers, ingredients, orderEvents = [], hidePrices = false }: Props) {
+  const notify = useAlert();
   const confirm = useConfirm();
   const supabase = createClient();
   const router = useRouter();
@@ -264,7 +265,7 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
     setRestocking(false);
     setShowRestock(false);
     if (echecs.length > 0) {
-      window.alert(`${crees} bon(s) créé(s).\n\nÉchecs :\n${echecs.map((e) => `• ${e}`).join("\n")}`);
+      notify(`${crees} bon(s) créé(s).\n\nÉchecs :\n${echecs.map((e) => `• ${e}`).join("\n")}`);
     }
     // router.refresh() recharge la liste avec TOUTES ses données (réceptions,
     // factures) — une requête partielle ici faisait disparaître ces infos.
@@ -286,7 +287,7 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
     setPriceBusy(null);
     if (error) {
       setOrders((p) => p.map((o) => (o.id === po.id ? { ...o, hide_prices: po.hide_prices ?? null } : o)));
-      window.alert(
+      notify(
         `Impossible de changer l'affichage des prix : ${error.message}\n\n` +
         "Si le message parle d'une colonne « hide_prices », lance le script supabase/prix_par_commande.sql."
       );
@@ -297,19 +298,19 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
   // de l'espace de stockage (le PDF du bon de commande, lui, est généré à la
   // demande et n'occupe rien).
   async function deleteAttachment(dnId: string) {
-    if (!window.confirm(
+    if (!(await confirm(
       "Supprimer la pièce jointe de ce bon de livraison ?\n\n" +
       "Le fichier sera définitivement effacé du stockage (la réception et le stock ne changent pas). " +
       "Pense à le télécharger avant si tu dois le garder pour ta comptabilité."
-    )) return;
+    ))) return;
     setBlBusy(dnId);
     try {
       const res = await fetch(`/api/delivery-notes/${dnId}/file`, { method: "DELETE" });
       const j = await res.json().catch(() => ({}));
-      if (!res.ok) { window.alert(j?.error ?? `Suppression impossible (erreur ${res.status}).`); return; }
+      if (!res.ok) { notify(j?.error ?? `Suppression impossible (erreur ${res.status}).`); return; }
       router.refresh();
     } catch {
-      window.alert("Suppression impossible (connexion). Réessaie.");
+      notify("Suppression impossible (connexion). Réessaie.");
     } finally {
       setBlBusy(null);
     }
@@ -322,7 +323,7 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
     try {
       const res = await fetch(`/api/orders/${po.id}/pdf`);
       if (!res.ok) {
-        window.alert(
+        notify(
           res.status === 401
             ? "Ta session a expiré — recharge la page et reconnecte-toi."
             : `Le PDF n'a pas pu être généré (erreur ${res.status}). Réessaie dans un instant.`
@@ -338,7 +339,7 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
       document.body.appendChild(a); a.click(); a.remove();
       URL.revokeObjectURL(url);
     } catch {
-      window.alert("Téléchargement interrompu (connexion). Réessaie.");
+      notify("Téléchargement interrompu (connexion). Réessaie.");
     } finally {
       setPdfLoading(null);
     }
@@ -349,18 +350,18 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
     const { error } = await supabase.from("purchase_orders")
       .update({ status: "Sent", sent_at: new Date().toISOString() }).eq("id", id);
     setSending(null);
-    if (error) { window.alert(`Le statut n'a pas pu être mis à jour : ${error.message}`); return; }
+    if (error) { notify(`Le statut n'a pas pu être mis à jour : ${error.message}`); return; }
     router.refresh();
   }
 
   // Opens the user's own email client (Gmail, Outlook…) with the order
   // pre-filled — no email service or domain needed, the email is sent from
   // the user's real address. Then offers to mark the order as "Sent".
-  function handleSend(po: PO) {
+  async function handleSend(po: PO) {
     const supplier = suppliers.find((s) => s.id === po.supplier_id);
 
     if (!supplier?.email) {
-      window.alert("Ce fournisseur n'a pas d'adresse email. Ajoute-la dans sa fiche (Fournisseurs), ou télécharge le PDF, envoie-le toi-même (WhatsApp, SMS…) puis clique « Marquer envoyé ».");
+      notify("Ce fournisseur n'a pas d'adresse email. Ajoute-la dans sa fiche (Fournisseurs), ou télécharge le PDF, envoie-le toi-même (WhatsApp, SMS…) puis clique « Marquer envoyé ».");
       return;
     }
 
@@ -378,7 +379,7 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
       hidePrices: pricesHiddenFor(po),
     });
 
-    if (window.confirm("Ton logiciel email vient de s'ouvrir avec la commande pré-remplie (tu peux y joindre le PDF téléchargé si besoin).\n\nMarquer la commande comme envoyée ?")) {
+    if ((await confirm("Ton logiciel email vient de s'ouvrir avec la commande pré-remplie (tu peux y joindre le PDF téléchargé si besoin).\n\nMarquer la commande comme envoyée ?"))) {
       handleMarkSent(po.id);
     }
   }
@@ -388,10 +389,23 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
   // écart — mouvements écrits d'abord, rollback en cas d'échec.
   async function handleCancel(po: PO) {
     const applied = po.status === "Received" || po.status === "Partially received" || po.status === "Invoiced";
-    const msg = applied
-      ? `Annuler la commande « ${po.suppliers?.name ?? ""} » ?\n\nElle a été ${po.status === "Invoiced" ? "facturée" : "réceptionnée"} : les quantités ajoutées au stock seront RETIRÉES. La commande restera visible avec le statut « Annulée ».`
-      : `Annuler la commande « ${po.suppliers?.name ?? ""} » ?\n\nElle restera visible avec le statut « Annulée ». Aucun stock n'a été touché.`;
-    if (!window.confirm(msg)) return;
+    const ok = await confirm({
+      title: `Annuler la commande « ${po.suppliers?.name ?? ""} » ?`,
+      consequences: applied
+        ? [
+            `Elle a été ${po.status === "Invoiced" ? "facturée" : "réceptionnée"} : les quantités ajoutées au stock seront retirées.`,
+            "La commande reste visible dans la liste, au statut « Annulée ».",
+            "Rien n'est supprimé : l'historique et les pièces jointes sont conservés.",
+          ]
+        : [
+            "Aucun stock n'a été touché par cette commande.",
+            "Elle reste visible dans la liste, au statut « Annulée ».",
+          ],
+      confirmLabel: "Annuler la commande",
+      cancelLabel: "Revenir",
+      tone: applied ? "danger" : "default",
+    });
+    if (!ok) return;
     setSending(po.id);
 
     try {
@@ -417,7 +431,7 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
             .in("reference_type", ["delivery", "invoice"])
             .in("reference_id", refIds);
           if (movReadErr) {
-            window.alert(`Annulation impossible : ${movReadErr.message}. Rien n'a été modifié.`);
+            notify(`Annulation impossible : ${movReadErr.message}. Rien n'a été modifié.`);
             setSending(null);
             return;
           }
@@ -453,7 +467,7 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
             notes: `Annulation commande ${po.order_number ?? ""} : stock retiré`,
           }));
           const { error: movErr } = await supabase.from("stock_movements").insert(movements);
-          if (movErr) { window.alert(`Annulation impossible : ${movErr.message}`); setSending(null); return; }
+          if (movErr) { notify(`Annulation impossible : ${movErr.message}`); setSending(null); return; }
 
           const done: { id: string; stock: number | null; cmup: number | null }[] = [];
           for (const id of ids) {
@@ -467,7 +481,7 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
             if (upErr) {
               for (const d of done) await supabase.from("ingredients").update({ stock_qty: d.stock, cmup: d.cmup }).eq("id", d.id);
               await supabase.from("stock_movements").delete().eq("reference_type", "adjustment").eq("reference_id", po.id);
-              window.alert(`Annulation impossible : ${upErr.message}. Rien n'a été modifié.`);
+              notify(`Annulation impossible : ${upErr.message}. Rien n'a été modifié.`);
               setSending(null); return;
             }
             done.push({ id, stock: c?.stock_qty ?? null, cmup: c?.cmup ?? null });
@@ -479,7 +493,7 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
       if (stErr) {
         // Sans ce contrôle, l'écran affichait « Annulée » alors que la commande
         // restait active en base : un 2ᵉ clic retirait le stock une 2ᵉ fois.
-        window.alert(
+        notify(
           `Le stock a été retiré, mais le statut « Annulée » n'a pas pu être enregistré (${stErr.message}).\n\n` +
           "Recharge la page et réessaie l'annulation : le stock ne sera pas retiré deux fois si tu ne cliques pas à nouveau avant le rechargement."
         );
@@ -501,7 +515,7 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
     // Only draft orders may be deleted. Sent/received/invoiced orders have (or
     // will have) affected stock — they can only be corrected via the invoice.
     if (o && o.status !== "Draft") {
-      window.alert("Cette commande a déjà été envoyée : elle ne peut pas être supprimée. Utilise le bouton « Annuler » (⦸) — elle restera visible avec le statut « Annulée » et le stock sera réajusté si besoin.");
+      notify("Cette commande a déjà été envoyée : elle ne peut pas être supprimée. Utilise le bouton « Annuler » (⦸) — elle restera visible avec le statut « Annulée » et le stock sera réajusté si besoin.");
       return;
     }
     const label = o?.suppliers?.name ? `la commande « ${o.suppliers.name} »` : "cette commande";
@@ -509,9 +523,10 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
       title: `Supprimer ${label} ?`,
       message: "Cette action est irréversible.",
       consequences: ["Le brouillon et toutes ses lignes seront effacés.", "Le stock n'est pas touché : ce brouillon n'a jamais été réceptionné."],
+      tone: "danger",
     }))) return;
     const { error } = await supabase.from("purchase_orders").delete().eq("id", id);
-    if (error) { window.alert(`Suppression impossible : ${error.message}`); return; }
+    if (error) { notify(`Suppression impossible : ${error.message}`); return; }
     setOrders((p) => p.filter((o) => o.id !== id));
   }
 

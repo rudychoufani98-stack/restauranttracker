@@ -175,6 +175,7 @@ export default function SettingsClient({ restaurant, email, initialMembers }: Pr
       title: `Retirer « ${who} » de l'équipe ?`,
       consequences: ["Cette personne perdra immédiatement l'accès au restaurant.", "Son compte n'est pas supprimé : tu peux la réinviter plus tard."],
       confirmLabel: "Retirer",
+      tone: "danger",
     }))) return;
     setMemberError(null);
     setDeletingMemberId(id);

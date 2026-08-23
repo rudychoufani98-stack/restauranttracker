@@ -8,6 +8,7 @@ import { buildOrderMailto, defaultPackType } from "@/lib/order-email";
 import { unitShort } from "@/lib/ingredient-helpers";
 import { ArrowLeft, Plus, Minus, Trash2, Loader2, Check, Search, ShoppingCart, Package, Send } from "lucide-react";
 import clsx from "clsx";
+import { useConfirm, useAlert } from "@/components/ConfirmDialog";
 
 type Article = {
   supplier_id: string | null; supplier_reference: string | null;
@@ -63,6 +64,8 @@ interface Props {
 }
 
 export default function NewOrderClient({ restaurantId, restaurantName, suppliers, ingredients, orderId, initialSupplierId = "", initialCart, hidePrices = false, existingOrderNumber = null, initialHidePrices = null }: Props) {
+  const confirm = useConfirm();
+  const notify = useAlert();
   // Masquer les prix sur CE bon : part du réglage global, modifiable ici.
   const [hidePricesOrder, setHidePricesOrder] = useState<boolean>(initialHidePrices ?? hidePrices);
   const supabase = createClient();
@@ -228,7 +231,7 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
     if (sentErr) {
       // Le mail est parti : ne pas afficher « envoyée » si la base l'ignore.
       setSaving(null);
-      window.alert(
+      notify(
         `La commande est enregistrée, mais son statut n'a pas pu passer à « Envoyée » (${sentErr.message}).\n\n` +
         "Utilise le bouton « Envoyé » depuis la liste des commandes."
       );
@@ -242,9 +245,21 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
     <div className="p-6 lg:p-8 max-w-6xl mx-auto pb-28">
       <div className="flex items-center justify-between mb-5">
         <Link href="/orders"
-          onClick={(e) => {
+          onClick={async (e) => {
             // Un panier rempli et non enregistré serait perdu sans un mot.
-            if (cartEntries.length > 0 && !window.confirm("Quitter sans enregistrer ?\n\nLes produits ajoutés à cette commande seront perdus.")) e.preventDefault();
+            // La confirmation étant asynchrone, on ne peut plus annuler la
+            // navigation après coup : on la bloque d'emblée, puis on la refait
+            // nous-mêmes si l'utilisateur accepte.
+            if (cartEntries.length === 0) return;
+            e.preventDefault();
+            const ok = await confirm({
+              title: "Quitter sans enregistrer ?",
+              message: "Les produits ajoutés à cette commande seront perdus.",
+              confirmLabel: "Quitter",
+              cancelLabel: "Rester",
+              tone: "default",
+            });
+            if (ok) router.push("/orders");
           }}
           className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition">
           <ArrowLeft size={16} /> Bons de commande

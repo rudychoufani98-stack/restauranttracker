@@ -8,6 +8,7 @@ import clsx from "clsx";
 import { defaultPackType } from "@/lib/order-email";
 import { applyReception } from "@/lib/costing";
 import { compresserImage, poidsLisible } from "@/lib/compress-image";
+import { useConfirm, useAlert } from "@/components/ConfirmDialog";
 import {
   detectServiceMoment, toDatetimeLocal, SERVICE_MOMENTS, serviceMomentLabel,
   type ServiceMoment,
@@ -42,6 +43,8 @@ interface Props {
 }
 
 export default function ReceiveClient({ po, restaurantId, allIngredients, orderCond, alreadyReceived = {}, serviceStart = null, serviceEnd = null }: Props) {
+  const confirm = useConfirm();
+  const notify = useAlert();
   // Label a purchase quantity in the supplier's order conditionnement (colis…).
   // Fallback : type déduit de l'unité (bidon / kg / colis), jamais l'unité brute.
   const condType = (ingredientId: string, unit: string, packQty?: number | null) =>
@@ -197,7 +200,7 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
     const quandTxt = isNaN(quand.getTime())
       ? "maintenant"
       : `${quand.toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}${serviceMoment ? ` — ${serviceMomentLabel(serviceMoment).toLowerCase()}` : ""}`;
-    if (!window.confirm(`Valider la réception du ${quandTxt} ?\n\n${recap}\n\nLe stock sera augmenté et le coût moyen (CMUP) recalculé.`)) return;
+    if (!(await confirm(`Valider la réception du ${quandTxt} ?\n\n${recap}\n\nLe stock sera augmenté et le coût moyen (CMUP) recalculé.`))) return;
 
     setValidating(true);
 
@@ -207,10 +210,10 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
     const { data: priorDNs } = await supabase
       .from("delivery_notes").select("id").eq("po_id", po.id).eq("validated", true);
     if ((priorDNs?.length ?? 0) > 0 && po.status !== "Partially received") {
-      const goOn = window.confirm(
+      const goOn = (await confirm(
         "⚠️ Une réception a DÉJÀ été validée pour cette commande : le stock a déjà été ajouté.\n\n" +
         "Continuer ajouterait ces quantités une DEUXIÈME fois au stock.\n\nContinuer quand même ?"
-      );
+      ));
       if (!goOn) { setValidating(false); return; }
     }
 
@@ -227,10 +230,10 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
       const { error: uploadErr } = await supabase.storage.from("invoices").upload(path, aEnvoyer);
       if (uploadErr) {
         // Ne pas prétendre que le document est archivé : laisser choisir.
-        const goOn = window.confirm(
+        const goOn = (await confirm(
           `La pièce jointe n'a pas pu être envoyée (${uploadErr.message}).\n\n` +
           "Valider la réception SANS le document ? (le stock sera quand même mis à jour)"
-        );
+        ));
         if (!goOn) { setValidating(false); return; }
       } else {
         blPdfUrl = path;
@@ -391,7 +394,7 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
     if (poErr) {
       // Le stock ET la réception sont bons : seul le statut n'a pas suivi.
       setValidating(false);
-      window.alert(
+      notify(
         "La réception et le stock ont bien été enregistrés, mais le statut de la commande n'a pas pu être mis à jour " +
         `(${poErr.message}).\n\nRecharge la page des commandes : ne re-valide PAS cette réception, le stock est déjà à jour.`
       );

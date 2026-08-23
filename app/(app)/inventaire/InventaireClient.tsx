@@ -14,6 +14,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Warehouse, TrendingDown, TrendingUp, AlertTriangle, Check, Loader2, History, ClipboardList, Trash2, Download, Search, Package, BarChart3 } from "lucide-react";
 import clsx from "clsx";
 import StatsTab from "./StatsTab";
+import { useConfirm, useAlert } from "@/components/ConfirmDialog";
 
 type Ingredient = {
   id: string;
@@ -140,6 +141,8 @@ function displayToBase(qty: number, unit: string): number {
 }
 
 export default function InventaireClient({ restaurantId, ingredients, recentMovements, inventorySessions, fournitureIds, recipes = [], serviceStart = null, serviceEnd = null, salesMonths = [] }: Props) {
+  const confirm = useConfirm();
+  const notify = useAlert();
   const supabase = createClient();
   const router = useRouter();
   const fournitureSet = useMemo(() => new Set(fournitureIds), [fournitureIds]);
@@ -331,7 +334,7 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
     setCreatingDraft(false);
     if (crErr || !session) {
       // Sans message, le bouton semblait simplement mort.
-      window.alert(`Création de la fiche impossible : ${crErr?.message ?? "réessaie."}`);
+      notify(`Création de la fiche impossible : ${crErr?.message ?? "réessaie."}`);
       return;
     }
     if (session) {
@@ -404,14 +407,14 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
         (session?.service_moment as any) ?? null,
         salesMonths.includes(String(session?.closing_at ?? "").slice(0, 7)),
       );
-      const ok = window.confirm(
+      const ok = (await confirm(
         (avis.level === "attention" ? `⚠️ ${avis.message}
 
 ` : "") +
         `Finaliser l'inventaire ?\n\n${countSummary.counted} produit(s) compté(s) · écart net €${countSummary.net.toFixed(2)} ` +
         `(manquant €${countSummary.manque.toFixed(2)} / surplus €${countSummary.surplus.toFixed(2)})\n\n` +
         "Le stock théorique sera REMPLACÉ par les quantités comptées et les écarts seront enregistrés en pertes/ajustements. Cette action ne peut pas être annulée."
-      );
+      ));
       if (!ok) return;
     }
 
@@ -428,7 +431,7 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
         .from("ingredients").select("id, stock_qty, cmup, cost_per_base_unit").in("id", ids);
       if (freshErr) {
         setValidatingCount(false);
-        window.alert(`Impossible de relire le stock avant finalisation : ${freshErr.message}. Rien n'a été modifié — réessaie.`);
+        notify(`Impossible de relire le stock avant finalisation : ${freshErr.message}. Rien n'a été modifié — réessaie.`);
         return;
       }
       freshStock = new Map((fresh ?? []).map((r: any) => [r.id, Number(r.stock_qty ?? 0)]));
@@ -439,11 +442,11 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
       });
       if (bouges.length > 0) {
         const noms = bouges.slice(0, 8).map((r: any) => localIngredients.find((i) => i.id === r.id)?.name ?? r.id);
-        const ok = window.confirm(
+        const ok = (await confirm(
           "Le stock de ces produits a changé pendant ton comptage (réception, vente ou perte enregistrée entre-temps) :\n\n" +
           noms.map((n: string) => `• ${n}`).join("\n") + (bouges.length > 8 ? `\n…et ${bouges.length - 8} autre(s)` : "") +
           "\n\nLes écarts seront calculés sur le stock À JOUR. Continuer ?"
-        );
+        ));
         if (!ok) { setValidatingCount(false); return; }
       }
       // Rafraîchir l'affichage pour que les écarts montrés correspondent.
@@ -496,12 +499,12 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
     const { error: lineDelErr } = await supabase.from("inventory_lines").delete().eq("session_id", activeSessionId);
     if (lineDelErr) {
       setValidatingCount(false);
-      window.alert(`Mise à jour de la fiche impossible : ${lineDelErr.message}. Rien n'a été modifié — réessaie.`);
+      notify(`Mise à jour de la fiche impossible : ${lineDelErr.message}. Rien n'a été modifié — réessaie.`);
       return;
     }
     if (sessionLines.length > 0) {
       const { error: linesErr } = await supabase.from("inventory_lines").insert(sessionLines.map((l) => ({ session_id: activeSessionId, ...l })));
-      if (linesErr) { setCountDone(null); setValidatingCount(false); window.alert(`Enregistrement des lignes impossible : ${linesErr.message}`); return; }
+      if (linesErr) { setCountDone(null); setValidatingCount(false); notify(`Enregistrement des lignes impossible : ${linesErr.message}`); return; }
     }
 
     // Counts first — the session is only marked "finalized" once stock and
@@ -513,7 +516,7 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
     const { error: sessErr } = await supabase.from("inventory_sessions").update(patch).eq("id", activeSessionId);
     if (sessErr) {
       setValidatingCount(false);
-      window.alert(`Enregistrement de la fiche impossible : ${sessErr.message}. Le comptage n'a pas été sauvegardé — réessaie.`);
+      notify(`Enregistrement de la fiche impossible : ${sessErr.message}. Le comptage n'a pas été sauvegardé — réessaie.`);
       return;
     }
 
@@ -525,7 +528,7 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
         const { error: movErr } = await supabase.from("stock_movements").insert(movements);
         if (movErr) {
           setValidatingCount(false);
-          window.alert(`Écriture des mouvements impossible : ${movErr.message}. Rien n'a été appliqué — la fiche reste en brouillon.`);
+          notify(`Écriture des mouvements impossible : ${movErr.message}. Rien n'a été appliqué — la fiche reste en brouillon.`);
           return;
         }
       }
@@ -536,7 +539,7 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
           for (const a of applied) await supabase.from("ingredients").update({ stock_qty: a.prevQty }).eq("id", a.id);
           await supabase.from("stock_movements").delete().eq("reference_type", "inventory").eq("reference_id", activeSessionId);
           setValidatingCount(false);
-          window.alert(`Mise à jour du stock impossible : ${upErr.message}. Les modifications ont été annulées — la fiche reste en brouillon.`);
+          notify(`Mise à jour du stock impossible : ${upErr.message}. Les modifications ont été annulées — la fiche reste en brouillon.`);
           return;
         }
         applied.push(u);
@@ -547,7 +550,7 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
       if (finErr) {
         // Le stock EST à jour : le dire clairement pour éviter une 2ᵉ finalisation.
         setValidatingCount(false);
-        window.alert(
+        notify(
           `Le stock a bien été ajusté, mais la fiche n'a pas pu être archivée (${finErr.message}).\n\n` +
           "Elle réapparaîtra en brouillon : NE la finalise PAS une seconde fois, le stock est déjà corrigé."
         );
@@ -746,11 +749,11 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => {
+                onClick={async () => {
                   // Un comptage peut représenter une heure de travail : ne jamais
                   // le jeter sans prévenir.
                   const saisi = Object.values(counts).some((v) => v !== "") || Object.values(mepCounts).some((v) => v !== "");
-                  if (saisi && !window.confirm("Quitter le comptage ?\n\nLes quantités saisies et non enregistrées seront perdues. Utilise « Enregistrer brouillon » pour les garder.")) return;
+                  if (saisi && !(await confirm("Quitter le comptage ?\n\nLes quantités saisies et non enregistrées seront perdues. Utilise « Enregistrer brouillon » pour les garder."))) return;
                   setActiveSessionId(null); setCounts({}); setMepCounts({});
                 }}
                 className="px-3 py-1.5 text-xs text-on-surface-variant/60 hover:text-on-surface">Quitter</button>

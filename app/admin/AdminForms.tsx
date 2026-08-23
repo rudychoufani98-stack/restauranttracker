@@ -1,7 +1,9 @@
 "use client";
 
+import { useRef } from "react";
 import { useFormStatus } from "react-dom";
 import { ArrowRight, Loader2 } from "lucide-react";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 /**
  * Ouvrir un client : l'admin bascule dans les données réelles du restaurant,
@@ -13,15 +15,36 @@ export function OpenClientForm({ action, restaurantId, name }: {
   restaurantId: string;
   name: string;
 }) {
+  const confirm = useConfirm();
+  // La confirmation est asynchrone : on ne peut plus annuler l'envoi une fois
+  // la main rendue. On bloque donc systématiquement, puis on resoumet le
+  // formulaire si l'admin accepte — ce drapeau évite alors de reposer la
+  // question en boucle. Passer par requestSubmit() préserve useFormStatus,
+  // donc le bouton garde son état « en cours ».
+  const accepte = useRef(false);
+
   return (
     <form
       action={action}
       className="shrink-0"
-      onSubmit={(e) => {
-        const ok = window.confirm(
-          `Ouvrir l'espace de « ${name} » ?\n\nToute la plateforme basculera sur ses données réelles : ce que tu modifies (stock, commandes, recettes) sera modifié CHEZ CE CLIENT.`
-        );
-        if (!ok) e.preventDefault();
+      onSubmit={async (e) => {
+        if (accepte.current) { accepte.current = false; return; }
+        e.preventDefault();
+        const form = e.currentTarget;
+        const ok = await confirm({
+          title: `Ouvrir l'espace de « ${name} » ?`,
+          message: "Toute la plateforme bascule sur les données réelles de ce client.",
+          consequences: [
+            "Le stock, les commandes et les recettes que tu modifies seront modifiés CHEZ CE CLIENT.",
+            "Un bandeau te rappellera en permanence chez qui tu es.",
+            "Le bouton « Fermer le client ouvert » te ramène à ton compte.",
+          ],
+          confirmLabel: "Ouvrir l'espace",
+          tone: "default",
+        });
+        if (!ok) return;
+        accepte.current = true;
+        form.requestSubmit();
       }}
     >
       <input type="hidden" name="restaurant_id" value={restaurantId} />

@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Check, Loader2, FileText } from "lucide-react";
 import { defaultPackType } from "@/lib/order-email";
 import { revalueOnInvoice } from "@/lib/costing";
+import { useConfirm, useAlert } from "@/components/ConfirmDialog";
 
 type Ingredient = { id: string; name: string; unit: string; pack_price: number; cost_per_base_unit: number; pack_quantity: number };
 type POLine = { id: string; ingredient_id: string | null; quantity: number; expected_price: number | null; ingredients?: Ingredient | null };
@@ -43,6 +44,8 @@ function baseFactor(unit: string, packQty: number) {
 }
 
 export default function InvoiceClient({ po, deliveryNote, deliveryNotes, restaurantId, orderCond = {}, priorInvoice = null }: Props) {
+  const confirm = useConfirm();
+  const notify = useAlert();
   // Lignes reçues agrégées sur TOUTES les réceptions validées (cumul par produit).
   const allDnLines: DNLine[] = (deliveryNotes ?? (deliveryNote ? [deliveryNote] : [])).flatMap((dn) => dn.delivery_note_lines ?? []);
   // Fallback : type déduit de l'unité (bidon / kg / colis), jamais l'unité brute.
@@ -120,16 +123,16 @@ export default function InvoiceClient({ po, deliveryNote, deliveryNotes, restaur
   async function handleValidate() {
     setError(null);
 
-    if (!invoiceNumber.trim() && !window.confirm(
+    if (!invoiceNumber.trim() && !(await confirm(
       "Aucun numéro de facture saisi.\n\nContinuer sans numéro ? (il sera difficile de retrouver ce document plus tard)"
-    )) return;
+    ))) return;
 
     // L'action réajuste stock, coût moyen ET prix produits : on l'annonce.
-    if (!window.confirm(
+    if (!(await confirm(
       `${isEdit ? "Enregistrer les corrections" : "Valider la facture"} ?\n\n` +
       `Total HT €${total.toFixed(2)}\n\n` +
       "Le stock sera réajusté par différence, et les prix d'achat + coût moyen (CMUP) des produits seront mis à jour au prix facturé."
-    )) return;
+    ))) return;
 
     setSaving(true);
 
@@ -357,7 +360,7 @@ export default function InvoiceClient({ po, deliveryNote, deliveryNotes, restaur
 
       if (poErr || !recalcOk) {
         setSaving(false);
-        window.alert(
+        notify(
           "La facture est enregistrée et le stock est à jour." +
           (poErr ? `\n\n• Le statut de la commande n'a pas suivi (${poErr.message}) — recharge la page, ne re-valide pas.` : "") +
           (!recalcOk ? "\n\n• Le recalcul des coûts de recettes a échoué : lance « Tout recalculer » depuis les recettes." : "")

@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Trash2, Plus, Loader2, Check, X, Clock, TrendingDown } from "lucide-react";
 import clsx from "clsx";
 import { qtyFromDisplay, perDisplayUnit } from "@/lib/ingredient-helpers";
+import { useConfirm, useAlert } from "@/components/ConfirmDialog";
 
 type Ingredient = {
   id: string;
@@ -65,6 +66,8 @@ interface Props {
 }
 
 export default function PertesClient({ restaurantId, ingredients, recentLosses, monthLosses }: Props) {
+  const confirm = useConfirm();
+  const notify = useAlert();
   const supabase = createClient();
   const router = useRouter();
   const [losses, setLosses] = useState<Loss[]>(recentLosses);
@@ -111,15 +114,15 @@ export default function PertesClient({ restaurantId, ingredients, recentLosses, 
     const baseQtyCheck = qtyFromDisplay(q, ing.unit);
     const stockNow = Number(ing.stock_qty ?? 0);
     if (baseQtyCheck > stockNow) {
-      const ok = window.confirm(
+      const ok = (await confirm(
         `La perte saisie (${q} ${displayUnitLabel(ing.unit)}) dépasse le stock enregistré (${fmtQty(stockNow, ing.unit)}).\n\n` +
         "Le stock sera mis à 0. Continuer quand même ? (Vérifie plutôt la quantité, ou fais un inventaire.)"
-      );
+      ));
       if (!ok) return;
     }
 
     const cout = baseQtyCheck * Number(ing.cmup ?? ing.cost_per_base_unit ?? 0);
-    if (!window.confirm(`Enregistrer cette perte ?\n\n${ing.name} — ${q} ${displayUnitLabel(ing.unit)} · €${cout.toFixed(2)}\n\nLe stock sera diminué immédiatement.`)) return;
+    if (!(await confirm(`Enregistrer cette perte ?\n\n${ing.name} — ${q} ${displayUnitLabel(ing.unit)} · €${cout.toFixed(2)}\n\nLe stock sera diminué immédiatement.`))) return;
 
     setSaving(true);
     // La saisie est en kg/L/pièce (unité d'affichage) → base g/ml/pièce,
@@ -172,11 +175,11 @@ export default function PertesClient({ restaurantId, ingredients, recentLosses, 
   // appartient à une fiche d'inventaire finalisée) — on le refuse clairement.
   async function handleDeleteLoss(l: Loss) {
     if (!l.id) {
-      window.alert("Cette perte vient d'être enregistrée : recharge la page pour pouvoir l'annuler.");
+      notify("Cette perte vient d'être enregistrée : recharge la page pour pouvoir l'annuler.");
       return;
     }
     if ((l.reference_type ?? "loss") === "inventory") {
-      window.alert(
+      notify(
         "Cet écart provient d'une fiche d'inventaire finalisée : il ne peut pas être annulé ici.\n\n" +
         "Pour corriger, refais une prise d'inventaire avec les bonnes quantités."
       );
@@ -184,10 +187,10 @@ export default function PertesClient({ restaurantId, ingredients, recentLosses, 
     }
     const ing = ingMap.get(l.ingredient_id);
     const valeur = Number(l.qty) * Number(l.unit_cost ?? 0);
-    const ok = window.confirm(
+    const ok = (await confirm(
       `Annuler cette perte ?\n\n${ing?.name ?? "Produit"} — ${fmtQty(Number(l.qty), ing?.unit ?? "unit")} · €${valeur.toFixed(2)}\n\n` +
       "La quantité sera REMISE en stock et la perte disparaîtra de l'historique."
-    );
+    ));
     if (!ok) return;
 
     setDeletingId(l.id);

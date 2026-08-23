@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Hanken_Grotesk } from "next/font/google";
 import "./globals.css";
+import { ConfirmProvider } from "@/components/ConfirmDialog";
 
 // Self-hosted by next/font — no external CDN, so the CSP stays locked down.
 const hanken = Hanken_Grotesk({
@@ -22,7 +23,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="fr" className={hanken.variable}>
-      <body className="font-sans antialiased">{children}</body>
+      <body className="font-sans antialiased">
+        <ConfirmProvider>{children}</ConfirmProvider>
+      </body>
     </html>
   );
 }
