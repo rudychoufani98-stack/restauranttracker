@@ -8,7 +8,7 @@ html { font-size: 14px; }
 
 body {
   background-color: #F7FAFC;
-  color: #181C1E;
+  color: #181C22;
   font-family: var(--font-hanken), system-ui, -apple-system, sans-serif;
   font-weight: 400;
   letter-spacing: -0.011em;
@@ -28,10 +28,10 @@ h1, h2, h3 { letter-spacing: -0.021em; }
   box-shadow: 0 4px 30px rgba(0, 0, 0, 0.03);
 }
 .metric-gradient {
-  background: linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%);
+  background: linear-gradient(135deg, #ffffff 0%, #fff4ec 100%);
 }
 .nav-active-glow {
-  box-shadow: 0 0 15px rgba(0, 150, 109, 0.3);
+  box-shadow: 0 0 15px rgba(255, 106, 26, 0.35);
 }
 @keyframes chart-pulse {
   0%, 100% { opacity: 1; }
@@ -57,4 +57,4 @@ h1, h2, h3 { letter-spacing: -0.021em; }
 ::-webkit-scrollbar-thumb:hover { background: #A1A1AA; }
 
 /* Table row hover */
-tr.row-hover:hover td { background-color: rgba(0, 105, 75, 0.04); }
+tr.row-hover:hover td { background-color: rgba(27, 43, 94, 0.05); }

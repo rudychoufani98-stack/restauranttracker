@@ -560,7 +560,7 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
                     <button key={c.key} onClick={() => switchChannel(c.key)}
                       className={clsx("flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border transition",
                         saleChannel === c.key
-                          ? (c.key === "delivery" ? "bg-blue-500 text-white border-blue-500" : "bg-emerald-500 text-white border-emerald-500")
+                          ? (c.key === "delivery" ? "bg-blue-500 text-white border-blue-500" : "bg-primary-container text-on-primary-container border-primary-container")
                           : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50")}>
                       {c.label}
                     </button>
@@ -578,7 +578,7 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
                     type="month"
                     value={selectedMonth}
                     onChange={(e) => changeMonth(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 transition"
+                    className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-primary transition"
                   />
                 </div>
                 <div>
@@ -588,7 +588,7 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                     placeholder="ex. Juillet — haute saison"
-                    className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 transition"
+                    className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-primary transition"
                   />
                 </div>
               </div>
@@ -604,16 +604,16 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
                     value={saleSearch}
                     onChange={(e) => setSaleSearch(e.target.value)}
                     placeholder="Rechercher un plat…"
-                    className="flex-1 min-w-[180px] px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 transition"
+                    className="flex-1 min-w-[180px] px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-primary transition"
                   />
                   <div className="flex flex-wrap gap-1.5">
                     <button onClick={() => setSaleCat("all")}
-                      className={clsx("px-3 py-1.5 text-xs rounded-full border transition", saleCat === "all" ? "bg-emerald-500 text-white border-emerald-500" : "bg-white text-gray-600 border-[#E5E7EB] hover:bg-gray-50")}>
+                      className={clsx("px-3 py-1.5 text-xs rounded-full border transition", saleCat === "all" ? "bg-primary-container text-on-primary-container border-primary-container" : "bg-white text-gray-600 border-[#E5E7EB] hover:bg-gray-50")}>
                       Tout
                     </button>
                     {saleCategories.map((cat) => (
                       <button key={cat} onClick={() => setSaleCat(cat)}
-                        className={clsx("px-3 py-1.5 text-xs rounded-full border transition", saleCat === cat ? "bg-emerald-500 text-white border-emerald-500" : "bg-white text-gray-600 border-[#E5E7EB] hover:bg-gray-50")}>
+                        className={clsx("px-3 py-1.5 text-xs rounded-full border transition", saleCat === cat ? "bg-primary-container text-on-primary-container border-primary-container" : "bg-white text-gray-600 border-[#E5E7EB] hover:bg-gray-50")}>
                         {cat}
                       </button>
                     ))}
@@ -645,7 +645,7 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
                               )}
                             >
                               {active && (
-                                <span className={clsx("absolute -top-2 -right-2 min-w-[22px] h-[22px] px-1 flex items-center justify-center rounded-full text-xs font-bold text-white shadow", saleChannel === "delivery" ? "bg-blue-500" : "bg-emerald-500")}>
+                                <span className={clsx("absolute -top-2 -right-2 min-w-[22px] h-[22px] px-1 flex items-center justify-center rounded-full text-xs font-bold text-white shadow", saleChannel === "delivery" ? "bg-blue-500" : "bg-primary-container")}>
                                   {qty}
                                 </span>
                               )}
@@ -662,7 +662,7 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
                                   className="w-7 h-7 flex items-center justify-center rounded-lg border border-[#E5E7EB] text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition text-base leading-none">−</button>
                                 <input type="number" min="0" step="1" value={draftLines.find((l) => l.recipe_id === it.key)?.qty_sold ?? ""}
                                   onChange={(e) => updateQty(it.key, e.target.value)} placeholder="0"
-                                  className="flex-1 w-full px-2 py-1 text-sm text-center border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 transition" />
+                                  className="flex-1 w-full px-2 py-1 text-sm text-center border border-[#E5E7EB] rounded-lg outline-none focus:border-primary transition" />
                                 <button onClick={() => inc(it.key, 1)}
                                   className="w-7 h-7 flex items-center justify-center rounded-lg border border-[#E5E7EB] text-gray-600 hover:bg-gray-50 transition text-base leading-none">+</button>
                               </div>
@@ -708,7 +708,7 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
             <div className="flex gap-2 px-5 py-4 border-t border-[#E5E7EB]">
               <button onClick={() => setShowForm(false)} className="flex-1 py-2 text-sm text-gray-600 border border-[#E5E7EB] rounded-lg hover:bg-gray-50 transition">Annuler</button>
               <button onClick={handleSave} disabled={saving}
-                className="flex-1 py-2 text-sm text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 disabled:opacity-50 transition flex items-center justify-center gap-2">
+                className="flex-1 py-2 text-sm text-white bg-primary rounded-lg hover:bg-primary-container disabled:opacity-50 transition flex items-center justify-center gap-2">
                 {saving ? <><Loader2 size={14} className="animate-spin" /> Enregistrement…</> : <><Check size={14} /> Enregistrer</>}
               </button>
             </div>

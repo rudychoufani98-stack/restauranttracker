@@ -17,7 +17,7 @@ export default function SignupPage() {
             Les espaces restaurant sont ouverts par l&apos;équipe Restointelligence.
             Contactez-nous pour rejoindre la plateforme — vos identifiants vous seront transmis directement.
           </p>
-          <Link href="/login" className="inline-block px-5 py-2.5 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition">
+          <Link href="/login" className="inline-block px-5 py-2.5 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary-container transition">
             Retour à la connexion
           </Link>
         </div>

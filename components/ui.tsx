@@ -135,7 +135,7 @@ export function Button({
   const base = "inline-flex items-center gap-1.5 font-medium rounded-lg transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100";
   const sizes = { sm: "px-2.5 py-1.5 text-xs", md: "px-3.5 py-2 text-sm" };
   const variants: Record<ButtonVariant, string> = {
-    primary: "bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm",
+    primary: "bg-primary text-white hover:bg-primary-container shadow-sm",
     secondary: "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 hover:border-gray-300 shadow-sm",
     ghost: "text-gray-500 hover:bg-gray-100 hover:text-gray-700",
     danger: "text-red-600 border border-red-200 hover:bg-red-50",
@@ -168,7 +168,7 @@ export function Input({
           "w-full px-3 py-2 text-sm bg-white border rounded-lg outline-none transition",
           error
             ? "border-red-400 focus:border-red-500 focus:ring-1 focus:ring-red-300"
-            : "border-gray-200 focus:border-green focus:ring-1 focus:ring-green/30"
+            : "border-gray-200 focus:border-primary focus:ring-1 focus:ring-primary/30"
         )}
       />
       {hint && !error && <p className="text-xs text-gray-400 mt-1">{hint}</p>}
@@ -192,7 +192,7 @@ export function Select({
       {label && <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>}
       <select
         {...props}
-        className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition appearance-none"
+        className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition appearance-none"
       >
         {children}
       </select>

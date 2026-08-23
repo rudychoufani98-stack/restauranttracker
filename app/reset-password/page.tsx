@@ -48,11 +48,11 @@ export default function ResetPasswordPage() {
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1.5">Email</label>
                 <input name="email" type="email" required autoComplete="email" autoFocus
-                  className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition"
+                  className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition"
                   placeholder="chef@restaurant.com" />
               </div>
               <button type="submit" disabled={loading}
-                className="w-full py-2.5 px-4 bg-green text-white text-sm font-medium rounded-lg hover:bg-green-600 disabled:opacity-50 transition shadow-sm mt-1">
+                className="w-full py-2.5 px-4 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary-600 disabled:opacity-50 transition shadow-sm mt-1">
                 {loading ? "Envoi…" : "Envoyer le lien"}
               </button>
             </form>

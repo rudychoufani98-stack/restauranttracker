@@ -13,9 +13,9 @@ export const FMT = {
   pctSigned: '+0.0\\ "%";-0.0\\ "%";0.0\\ "%"',
 };
 
-const BRAND = "FF059669"; // emerald-600
-const HEADER_BG = "FF111827"; // gray-900
-const SUBTOTAL_BG = "FFF3F4F6";
+const BRAND = "FFE8590C"; // orange de marque
+const HEADER_BG = "FF1B2B5E"; // marine de marque
+const SUBTOTAL_BG = "FFEAEDF3";
 
 export function baseUnitLabel(unit: string): string {
   return unit === "kg" ? "g" : unit === "l" ? "ml" : unit;

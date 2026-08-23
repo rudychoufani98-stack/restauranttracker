@@ -38,17 +38,17 @@ export default function UpdatePasswordPage() {
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1.5">Nouveau mot de passe</label>
               <input name="password" type="password" required minLength={8} autoComplete="new-password" autoFocus
-                className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition"
+                className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition"
                 placeholder="••••••••" />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1.5">Confirmer</label>
               <input name="confirm" type="password" required minLength={8} autoComplete="new-password"
-                className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition"
+                className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition"
                 placeholder="••••••••" />
             </div>
             <button type="submit" disabled={loading}
-              className="w-full py-2.5 px-4 bg-green text-white text-sm font-medium rounded-lg hover:bg-green-600 disabled:opacity-50 transition shadow-sm mt-1">
+              className="w-full py-2.5 px-4 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary-600 disabled:opacity-50 transition shadow-sm mt-1">
               {loading ? "Enregistrement…" : "Changer le mot de passe"}
             </button>
           </form>

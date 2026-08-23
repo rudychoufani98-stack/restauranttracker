@@ -6,13 +6,15 @@
 // hex en dur ; garder les deux en phase si la palette change).
 
 export const CHART = {
-  primary: "#00694B",   // primary
-  red: "#BA1A1A",       // red
-  amber: "#F59E0B",     // amber
-  blue: "#3B82F6",      // blue
-  grid: "#BCCAC1",      // outline-variant
-  axis: "#3D4A43",      // on-surface-variant
-  muted: "#6D7A72",     // outline
+  orange: "#E8590C",    // orange de marque — l'argent qui sort (achats, prix)
+  navy: "#1B2B5E",      // marine de marque — les volumes de référence
+  green: "#00694B",     // vert sémantique — ce qui va bien
+  red: "#BA1A1A",       // pertes, négatif
+  amber: "#F59E0B",     // à surveiller
+  blue: "#3B82F6",      // information
+  grid: "#C3C9D6",      // outline-variant
+  axis: "#414A5C",      // on-surface-variant
+  muted: "#737C8C",     // outline
 };
 
 const W = 720;
@@ -170,7 +172,7 @@ export function BarsChart({
 
 // ── Barres horizontales (classement) ──────────────────────────────────
 export function HBars({
-  items, color = CHART.primary, formatV,
+  items, color = CHART.navy, formatV,
 }: {
   items: { name: string; value: number; sub?: string }[];
   color?: string;

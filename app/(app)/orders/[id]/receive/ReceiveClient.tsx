@@ -422,13 +422,13 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
             <label className="block text-xs text-gray-500 mb-1">Date et heure de réception</label>
             <input type="datetime-local" value={receivedAt} max={toDatetimeLocal(new Date())}
               onChange={(e) => setReceivedAt(e.target.value)}
-              className="px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500" />
+              className="px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-primary" />
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">Moment du service</label>
             <select value={momentOverride || (detectedMoment ?? "")}
               onChange={(e) => setMomentOverride(e.target.value as ServiceMoment | "")}
-              className="px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg bg-white outline-none focus:border-emerald-500">
+              className="px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg bg-white outline-none focus:border-primary">
               {SERVICE_MOMENTS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
             </select>
           </div>
@@ -457,7 +457,7 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
           <label className="block text-xs text-gray-500 mb-1">Numéro de bon de livraison (BL)</label>
           <input type="text" value={blNumber} onChange={(e) => setBlNumber(e.target.value)}
             placeholder="ex. BL-2026-0453"
-            className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500" />
+            className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-primary" />
         </div>
         <p className="text-xs text-gray-400 mb-2">Pièce jointe (optionnel)</p>
         <div className="flex items-center gap-3">
@@ -545,7 +545,7 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
                   <input type="number" min="0" step="any" value={line.qty_received}
                     onChange={(e) => updateLine(i, "qty_received", e.target.value)}
                     className={clsx("w-20 px-2 py-1.5 text-sm text-right border rounded-lg outline-none focus:ring-1 transition",
-                      qtyPartial ? "border-amber-400 focus:border-amber-500 focus:ring-amber-300" : "border-[#E5E7EB] focus:border-emerald-500 focus:ring-emerald-500"
+                      qtyPartial ? "border-amber-400 focus:border-amber-500 focus:ring-amber-300" : "border-[#E5E7EB] focus:border-primary focus:ring-primary"
                     )} />
                   <span className="text-2xs text-gray-400">{type}</span>
                 </div>
@@ -558,7 +558,7 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
                       className={clsx("w-full pl-5 pr-2 py-1.5 text-sm text-right border rounded-lg outline-none focus:ring-1 transition",
                         Math.abs(actualOf(line) - line.expected_price) > 0.001
                           ? "border-amber-400 focus:border-amber-500 focus:ring-amber-300"
-                          : "border-[#E5E7EB] focus:border-emerald-500 focus:ring-emerald-500")} />
+                          : "border-[#E5E7EB] focus:border-primary focus:ring-primary")} />
                   </div>
                   {Math.abs(actualOf(line) - line.expected_price) > 0.001 && (
                     <span className="text-2xs text-amber-600">prévu €{line.expected_price.toFixed(2)}</span>
@@ -588,7 +588,7 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
           className={clsx("flex-1 py-2 text-center text-sm border border-[#E5E7EB] rounded-lg transition",
             validating ? "text-gray-300 pointer-events-none" : "text-gray-600 hover:bg-gray-50")}>Annuler</a>
         <button onClick={handleValidate} disabled={validating}
-          className="flex-1 py-2 text-sm text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 disabled:opacity-50 transition flex items-center justify-center gap-2">
+          className="flex-1 py-2 text-sm text-white bg-primary rounded-lg hover:bg-primary-container disabled:opacity-50 transition flex items-center justify-center gap-2">
           {validating ? <><Loader2 size={14} className="animate-spin" /> Enregistrement…</> : <><Check size={14} /> Valider la réception</>}
         </button>
       </div>

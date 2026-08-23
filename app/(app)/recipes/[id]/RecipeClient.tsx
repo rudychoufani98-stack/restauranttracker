@@ -248,7 +248,7 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
     router.refresh();
   }
 
-  const inputCls = "w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 transition";
+  const inputCls = "w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition";
 
   return (
     <div className="p-6 lg:p-8 max-w-6xl mx-auto pb-24">
@@ -260,7 +260,7 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
         <div className="flex items-center gap-2">
           {toast && <span className="text-sm text-emerald-600 font-medium">{toast}</span>}
           <button onClick={handleSave} disabled={saving}
-            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition">
+            className="flex items-center gap-1.5 px-4 py-2 bg-primary text-white text-sm font-semibold rounded-lg hover:bg-primary-container disabled:opacity-50 transition">
             {saving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} Enregistrer
           </button>
         </div>
@@ -361,7 +361,7 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
               : unitsForIngredient(ingredients.find((i) => i.id === line.ingredient_id)?.unit);
             return (
               <div key={idx} className="flex gap-2 items-start">
-                <select value={lineValue(line)} onChange={(e) => selectItem(idx, e.target.value)} className="flex-1 px-2 py-2 text-sm border border-gray-200 rounded-lg bg-white outline-none focus:border-emerald-500">
+                <select value={lineValue(line)} onChange={(e) => selectItem(idx, e.target.value)} className="flex-1 px-2 py-2 text-sm border border-gray-200 rounded-lg bg-white outline-none focus:border-primary">
                   <option value="">Choisir un ingrédient ou une mise en place…</option>
                   {subRecipeOptions.length > 0 && (
                     <optgroup label="Mises en place">
@@ -372,8 +372,8 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
                     {ingredients.map((i) => <option key={i.id} value={`ing:${i.id}`}>{i.name}</option>)}
                   </optgroup>
                 </select>
-                <input type="number" min="0" step="any" value={line.quantity} onChange={(e) => updateLine(idx, "quantity", e.target.value)} placeholder="Qté" className="w-20 px-2 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-emerald-500" />
-                <select value={line.unit} onChange={(e) => updateLine(idx, "unit", e.target.value)} className="w-16 px-2 py-2 text-xs border border-gray-200 rounded-lg bg-white outline-none focus:border-emerald-500">
+                <input type="number" min="0" step="any" value={line.quantity} onChange={(e) => updateLine(idx, "quantity", e.target.value)} placeholder="Qté" className="w-20 px-2 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-primary" />
+                <select value={line.unit} onChange={(e) => updateLine(idx, "unit", e.target.value)} className="w-16 px-2 py-2 text-xs border border-gray-200 rounded-lg bg-white outline-none focus:border-primary">
                   {subUnits.map((u) => <option key={u} value={u}>{u === "portion" ? "port." : u}</option>)}
                 </select>
                 <div className="w-16 text-right text-xs text-gray-500 pt-2.5">€{calcLineCost(line, ingredients, allRecipes).toFixed(3)}</div>

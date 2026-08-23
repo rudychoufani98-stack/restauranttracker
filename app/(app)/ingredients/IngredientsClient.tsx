@@ -629,7 +629,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                   <input type="number" min="1" step="any" value={form.pack_units}
                     onChange={(e) => setForm({ ...form, pack_units: e.target.value })}
                     placeholder="6"
-                    className="w-24 px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition" />
+                    className="w-24 px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition" />
                 </div>
                 <span className="text-gray-400 pb-2.5 text-base">×</span>
                 <div>
@@ -637,12 +637,12 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                   <input type="number" min="0" step="any" value={form.unit_size}
                     onChange={(e) => setForm({ ...form, unit_size: e.target.value })}
                     placeholder="0,75"
-                    className="w-24 px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition" />
+                    className="w-24 px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition" />
                 </div>
                 <div>
                   <label className="block text-2xs text-gray-400 mb-1">en</label>
                   <select value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}
-                    className="px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green transition">
+                    className="px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary transition">
                     {UNIT_CHOICES.map((u) => <option key={u.value} value={u.value}>{u.label}</option>)}
                   </select>
                 </div>
@@ -660,14 +660,14 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                     <input type="number" min="0" step="0.01" value={form.pack_price}
                       onChange={(e) => setForm({ ...form, pack_price: e.target.value })}
                       placeholder="0.00"
-                      className="w-full pl-6 pr-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition" />
+                      className="w-full pl-6 pr-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition" />
                   </div>
                   <p className="text-2xs text-gray-400 mt-1">pour 1 colis entier</p>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1.5">TVA</label>
                   <select value={form.vat_rate} onChange={(e) => setForm({ ...form, vat_rate: e.target.value })}
-                    className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green transition">
+                    className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary transition">
                     {VAT_PRESETS.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
                   </select>
                 </div>
@@ -706,7 +706,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                       <input type="number" min="1" max="100" step="any" value={form.yield_pct}
                         onChange={(e) => setForm({ ...form, yield_pct: e.target.value })}
                         placeholder="100"
-                        className="w-full pr-7 pl-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition" />
+                        className="w-full pr-7 pl-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition" />
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
                     </div>
                     <p className="text-2xs text-gray-400 mt-1">après épluchage/parage. 100 = tout est utilisé</p>
@@ -717,7 +717,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                       <input type="number" min="0" step="any" value={form.reorder_threshold}
                         onChange={(e) => setForm({ ...form, reorder_threshold: e.target.value })}
                         placeholder="0"
-                        className="w-full pr-9 pl-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition" />
+                        className="w-full pr-9 pl-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition" />
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">{displayUnitLabel(form.unit)}</span>
                     </div>
                     <p className="text-2xs text-gray-400 mt-1">affiche « à commander » dans l&apos;inventaire</p>
@@ -747,7 +747,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                     <div key={idx} className="border border-gray-200 rounded-lg p-2.5 space-y-2 bg-gray-50/50">
                       <div className="flex gap-2">
                         <select value={line.supplier_id} onChange={(e) => updateSupplierLine(idx, "supplier_id", e.target.value)}
-                          className="flex-1 px-2.5 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green transition">
+                          className="flex-1 px-2.5 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary transition">
                           <option value="">Choisir un fournisseur…</option>
                           {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                         </select>
@@ -759,21 +759,21 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                       <div className="flex gap-2">
                         <input value={line.supplier_reference} onChange={(e) => updateSupplierLine(idx, "supplier_reference", e.target.value)}
                           placeholder="Référence / code article"
-                          className="flex-1 px-2.5 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green transition" />
+                          className="flex-1 px-2.5 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary transition" />
                         <div className="relative w-28">
                           <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">€</span>
                           <input type="number" min="0" step="0.01" value={line.pack_price} onChange={(e) => updateSupplierLine(idx, "pack_price", e.target.value)}
                             placeholder="prix HT"
-                            className="w-full pl-5 pr-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green transition" />
+                            className="w-full pl-5 pr-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary transition" />
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 text-xs text-gray-500">
                         <span>1 colis =</span>
                         <input type="number" min="1" step="any" value={line.pack_units} onChange={(e) => updateSupplierLine(idx, "pack_units", e.target.value)}
-                          className="w-14 px-2 py-1 text-xs bg-white border border-gray-200 rounded outline-none focus:border-green transition" />
+                          className="w-14 px-2 py-1 text-xs bg-white border border-gray-200 rounded outline-none focus:border-primary transition" />
                         <span>×</span>
                         <input type="number" min="0" step="any" value={line.unit_size} onChange={(e) => updateSupplierLine(idx, "unit_size", e.target.value)}
-                          className="w-16 px-2 py-1 text-xs bg-white border border-gray-200 rounded outline-none focus:border-green transition" />
+                          className="w-16 px-2 py-1 text-xs bg-white border border-gray-200 rounded outline-none focus:border-primary transition" />
                         {/* L'unité est celle du produit — pas de mélange kg/pièce entre articles */}
                         <span className="font-medium text-gray-600">{UNIT_CHOICES.find((u) => u.value === form.unit)?.label ?? form.unit}</span>
                         {parseFloat(line.pack_price) > 0 && parseFloat(line.unit_size) > 0 && (

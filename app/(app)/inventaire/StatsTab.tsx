@@ -107,10 +107,11 @@ export default function StatsTab({ ingredients, movements, sessions, movementsCa
 
       {/* Chiffres clés de la période */}
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Stat label="Achats" value={eur0(totals.achats)} accent="primary" />
-        <Stat label="Matière consommée" value={eur0(totals.conso)} accent="blue" />
+        <Stat label="Achats" value={eur0(totals.achats)} accent="orange" />
+        <Stat label="Matière consommée" value={eur0(totals.conso)} accent="navy" />
         <Stat label="Pertes" value={eur0(totals.pertes)} accent={totals.pertes > 0 ? "red" : "muted"} />
-        <Stat label="Taux de perte" value={pct(totals.taux)} accent={totals.taux > 5 ? "red" : totals.taux > 2 ? "amber" : "primary"}
+        {/* Le taux de perte est un jugement, pas une couleur de marque : vert / ambre / rouge. */}
+        <Stat label="Taux de perte" value={pct(totals.taux)} accent={totals.taux > 5 ? "red" : totals.taux > 2 ? "amber" : "green"}
           sub="pertes ÷ achats" />
       </section>
 
@@ -131,7 +132,7 @@ export default function StatsTab({ ingredients, movements, sessions, movementsCa
             return (
               <span className={clsx(
                 "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold",
-                up ? "bg-red-light text-red" : d < -0.05 ? "bg-green-light text-primary" : "bg-surface-container text-on-surface-variant",
+                up ? "bg-red-light text-red" : d < -0.05 ? "bg-green-light text-green-dark" : "bg-surface-container text-on-surface-variant",
               )}>
                 {up ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
                 {d > 0 ? "+" : ""}{d.toFixed(1)} % depuis le premier achat
@@ -150,7 +151,7 @@ export default function StatsTab({ ingredients, movements, sessions, movementsCa
                 </div>
                 <LineChart
                   ariaLabel={`Évolution du prix d'achat de ${selected.name}`}
-                  series={[{ name: selected.name, color: CHART.primary, points: priceSeries }]}
+                  series={[{ name: selected.name, color: CHART.orange, points: priceSeries }]}
                   formatY={(n) => eur(n)}
                   reference={referenceCmup(ingById.get(selected.id))}
                 />
@@ -212,8 +213,8 @@ export default function StatsTab({ ingredients, movements, sessions, movementsCa
             </p>
           </div>
           <Legend items={[
-            { name: "Achats", color: CHART.primary },
-            { name: "Consommé", color: CHART.blue },
+            { name: "Achats", color: CHART.orange },
+            { name: "Consommé", color: CHART.navy },
             { name: "Pertes", color: CHART.red },
           ]} />
         </div>
@@ -221,8 +222,8 @@ export default function StatsTab({ ingredients, movements, sessions, movementsCa
           ariaLabel="Achats, matière consommée et pertes, mois par mois"
           labels={labels}
           series={[
-            { name: "Achats", color: CHART.primary, values: monthly.map((m) => m.achats) },
-            { name: "Consommé", color: CHART.blue, values: monthly.map((m) => m.conso) },
+            { name: "Achats", color: CHART.orange, values: monthly.map((m) => m.achats) },
+            { name: "Consommé", color: CHART.navy, values: monthly.map((m) => m.conso) },
             { name: "Pertes", color: CHART.red, values: monthly.map((m) => m.pertes) },
           ]}
           formatY={eur0}
@@ -281,14 +282,14 @@ export default function StatsTab({ ingredients, movements, sessions, movementsCa
               </p>
             </div>
             <Legend items={[
-              { name: "Valeur comptée", color: CHART.primary },
+              { name: "Valeur comptée", color: CHART.navy },
               { name: "Écart", color: CHART.amber },
             ]} />
           </div>
           <LineChart
             ariaLabel="Valeur du stock compté et écart d'inventaire dans le temps"
             series={[
-              { name: "Valeur comptée", color: CHART.primary, points: invPoints.map((p) => ({ t: p.t, y: p.valeur })) },
+              { name: "Valeur comptée", color: CHART.navy, points: invPoints.map((p) => ({ t: p.t, y: p.valeur })) },
               { name: "Écart", color: CHART.amber, points: invPoints.map((p) => ({ t: p.t, y: p.ecart })) },
             ]}
             formatY={eur0}
@@ -309,13 +310,14 @@ function referenceCmup(ing: StatIngredient | undefined): { y: number; label: str
 
 function Stat({ label, value, sub, accent }: {
   label: string; value: string; sub?: string;
-  accent: "primary" | "red" | "amber" | "blue" | "muted";
+  accent: "orange" | "navy" | "green" | "red" | "amber" | "muted";
 }) {
   const tone = {
-    primary: "text-primary border-primary",
+    orange: "text-brand-orange-deep border-brand-orange",
+    navy: "text-primary border-primary",
+    green: "text-emerald-700 border-emerald-500",
     red: "text-red border-red",
     amber: "text-amber-dark border-amber",
-    blue: "text-blue-dark border-blue",
     muted: "text-on-surface border-outline-variant/30",
   }[accent];
   return (

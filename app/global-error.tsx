@@ -12,7 +12,7 @@ export default function GlobalError({ reset }: { error: Error & { digest?: strin
             </p>
             <button
               onClick={reset}
-              style={{ padding: "8px 16px", fontSize: 14, fontWeight: 600, color: "#fff", background: "#059669", border: "none", borderRadius: 8, cursor: "pointer" }}
+              style={{ padding: "8px 16px", fontSize: 14, fontWeight: 600, color: "#fff", background: "#1B2B5E", border: "none", borderRadius: 8, cursor: "pointer" }}
             >
               Réessayer
             </button>

@@ -138,7 +138,7 @@ export default function SuppliersClient({ restaurantId, initialSuppliers }: Prop
                 <div key={key}>
                   <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
                   <input value={(form as any)[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} placeholder={placeholder}
-                    className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition" />
+                    className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary transition" />
                 </div>
               ))}
               <div className="grid grid-cols-2 gap-3">
@@ -148,14 +148,14 @@ export default function SuppliersClient({ restaurantId, initialSuppliers }: Prop
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">€</span>
                     <input type="number" min="0" step="0.01" value={form.min_order_amount}
                       onChange={(e) => setForm({ ...form, min_order_amount: e.target.value })} placeholder="0"
-                      className="w-full pl-6 pr-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 transition" />
+                      className="w-full pl-6 pr-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-primary transition" />
                   </div>
                   <p className="text-2xs text-gray-400 mt-1">montant mini pour livraison gratuite</p>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Référence client</label>
                   <input value={form.customer_reference} onChange={(e) => setForm({ ...form, customer_reference: e.target.value })}
-                    placeholder="ton n° de compte" className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 transition" />
+                    placeholder="ton n° de compte" className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-primary transition" />
                   <p className="text-2xs text-gray-400 mt-1">apparaît sur le bon de commande</p>
                 </div>
               </div>
@@ -163,14 +163,14 @@ export default function SuppliersClient({ restaurantId, initialSuppliers }: Prop
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Catégorie</label>
                 <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 bg-white transition">
+                  className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-primary bg-white transition">
                   {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
                 </select>
               </div>
             </div>
             <div className="flex gap-2 px-5 py-4 border-t border-[#E5E7EB]">
               <button onClick={() => setShowForm(false)} className="flex-1 py-2 text-sm text-gray-600 border border-[#E5E7EB] rounded-lg hover:bg-gray-50 transition">Annuler</button>
-              <button onClick={handleSave} disabled={saving} className="flex-1 py-2 text-sm text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 disabled:opacity-50 transition">
+              <button onClick={handleSave} disabled={saving} className="flex-1 py-2 text-sm text-white bg-primary rounded-lg hover:bg-primary-container disabled:opacity-50 transition">
                 {saving ? "Enregistrement…" : editingId ? "Enregistrer" : "Ajouter"}
               </button>
             </div>
@@ -201,7 +201,7 @@ export default function SuppliersClient({ restaurantId, initialSuppliers }: Prop
               </thead>
               <tbody className="divide-y divide-outline-variant/10">
                 {suppliers.map((s) => {
-                  const palette = ["#00694b", "#555f71", "#525f5a", "#8a6530", "#3b82f6"];
+                  const palette = ["#1b2b5e", "#cc4409", "#555f71", "#4a5568", "#3b82f6"];
                   const color = palette[(s.name?.charCodeAt(0) ?? 0) % palette.length];
                   return (
                   <tr key={s.id} className="group hover:bg-surface-container-low/40 transition-colors">

@@ -303,7 +303,7 @@ export default function PertesClient({ restaurantId, ingredients, recentLosses, 
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Ingrédient</label>
                 <select value={ingredientId} onChange={(e) => setIngredientId(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 bg-white transition">
+                  className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-primary bg-white transition">
                   <option value="">Choisir…</option>
                   {ingredients.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
                 </select>
@@ -319,7 +319,7 @@ export default function PertesClient({ restaurantId, ingredients, recentLosses, 
                 </label>
                 <input type="number" min="0" step="any" value={qty} onChange={(e) => setQty(e.target.value)}
                   placeholder="ex. 2"
-                  className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition" />
+                  className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary transition" />
                 {selected && qty && !isNaN(parseFloat(qty)) && (
                   <p className="text-xs text-red-500 mt-1">
                     Coût de la perte : €{(qtyFromDisplay(parseFloat(qty), selected.unit) * Number(selected.cmup ?? selected.cost_per_base_unit ?? 0)).toFixed(2)}
@@ -329,19 +329,19 @@ export default function PertesClient({ restaurantId, ingredients, recentLosses, 
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Cause</label>
                 <select value={reason} onChange={(e) => setReason(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 bg-white transition">
+                  className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-primary bg-white transition">
                   {REASONS.map((r) => <option key={r}>{r}</option>)}
                 </select>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Note (optionnel)</label>
                 <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="ex. fin de service"
-                  className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 transition" />
+                  className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-primary transition" />
               </div>
             </div>
             <div className="flex gap-2 px-5 py-4 border-t border-[#E5E7EB]">
               <button onClick={() => setShowForm(false)} title="Fermer" aria-label="Fermer" className="flex-1 py-2 text-sm text-gray-600 border border-[#E5E7EB] rounded-lg hover:bg-gray-50 transition">Annuler</button>
-              <button onClick={handleSave} disabled={saving} className="flex-1 py-2 text-sm text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 disabled:opacity-50 transition flex items-center justify-center gap-2">
+              <button onClick={handleSave} disabled={saving} className="flex-1 py-2 text-sm text-white bg-primary rounded-lg hover:bg-primary-container disabled:opacity-50 transition flex items-center justify-center gap-2">
                 {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Enregistrer
               </button>
             </div>

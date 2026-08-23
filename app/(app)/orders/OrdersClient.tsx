@@ -631,7 +631,7 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
             <div className="flex gap-2 px-5 py-4 border-t border-gray-100">
               <button onClick={() => setShowRestock(false)} className="flex-1 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition">Annuler</button>
               <button onClick={handleRestock} disabled={restocking || restockGroups.length === 0}
-                className="flex-1 py-2 text-sm text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition">
+                className="flex-1 py-2 text-sm text-white bg-primary rounded-lg hover:bg-primary-container disabled:opacity-50 transition">
                 {restocking ? "Création…" : `Créer ${restockGroups.length} bon(s) de commande`}
               </button>
             </div>

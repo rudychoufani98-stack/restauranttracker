@@ -236,7 +236,7 @@ export default function SettingsClient({ restaurant, email, initialMembers }: Pr
                       type="number" min="1" max="100" step="0.1"
                       value={form.target_food_cost_pct}
                       onChange={(e) => setForm({ ...form, target_food_cost_pct: e.target.value })}
-                      className="w-full px-3 py-2 pr-7 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition"
+                      className="w-full px-3 py-2 pr-7 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition"
                     />
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
                   </div>
@@ -256,13 +256,13 @@ export default function SettingsClient({ restaurant, email, initialMembers }: Pr
                 <label className="block text-xs font-medium text-gray-600 mb-1.5">Début du service</label>
                 <input type="time" value={form.service_start}
                   onChange={(e) => setForm({ ...form, service_start: e.target.value })}
-                  className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition" />
+                  className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition" />
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1.5">Fin du service</label>
                 <input type="time" value={form.service_end}
                   onChange={(e) => setForm({ ...form, service_end: e.target.value })}
-                  className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition" />
+                  className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition" />
               </div>
             </div>
             <p className="text-xs text-gray-400 mt-2">
@@ -314,7 +314,7 @@ export default function SettingsClient({ restaurant, email, initialMembers }: Pr
             >
               <span
                 aria-hidden="true"
-                className={clsx("mt-0.5 relative w-10 h-6 rounded-full transition shrink-0", form.hide_po_prices ? "bg-emerald-500" : "bg-gray-300")}
+                className={clsx("mt-0.5 relative w-10 h-6 rounded-full transition shrink-0", form.hide_po_prices ? "bg-primary" : "bg-gray-300")}
               >
                 <span className={clsx("absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform", form.hide_po_prices && "translate-x-4")} />
               </span>
@@ -402,7 +402,7 @@ export default function SettingsClient({ restaurant, email, initialMembers }: Pr
                   onChange={(e) => setInviteEmail(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleInviteMember()}
                   placeholder="manager@restaurant.com"
-                  className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition"
+                  className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition"
                 />
               </div>
               <Select
@@ -450,7 +450,7 @@ export default function SettingsClient({ restaurant, email, initialMembers }: Pr
                     <select
                       value={m.role}
                       onChange={(e) => handleChangeMemberRole(m.id, e.target.value)}
-                      className="px-2.5 py-1.5 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:border-green focus:ring-1 focus:ring-green/30 transition appearance-none"
+                      className="px-2.5 py-1.5 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition appearance-none"
                     >
                       {MEMBER_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
                     </select>
@@ -494,7 +494,7 @@ export default function SettingsClient({ restaurant, email, initialMembers }: Pr
                 onClick={() => setForm({ ...form, digest_enabled: !form.digest_enabled })}
                 className={clsx(
                   "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
-                  form.digest_enabled ? "bg-green" : "bg-gray-200"
+                  form.digest_enabled ? "bg-primary" : "bg-gray-200"
                 )}
               >
                 <span className={clsx(

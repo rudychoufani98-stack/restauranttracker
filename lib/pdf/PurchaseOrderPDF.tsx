@@ -13,7 +13,7 @@ const S = StyleSheet.create({
   brandMeta: { fontSize: 8, color: "#6B7280", lineHeight: 1.5 },
 
   poBlock: { alignItems: "flex-end" },
-  poTitle: { fontSize: 20, fontFamily: "Helvetica-Bold", color: "#10B981", letterSpacing: 1 },
+  poTitle: { fontSize: 20, fontFamily: "Helvetica-Bold", color: "#1B2B5E", letterSpacing: 1 },
   poNumber: { fontSize: 9, color: "#6B7280", marginTop: 4 },
   poDate: { fontSize: 8, color: "#9CA3AF", marginTop: 2 },
 
@@ -48,7 +48,7 @@ const S = StyleSheet.create({
   totalsSection: { flexDirection: "row", justifyContent: "flex-end", marginBottom: 32 },
   totalsBox: { width: 220 },
   totalsRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 5, paddingHorizontal: 10, borderBottom: "0.5 solid #F3F4F6" },
-  totalsRowTotal: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 8, paddingHorizontal: 10, backgroundColor: "#10B981", borderRadius: 4, marginTop: 4 },
+  totalsRowTotal: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 8, paddingHorizontal: 10, backgroundColor: "#1B2B5E", borderRadius: 4, marginTop: 4 },
   totalsLabel: { fontSize: 8, color: "#6B7280" },
   totalsValue: { fontSize: 8.5, color: "#111827", fontFamily: "Helvetica-Bold" },
   totalsTTCLabel: { fontSize: 9, color: "#FFFFFF", fontFamily: "Helvetica-Bold" },
@@ -60,9 +60,9 @@ const S = StyleSheet.create({
   footerText: { fontSize: 7, color: "#9CA3AF", textAlign: "center", lineHeight: 1.6 },
 
   // Note
-  noteBox: { backgroundColor: "#F0FDF4", borderLeft: "3 solid #10B981", padding: "10 12", marginBottom: 24, borderRadius: 2 },
-  noteLabel: { fontSize: 7, fontFamily: "Helvetica-Bold", color: "#065F46", marginBottom: 3, textTransform: "uppercase", letterSpacing: 0.6 },
-  noteText: { fontSize: 8, color: "#047857", lineHeight: 1.5 },
+  noteBox: { backgroundColor: "#FFF4EC", borderLeft: "3 solid #E8590C", padding: "10 12", marginBottom: 24, borderRadius: 2 },
+  noteLabel: { fontSize: 7, fontFamily: "Helvetica-Bold", color: "#9A3412", marginBottom: 3, textTransform: "uppercase", letterSpacing: 0.6 },
+  noteText: { fontSize: 8, color: "#7C2D12", lineHeight: 1.5 },
 });
 
 type POLine = {

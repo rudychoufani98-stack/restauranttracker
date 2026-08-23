@@ -13,31 +13,46 @@ const config: Config = {
       },
       colors: {
         // ── Material 3 design tokens (Amaly) ──
+        //
+        //  MARQUE : le bleu marine et l'orange du logo.
+        //    · marine  #1B2B5E → structure : titres, textes forts, boutons au repos, focus
+        //    · orange  #CC4409 → interaction : état actif, survol, puces de navigation
+        //  L'orange vif du logo (#FF6A1A) sert aux graphiques, aux lueurs et au logo :
+        //  partout où il n'y a pas de texte à poser dessus. En aplat sous du texte blanc
+        //  il est trop clair (2,9:1), d'où la version soutenue #CC4409 (4,8:1) — lisible.
+        //
+        //  SENS (ne pas repeindre aux couleurs de la marque, sous peine de rendre
+        //  « bon » et « alerte » indiscernables) :
+        //    · vert / emerald → positif (marge, food cost sous l'objectif, entrée de stock)
+        //    · amber          → à surveiller
+        //    · red            → négatif
         surface: "#F7FAFC",
         background: "#F7FAFC",
         "surface-container-lowest": "#FFFFFF",
-        "surface-container-low": "#F1F4F6",
-        "surface-container": "#EBEEF0",
-        "surface-container-high": "#E5E9EB",
-        "surface-container-highest": "#E0E3E5",
-        "surface-variant": "#E0E3E5",
-        "on-surface": "#181C1E",
-        "on-surface-variant": "#3D4A43",
-        outline: "#6D7A72",
-        "outline-variant": "#BCCAC1",
-        primary: "#00694B",
-        "primary-container": "#008560",
+        "surface-container-low": "#F1F3F7",
+        "surface-container": "#EAEDF3",
+        "surface-container-high": "#E4E8EF",
+        "surface-container-highest": "#DFE3EB",
+        "surface-variant": "#DFE3EB",
+        "on-surface": "#181C22",
+        "on-surface-variant": "#414A5C",
+        outline: "#737C8C",
+        "outline-variant": "#C3C9D6",
+        primary: "#1B2B5E",
+        "primary-container": "#CC4409",
         "on-primary": "#FFFFFF",
-        "on-primary-container": "#F5FFF7",
-        "primary-fixed": "#84F8C8",
-        "primary-fixed-dim": "#67DBAD",
-        "inverse-primary": "#67DBAD",
+        "on-primary-container": "#FFFFFF",
+        "primary-fixed": "#C9D4F0",
+        "primary-fixed-dim": "#8FA6DF",
+        "inverse-primary": "#8FA6DF",
         secondary: "#555F71",
         "secondary-container": "#D6E0F6",
-        tertiary: "#525F5A",
-        "tertiary-fixed": "#D8E5E0",
+        tertiary: "#4A5568",
+        "tertiary-fixed": "#E3E9F7",
         "error-container": "#FFDAD6",
         "on-error": "#FFFFFF",
+        // Orange vif du logo — graphiques, lueurs, aplats décoratifs sans texte.
+        brand: { orange: "#FF6A1A", "orange-deep": "#CC4409", navy: "#1B2B5E", "navy-light": "#2C3F7A" },
 
         // Legacy aliases kept so existing screens keep compiling
         "card": "#FFFFFF",
@@ -51,8 +66,10 @@ const config: Config = {
         red: { DEFAULT: "#BA1A1A", light: "#FFDAD6", dark: "#93000A" },
         blue: { DEFAULT: "#3B82F6", light: "#DBEAFE", dark: "#1E40AF" },
 
-        // The whole app is written with emerald-* utilities: remapping this ramp
-        // onto the Material 3 green re-skins every screen at once.
+        // Rampe verte SÉMANTIQUE : ce qui va bien (marge positive, food cost sous
+        // l'objectif, entrée de stock, réception validée). Elle ne suit pas la
+        // marque — la repeindre en orange rendrait « bon » indiscernable de
+        // « à surveiller », qui est juste à côté dans le même code couleur.
         emerald: {
           50: "#F0FDF7",
           100: "#D8F5E7",

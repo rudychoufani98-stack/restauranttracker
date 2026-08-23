@@ -488,7 +488,7 @@ function Gauge({ value, target }: { value: number | null; target: number }) {
   };
   const tickOut = point(targetPct, R + 7);
   const tickIn = point(targetPct, R - 7);
-  const color = value === null ? "#BCCAC1" : value <= target ? "#00694B" : value <= target * 1.2 ? "#F59E0B" : "#BA1A1A";
+  const color = value === null ? "#C3C9D6" : value <= target ? "#00694B" : value <= target * 1.2 ? "#F59E0B" : "#BA1A1A";
 
   return (
     <div className="relative py-2">

@@ -401,12 +401,12 @@ export default function InvoiceClient({ po, deliveryNote, deliveryNotes, restaur
             <label className="block text-xs text-gray-500 mb-1">Numéro de facture</label>
             <input type="text" placeholder="FAC-2024-001" value={invoiceNumber}
               onChange={(e) => setInvoiceNumber(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition" />
+              className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary transition" />
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">Date de facture</label>
             <input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition" />
+              className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary transition" />
           </div>
         </div>
       </div>
@@ -439,7 +439,7 @@ export default function InvoiceClient({ po, deliveryNote, deliveryNotes, restaur
                     <label className="block text-xs text-gray-500 mb-1">Quantité ({type})</label>
                     <input type="number" min="0" step="any" value={line.qty}
                       onChange={(e) => updateQty(i, e.target.value)}
-                      className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition" />
+                      className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary transition" />
                   </div>
                   <div className="flex-1">
                     <label className="block text-xs text-gray-500 mb-1">
@@ -449,7 +449,7 @@ export default function InvoiceClient({ po, deliveryNote, deliveryNotes, restaur
                     <input type="number" min="0" step="0.01" value={line.invoice_price}
                       onChange={(e) => updatePrice(i, e.target.value)}
                       className={`w-full px-3 py-2 text-sm border rounded-lg outline-none focus:ring-1 transition ${
-                        priceChanged ? "border-amber-400 focus:border-amber-500 focus:ring-amber-300" : "border-[#E5E7EB] focus:border-emerald-500 focus:ring-emerald-500"
+                        priceChanged ? "border-amber-400 focus:border-amber-500 focus:ring-amber-300" : "border-[#E5E7EB] focus:border-primary focus:ring-primary"
                       }`} />
                   </div>
                   <div className="text-right text-xs text-gray-500 pb-2">
@@ -467,12 +467,12 @@ export default function InvoiceClient({ po, deliveryNote, deliveryNotes, restaur
           <div className="flex items-center gap-2">
             <input type="text" value={miscLabel} onChange={(e) => setMiscLabel(e.target.value)}
               placeholder="ex. Taxe alcool, frais de livraison…"
-              className="flex-1 px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500" />
+              className="flex-1 px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-primary" />
             <div className="relative w-28">
               <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">€</span>
               <input type="number" min="0" step="0.01" value={miscFees} onChange={(e) => setMiscFees(e.target.value)}
                 placeholder="0.00"
-                className="w-full pl-5 pr-2 py-2 text-sm text-right border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500" />
+                className="w-full pl-5 pr-2 py-2 text-sm text-right border border-[#E5E7EB] rounded-lg outline-none focus:border-primary" />
             </div>
           </div>
           <p className="text-2xs text-gray-400 mt-1.5">Ajouté au total, sans effet sur le stock.</p>

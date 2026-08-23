@@ -611,12 +611,12 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                 <div className="col-span-2">
                   <label className="block text-xs font-medium text-gray-600 mb-1">Nom de la recette</label>
                   <input value={name} onChange={(e) => setName(e.target.value)} placeholder="ex. Velouté de tomates"
-                    className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition" />
+                    className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary transition" />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Catégorie</label>
                   <select value={category} onChange={(e) => setCategory(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 bg-white transition">
+                    className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-primary bg-white transition">
                     {Array.from(new Set([...(isPrep ? prepCategories : menuCategories), category].filter(Boolean))).map((c) => <option key={c}>{c}</option>)}
                   </select>
                 </div>
@@ -624,9 +624,9 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                   <label className="block text-xs font-medium text-gray-600 mb-1">Rendement / conditionnement</label>
                   <div className="flex gap-2">
                     <input type="number" min="0" step="any" value={yieldPortions} onChange={(e) => setYieldPortions(e.target.value)}
-                      className="w-28 px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition" />
+                      className="w-28 px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary transition" />
                     <select value={yieldUnit} onChange={(e) => setYieldUnit(e.target.value)}
-                      className="flex-1 px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 bg-white transition">
+                      className="flex-1 px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-primary bg-white transition">
                       {/* Un plat VENDU se compte en portions/pièces : avec un
                           rendement en kg, une vente ne déstockerait qu'une
                           fraction infime des ingrédients. */}
@@ -677,7 +677,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                   {lines.map((line, idx) => (
                     <div key={idx} className="flex gap-2 items-start">
                       <select value={lineValue(line)} onChange={(e) => selectItem(idx, e.target.value)}
-                        className="flex-1 px-2 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 bg-white transition">
+                        className="flex-1 px-2 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-primary bg-white transition">
                         <option value="">Choisir un ingrédient ou une mise en place…</option>
                         {(() => {
                           const meps = allRecipes.filter((r) => r.id !== editingId && r.is_prep);
@@ -695,7 +695,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                       <input type="number" min="0" step="any" value={line.quantity}
                         onChange={(e) => updateLine(idx, "quantity", e.target.value)}
                         placeholder="Qty"
-                        className="w-20 px-2 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition" />
+                        className="w-20 px-2 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary transition" />
 
                       {line.type === "ingredient" ? (() => {
                         // Unités limitées à la dimension du produit (kg → g/kg, L → ml/l…)
@@ -706,7 +706,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                           : ["g", "kg", "ml", "l", "unit"];
                         return (
                           <select value={line.unit} onChange={(e) => updateLine(idx, "unit", e.target.value)}
-                            className="w-16 px-2 py-2 text-xs border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 bg-white transition">
+                            className="w-16 px-2 py-2 text-xs border border-[#E5E7EB] rounded-lg outline-none focus:border-primary bg-white transition">
                             {opts.map((u) => <option key={u}>{u}</option>)}
                           </select>
                         );
@@ -716,7 +716,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                         return (
                           <select value={line.unit} onChange={(e) => updateLine(idx, "unit", e.target.value)}
                             disabled={!sub}
-                            className="w-16 px-2 py-2 text-xs border border-[#E5E7EB] rounded-lg outline-none focus:border-emerald-500 bg-white transition disabled:bg-gray-50 disabled:text-gray-400">
+                            className="w-16 px-2 py-2 text-xs border border-[#E5E7EB] rounded-lg outline-none focus:border-primary bg-white transition disabled:bg-gray-50 disabled:text-gray-400">
                             {opts.map((u) => <option key={u} value={u}>{u === "portion" ? "port." : u}</option>)}
                           </select>
                         );
@@ -756,7 +756,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                 Annuler
               </button>
               <button onClick={handleSave} disabled={saving}
-                className="flex-1 py-2 text-sm text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 disabled:opacity-50 transition">
+                className="flex-1 py-2 text-sm text-white bg-primary rounded-lg hover:bg-primary-container disabled:opacity-50 transition">
                 {saving ? "Enregistrement…" : editingId ? "Enregistrer" : "Créer la recette"}
               </button>
             </div>

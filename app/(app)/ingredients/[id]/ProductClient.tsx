@@ -306,7 +306,7 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
   }
 
   const mergeTargets = allIngredients.filter((i) => i.unit === ingredient.unit);
-  const inputCls = "w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 transition";
+  const inputCls = "w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition";
   const uLabel = displayUnitLabel(unit);
 
   return (
@@ -320,7 +320,7 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
         <div className="flex items-center gap-2">
           {toast && <span className="text-sm text-emerald-600 font-medium">{toast}</span>}
           <button onClick={handleSave} disabled={saving}
-            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition">
+            className="flex items-center gap-1.5 px-4 py-2 bg-primary text-white text-sm font-semibold rounded-lg hover:bg-primary-container disabled:opacity-50 transition">
             {saving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} Enregistrer
           </button>
         </div>
@@ -435,25 +435,25 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
                   <p className="text-2xs font-medium text-gray-400 uppercase tracking-wide">Conditionnement de commande (colissage)</p>
                   <div className="flex flex-wrap items-end gap-2">
                     <span className="text-xs text-gray-500 pb-2">1</span>
-                    <input list="pack-types" value={a.pack_type} onChange={(e) => updateArticle(i, "pack_type", e.target.value)} placeholder="colis" className="w-24 px-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500" />
+                    <input list="pack-types" value={a.pack_type} onChange={(e) => updateArticle(i, "pack_type", e.target.value)} placeholder="colis" className="w-24 px-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary" />
                     <span className="text-xs text-gray-500 pb-2">=</span>
-                    <input type="number" min="1" step="any" value={a.pack_units} onChange={(e) => updateArticle(i, "pack_units", e.target.value)} placeholder="1" className="w-16 px-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500" />
+                    <input type="number" min="1" step="any" value={a.pack_units} onChange={(e) => updateArticle(i, "pack_units", e.target.value)} placeholder="1" className="w-16 px-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary" />
                     <span className="text-gray-400 pb-2">×</span>
-                    <input type="number" min="0" step="any" value={a.unit_size} onChange={(e) => updateArticle(i, "unit_size", e.target.value)} placeholder="18" className="w-20 px-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500" />
+                    <input type="number" min="0" step="any" value={a.unit_size} onChange={(e) => updateArticle(i, "unit_size", e.target.value)} placeholder="18" className="w-20 px-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary" />
                     <span className="text-sm text-gray-500 pb-2">{unitShort(unit)}</span>
                   </div>
 
                   <div className="flex flex-wrap gap-2">
                     <div className="relative w-28">
                       <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">€</span>
-                      <input type="number" min="0" step="0.01" value={a.pack_price} onChange={(e) => updateArticle(i, "pack_price", e.target.value)} placeholder="prix HT" className="w-full pl-5 pr-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500" />
+                      <input type="number" min="0" step="0.01" value={a.pack_price} onChange={(e) => updateArticle(i, "pack_price", e.target.value)} placeholder="prix HT" className="w-full pl-5 pr-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary" />
                     </div>
-                    <select value={a.vat_rate} onChange={(e) => updateArticle(i, "vat_rate", e.target.value)} className="w-36 px-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500">
+                    <select value={a.vat_rate} onChange={(e) => updateArticle(i, "vat_rate", e.target.value)} className="w-36 px-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary">
                       {VAT_PRESETS.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
                     </select>
-                    <input value={a.supplier_reference} onChange={(e) => updateArticle(i, "supplier_reference", e.target.value)} placeholder="réf. / code article" className="flex-1 min-w-[120px] px-2.5 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500" />
+                    <input value={a.supplier_reference} onChange={(e) => updateArticle(i, "supplier_reference", e.target.value)} placeholder="réf. / code article" className="flex-1 min-w-[120px] px-2.5 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary" />
                   </div>
-                  <input value={a.pack_label} onChange={(e) => updateArticle(i, "pack_label", e.target.value)} placeholder="Conditionnement (texte libre, ex. « 75 cl / bouteille », « sac 18 kg »)" className="w-full px-2.5 py-1.5 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500" />
+                  <input value={a.pack_label} onChange={(e) => updateArticle(i, "pack_label", e.target.value)} placeholder="Conditionnement (texte libre, ex. « 75 cl / bouteille », « sac 18 kg »)" className="w-full px-2.5 py-1.5 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:border-primary" />
 
                   {cpb > 0 && (
                     <p className="text-xs text-gray-500">
@@ -566,7 +566,7 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
             <div className="flex gap-2 px-5 py-4 border-t border-gray-100">
               <button onClick={() => setShowMerge(false)} className="flex-1 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition">Annuler</button>
               <button onClick={handleMerge} disabled={merging || !mergeTargetId}
-                className="flex-1 py-2 text-sm text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition flex items-center justify-center gap-1.5">
+                className="flex-1 py-2 text-sm text-white bg-primary rounded-lg hover:bg-primary-container disabled:opacity-50 transition flex items-center justify-center gap-1.5">
                 {merging ? <Loader2 size={15} className="animate-spin" /> : <GitMerge size={15} />} Fusionner
               </button>
             </div>

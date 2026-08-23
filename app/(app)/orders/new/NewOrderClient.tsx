@@ -258,7 +258,7 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
       <div className="bg-white border border-gray-100 rounded-card shadow-card p-5 mb-5">
         <label className="block text-xs font-medium text-gray-600 mb-1.5">Fournisseur</label>
         <select value={supplierId} onChange={(e) => changeSupplier(e.target.value)}
-          className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500">
+          className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary">
           <option value="">Choisir un fournisseur…</option>
           {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}{s.email ? ` (${s.email})` : ""}</option>)}
         </select>
@@ -284,13 +284,13 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
               <div className="relative flex-1 min-w-[180px]">
                 <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher un produit…"
-                  className="w-full pl-9 pr-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-emerald-500" />
+                  className="w-full pl-9 pr-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary" />
               </div>
             </div>
             <div className="flex flex-wrap gap-1.5">
               {categories.map((cat) => (
                 <button key={cat} onClick={() => setFilterCat(cat)}
-                  className={clsx("px-3 py-1.5 text-xs rounded-full border transition", filterCat === cat ? "bg-emerald-500 text-white border-emerald-500" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50")}>
+                  className={clsx("px-3 py-1.5 text-xs rounded-full border transition", filterCat === cat ? "bg-primary-container text-on-primary-container border-primary-container" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50")}>
                   {cat}
                 </button>
               ))}
@@ -311,7 +311,7 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
                     className={clsx("relative text-left rounded-xl border p-3 transition",
                       active ? "border-emerald-400 bg-emerald-50 ring-1 ring-emerald-300" : "border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm")}>
                     {active && (
-                      <span className="absolute -top-2 -right-2 min-w-[22px] h-[22px] px-1 flex items-center justify-center rounded-full text-xs font-bold text-white bg-emerald-500 shadow">
+                      <span className="absolute -top-2 -right-2 min-w-[22px] h-[22px] px-1 flex items-center justify-center rounded-full text-xs font-bold text-white bg-primary-container shadow">
                         {qty}
                       </span>
                     )}
@@ -364,7 +364,7 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
                             className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition"><Minus size={13} /></button>
                           <input type="number" min="0" step="any" value={l.quantity}
                             onChange={(e) => setQty(id, parseFloat(e.target.value) || 0)}
-                            className="w-12 px-1 py-1 text-sm text-center border border-gray-200 rounded-lg outline-none focus:border-emerald-500" />
+                            className="w-12 px-1 py-1 text-sm text-center border border-gray-200 rounded-lg outline-none focus:border-primary" />
                           <button onClick={() => setQty(id, l.quantity + 1)}
                             className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition"><Plus size={13} /></button>
                           <span className="text-2xs text-gray-400 ml-0.5">{packTypeOf(art)}</span>
@@ -373,7 +373,7 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
                           <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">€</span>
                           <input type="number" min="0" step="0.01" value={l.price}
                             onChange={(e) => setPrice(id, e.target.value)}
-                            className="w-full pl-5 pr-1.5 py-1 text-sm border border-gray-200 rounded-lg outline-none focus:border-emerald-500" />
+                            className="w-full pl-5 pr-1.5 py-1 text-sm border border-gray-200 rounded-lg outline-none focus:border-primary" />
                         </div>
                       </div>
                       <p className="text-right text-xs font-semibold text-gray-900 mt-1.5">€{sub.toFixed(2)}</p>
@@ -411,7 +411,7 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
                 className="w-full flex items-start gap-2.5 text-left rounded-lg border border-gray-200 px-3 py-2.5 hover:bg-gray-50 transition"
               >
                 <span aria-hidden="true"
-                  className={clsx("mt-0.5 relative w-9 h-5 rounded-full transition shrink-0", hidePricesOrder ? "bg-emerald-500" : "bg-gray-300")}>
+                  className={clsx("mt-0.5 relative w-9 h-5 rounded-full transition shrink-0", hidePricesOrder ? "bg-primary" : "bg-gray-300")}>
                   <span className={clsx("absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform", hidePricesOrder && "translate-x-4")} />
                 </span>
                 <span className="min-w-0">
@@ -427,7 +427,7 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
                 </span>
               </button>
               <button onClick={() => handleCreate(true)} disabled={saving !== null || cartEntries.length === 0}
-                className="w-full mt-1 py-2.5 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition flex items-center justify-center gap-1.5">
+                className="w-full mt-1 py-2.5 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary-container disabled:opacity-50 transition flex items-center justify-center gap-1.5">
                 {saving === "send" ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
                 {/* Sans email, rien n'est envoyé : le libellé doit le dire. */}
                 {sup?.email ? "Envoyer la commande" : "Marquer envoyée (sans email)"}
