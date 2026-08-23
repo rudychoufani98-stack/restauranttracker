@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Plus, Trash2, X, ChevronDown, ChevronUp, RefreshCw, Copy, Search, ChefHat, Percent, Coins, Layers, ClipboardCheck } from "lucide-react";
 import clsx from "clsx";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 
 type Ingredient = { id: string; name: string; cost_per_base_unit: number; cmup?: number | null; unit: string; yield_pct?: number | null };
@@ -127,6 +128,7 @@ interface Props {
 }
 
 export default function RecipesClient({ restaurantId, initialRecipes, ingredients, allRecipes: allRecipesProp, menuCategories, prepCategories, lockMode }: Props) {
+  const confirm = useConfirm();
   const supabase = createClient();
   const router = useRouter();
   const [recipes, setRecipes] = useState<Recipe[]>(initialRecipes);
@@ -475,9 +477,16 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
     // Utilisée comme MEP dans d'autres fiches ? Le dire AVANT de supprimer.
     const usedIn = allRecipes.filter((r) => r.id !== id && (r.recipe_lines ?? []).some((l) => l.sub_recipe_id === id));
     const extra = usedIn.length > 0
-      ? `\n\n⚠️ Elle est utilisée dans ${usedIn.length} fiche(s) : ${usedIn.slice(0, 5).map((r) => r.name).join(", ")}${usedIn.length > 5 ? "…" : ""}.\nLeur coût sera recalculé sans cet élément.`
-      : "";
-    if (!window.confirm(`Supprimer « ${name} » ? Cette action est irréversible.${extra}`)) return;
+      ? [
+          `Utilisée dans ${usedIn.length} fiche${usedIn.length > 1 ? "s" : ""} : ${usedIn.slice(0, 5).map((r) => r.name).join(", ")}${usedIn.length > 5 ? "…" : ""}.`,
+          "Leur coût sera recalculé sans cet élément.",
+        ]
+      : undefined;
+    if (!(await confirm({
+      title: `Supprimer « ${name} » ?`,
+      message: "Cette action est irréversible.",
+      consequences: extra,
+    }))) return;
     setDeletingId(id);
     const { error: delErr } = await supabase.from("recipes").delete().eq("id", id);
     setDeletingId(null);

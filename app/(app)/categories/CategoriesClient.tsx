@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Plus, Trash2, Check, X, Pencil, ChevronUp, ChevronDown } from "lucide-react";
 import clsx from "clsx";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 type Category = { id: string; type: string; name: string; position: number };
 type Tag = { id: string; name: string; color: string };
@@ -35,6 +36,7 @@ interface Props {
 }
 
 export default function CategoriesClient({ restaurantId, initialCategories, initialTags = [] }: Props) {
+  const confirm = useConfirm();
   const supabase = createClient();
   const [cats, setCats] = useState<Category[]>(initialCategories);
   const [tab, setTab] = useState<TabKey>("menu");
@@ -74,7 +76,10 @@ export default function CategoriesClient({ restaurantId, initialCategories, init
 
   async function removeTag(id: string) {
     const name = tags.find((t) => t.id === id)?.name ?? "ce tag";
-    if (!window.confirm(`Supprimer le tag « ${name} » ? Il sera retiré de tous les produits.`)) return;
+    if (!(await confirm({
+      title: `Supprimer le tag « ${name} » ?`,
+      consequences: ["Il sera retiré de tous les produits qui le portent.", "Les produits, eux, ne sont pas supprimés."],
+    }))) return;
     setBusy(true);
     const { error: err } = await supabase.from("tags").delete().eq("id", id);
     setBusy(false);
@@ -125,9 +130,13 @@ export default function CategoriesClient({ restaurantId, initialCategories, init
   async function remove(id: string) {
     const cat = cats.find((c) => c.id === id);
     const name = cat?.name ?? "cette catégorie";
-    if (!window.confirm(
-      `Supprimer la catégorie « ${name} » ?\n\nLes produits ou recettes qui l'utilisent ne seront pas supprimés, mais ils n'auront plus de catégorie : tu devras leur en réattribuer une.`
-    )) return;
+    if (!(await confirm({
+      title: `Supprimer la catégorie « ${name} » ?`,
+      consequences: [
+        "Les produits et recettes qui l’utilisent ne sont pas supprimés.",
+        "Ils se retrouveront sans catégorie : il faudra leur en réattribuer une.",
+      ],
+    }))) return;
     setBusy(true);
     const { error: err } = await supabase.from("categories").delete().eq("id", id);
     setBusy(false);

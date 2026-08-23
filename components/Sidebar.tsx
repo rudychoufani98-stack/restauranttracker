@@ -82,7 +82,7 @@ export default function Sidebar({ restaurantName, isAdmin = false }: { restauran
       <div className="px-5 pt-6 pb-5">
         <Link href="/dashboard" aria-label="Accueil" className="flex items-center gap-2.5 hover:opacity-80 transition">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-amaly.svg" alt="" className="w-9 h-9 shrink-0" />
+          <img src="/logo-ri.svg" alt="" className="w-9 h-9 shrink-0" />
           <div className="min-w-0">
             <p className="text-xl leading-tight font-extrabold text-primary tracking-tight truncate">
               {restaurantName}

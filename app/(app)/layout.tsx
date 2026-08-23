@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { getCurrentUser, getRestaurant, isAppAdmin, ADMIN_RESTAURANT_COOKIE } from "@/lib/auth";
 import Sidebar from "@/components/Sidebar";
 import AssistantWidget from "@/components/AssistantWidget";
+import { ConfirmProvider } from "@/components/ConfirmDialog";
 import { closeRestaurant } from "@/app/admin/actions";
 import { Crown, ArrowLeft } from "lucide-react";
 
@@ -28,6 +29,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const impersonating = admin && !!openedClient;
 
   return (
+    <ConfirmProvider>
     <div className="flex min-h-screen bg-[#F9FAFB]">
       <Sidebar restaurantName={restaurant.name} isAdmin={admin} />
       <main className="flex-1 overflow-auto">
@@ -47,5 +49,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </main>
       <AssistantWidget />
     </div>
+    </ConfirmProvider>
   );
 }

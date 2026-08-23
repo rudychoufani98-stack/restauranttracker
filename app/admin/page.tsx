@@ -60,7 +60,7 @@ export default async function AdminPage({ searchParams }: { searchParams?: { ok?
             </p>
             <div className="flex items-center gap-3">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/logo-amaly.svg" alt="" className="w-9 h-9" />
+              <img src="/logo-ri.svg" alt="" className="w-9 h-9" />
               <h1 className="text-3xl font-extrabold text-primary tracking-tight">Mes clients</h1>
             </div>
             <p className="text-sm text-on-surface-variant/70 mt-1">

@@ -7,6 +7,7 @@ import { Card, Button, Input, Select, Alert, Badge } from "@/components/ui";
 import { logout } from "@/app/auth/actions";
 import { parseHHMM, DEFAULT_SERVICE_START, DEFAULT_SERVICE_END, detectServiceMoment, serviceMomentLabel } from "@/lib/service-moment";
 import clsx from "clsx";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 const CUISINE_TYPES = ["Française", "Italienne", "Japonaise", "Méditerranéenne", "Mexicaine", "Indienne", "Américaine", "Autre"];
 // La valeur STOCKÉE doit rester en anglais : le cron du récap compare avec
@@ -44,6 +45,7 @@ const roleLabel = (r: string) => MEMBER_ROLES.find((x) => x.value === r)?.label 
 interface Props { restaurant: Restaurant; email: string; initialMembers: Member[] }
 
 export default function SettingsClient({ restaurant, email, initialMembers }: Props) {
+  const confirm = useConfirm();
   const supabase = createClient();
   const [tab, setTab] = useState<Tab>("restaurant");
 
@@ -169,7 +171,11 @@ export default function SettingsClient({ restaurant, email, initialMembers }: Pr
 
   async function handleDeleteMember(id: string) {
     const who = members.find((m) => m.id === id)?.email ?? "ce membre";
-    if (!window.confirm(`Retirer « ${who} » de l'équipe ?\n\nCette personne perdra l'accès au restaurant.`)) return;
+    if (!(await confirm({
+      title: `Retirer « ${who} » de l'équipe ?`,
+      consequences: ["Cette personne perdra immédiatement l'accès au restaurant.", "Son compte n'est pas supprimé : tu peux la réinviter plus tard."],
+      confirmLabel: "Retirer",
+    }))) return;
     setMemberError(null);
     setDeletingMemberId(id);
     const { error } = await supabase.from("restaurant_members").delete().eq("id", id);

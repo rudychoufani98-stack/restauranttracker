@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Plus, Search, Trash2, Check, ChevronDown, Copy, Package, Layers, TrendingUp } from "lucide-react";
 import { Card, Button, Input, Select, Modal, Alert, EmptyState } from "@/components/ui";
 import clsx from "clsx";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 // L'interface ne parle que kg / L / pièce (g/ml restent internes).
 const UNIT_CHOICES = [
@@ -141,6 +142,7 @@ interface Props {
 }
 
 export default function IngredientsClient({ restaurantId, initialIngredients, suppliers, allTags, categories: CATEGORIES }: Props) {
+  const confirm = useConfirm();
   const supabase = createClient();
   const router = useRouter();
   const [ingredients, setIngredients] = useState<Ingredient[]>(initialIngredients);
@@ -423,7 +425,11 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
 
   async function handleDelete(id: string) {
     const name = ingredients.find((i) => i.id === id)?.name ?? "cet ingrédient";
-    if (!window.confirm(`Supprimer « ${name} » ? Cette action est irréversible.`)) return;
+    if (!(await confirm({
+      title: `Supprimer « ${name} » ?`,
+      message: "Cette action est irréversible.",
+      consequences: ["Le produit disparaît du catalogue, du stock et des listes d'achat.", "Les recettes qui l'utilisent perdront cette ligne."],
+    }))) return;
     setDeletingId(id);
     const { error } = await supabase.from("ingredients").delete().eq("id", id);
     setDeletingId(null);

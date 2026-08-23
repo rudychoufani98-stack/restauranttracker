@@ -8,7 +8,7 @@ export default function SignupPage() {
       <div className="w-full max-w-[400px] text-center">
         <div className="flex items-center justify-center gap-3 mb-4">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-amaly.svg" alt="" className="w-10 h-10" />
+          <img src="/logo-ri.svg" alt="" className="w-10 h-10" />
           <p className="text-3xl font-bold text-gray-900" style={{ fontFamily: 'Georgia, "Times New Roman", serif', letterSpacing: "-0.01em" }}>Restointelligence</p>
         </div>
         <div className="bg-white rounded-card border border-gray-200 shadow-card p-8">

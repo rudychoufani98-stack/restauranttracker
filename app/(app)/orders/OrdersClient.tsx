@@ -10,6 +10,7 @@ import { serviceMomentShort } from "@/lib/service-moment";
 import { reverseReception } from "@/lib/costing";
 import { Plus, Trash2, X, Send, Download, ChevronDown, ChevronUp, Zap, Check, Pencil, Truck, Search, TrendingUp, Hourglass, Star, ArrowRight, Ban, Loader2, Eye, EyeOff } from "lucide-react";
 import clsx from "clsx";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 const toBase = (qty: number, unit: string) => (unit === "kg" || unit === "l" ? qty * 1000 : qty);
 function needsReorder(i: { stock_qty?: number | null; reorder_threshold?: number | null }) {
@@ -200,6 +201,7 @@ interface Props {
 }
 
 export default function OrdersClient({ restaurantId, restaurantName, initialOrders, suppliers, ingredients, orderEvents = [], hidePrices = false }: Props) {
+  const confirm = useConfirm();
   const supabase = createClient();
   const router = useRouter();
   const params = useSearchParams();
@@ -503,7 +505,11 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
       return;
     }
     const label = o?.suppliers?.name ? `la commande « ${o.suppliers.name} »` : "cette commande";
-    if (!window.confirm(`Supprimer ${label} ? Cette action est irréversible.`)) return;
+    if (!(await confirm({
+      title: `Supprimer ${label} ?`,
+      message: "Cette action est irréversible.",
+      consequences: ["Le brouillon et toutes ses lignes seront effacés.", "Le stock n'est pas touché : ce brouillon n'a jamais été réceptionné."],
+    }))) return;
     const { error } = await supabase.from("purchase_orders").delete().eq("id", id);
     if (error) { window.alert(`Suppression impossible : ${error.message}`); return; }
     setOrders((p) => p.filter((o) => o.id !== id));

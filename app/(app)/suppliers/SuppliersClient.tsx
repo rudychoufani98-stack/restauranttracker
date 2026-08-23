@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Plus, Pencil, Trash2, X, Truck, Mail, BadgeEuro } from "lucide-react";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 const CATEGORIES = ["Légumes/Fruits", "Viande", "Poisson", "Produits laitiers", "Épicerie", "Boissons", "Autre"];
 
@@ -12,6 +13,7 @@ const EMPTY = { name: "", email: "", contact: "", category: "Autre", min_order_a
 interface Props { restaurantId: string; initialSuppliers: Supplier[] }
 
 export default function SuppliersClient({ restaurantId, initialSuppliers }: Props) {
+  const confirm = useConfirm();
   const supabase = createClient();
   const [suppliers, setSuppliers] = useState<Supplier[]>(initialSuppliers);
   const [showForm, setShowForm] = useState(false);
@@ -62,7 +64,11 @@ export default function SuppliersClient({ restaurantId, initialSuppliers }: Prop
 
   async function handleDelete(id: string) {
     const name = suppliers.find((s) => s.id === id)?.name ?? "ce fournisseur";
-    if (!window.confirm(`Supprimer « ${name} » ? Cette action est irréversible.`)) return;
+    if (!(await confirm({
+      title: `Supprimer « ${name} » ?`,
+      message: "Cette action est irréversible.",
+      consequences: ["Impossible s'il reste des produits ou des commandes rattachés à ce fournisseur."],
+    }))) return;
     setDeletingId(id);
     const { error } = await supabase.from("suppliers").delete().eq("id", id);
     setDeletingId(null);
