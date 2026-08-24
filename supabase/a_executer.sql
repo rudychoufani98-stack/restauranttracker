@@ -82,3 +82,17 @@ create index if not exists idx_ingredient_suppliers_supplier on ingredient_suppl
 -- ---------------------------------------------------------------------
 alter table ingredients add column if not exists is_active boolean not null default true;
 create index if not exists idx_ingredients_active on ingredients(restaurant_id, is_active);
+
+-- ---------------------------------------------------------------------
+--  Pertes de mises en place et de fiches techniques
+--  (voir aussi supabase/perte_recette.sql)
+--  Jeter 2 kg de sauce ecrit un mouvement par ingredient, relies par
+--  reference_id. Ces colonnes permettent de reafficher « Sauce tomate —
+--  2 kg » au lieu des lignes d'ingredients.
+-- ---------------------------------------------------------------------
+alter table stock_movements
+  add column if not exists recipe_id uuid references recipes(id) on delete set null;
+alter table stock_movements
+  add column if not exists recipe_qty numeric;
+create index if not exists idx_stock_movements_reference
+  on stock_movements(restaurant_id, reference_type, reference_id);
