@@ -9,6 +9,11 @@ import {
   type ServiceMoment,
 } from "@/lib/service-moment";
 import { inventoryMomentAdvice } from "@/lib/inventory-moment";
+import {
+  etatStock, aCommander, compteEtats, dernierMouvement, depuisQuand,
+  ETAT_LABEL, ETAT_AIDE, type EtatStock,
+} from "@/lib/stock-state";
+import { eur } from "@/lib/format";
 import { ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Warehouse, TrendingDown, TrendingUp, AlertTriangle, Check, Loader2, History, ClipboardList, Trash2, Download, Search, Package, BarChart3 } from "lucide-react";
@@ -44,11 +49,39 @@ function baseUnitLabel(unit: string) {
   return unit === "kg" ? "g" : unit === "l" ? "ml" : unit;
 }
 
-function needsReorder(i: { stock_qty: number | null; reorder_threshold?: number | null }) {
-  const stock = Number(i.stock_qty ?? 0);
-  const threshold = Number(i.reorder_threshold ?? 0);
-  return threshold > 0 ? stock <= threshold : stock <= 0;
-}
+// Le calcul « faut-il recommander ? » vit desormais dans lib/stock-state.ts,
+// avec la distinction entre un produit epuise et une fiche jamais recue.
+
+
+
+// Habillage de chaque etat. Seuls les deux etats qui appellent une action
+// portent une couleur forte : si tout est rouge, plus rien ne ressort.
+const ETAT_STYLE: Record<EtatStock, { bordure: string; pastille: string; texte: string; badge: string }> = {
+  rupture: {
+    bordure: "border-l-4 border-red/50",
+    pastille: "bg-red-light text-red",
+    texte: "text-red",
+    badge: "bg-red-light text-red",
+  },
+  bas: {
+    bordure: "border-l-4 border-amber/60",
+    pastille: "bg-amber-light text-amber-dark",
+    texte: "text-on-surface",
+    badge: "bg-amber-light text-amber-dark",
+  },
+  ok: {
+    bordure: "",
+    pastille: "bg-tertiary-fixed text-primary",
+    texte: "text-on-surface",
+    badge: "",
+  },
+  jamais: {
+    bordure: "",
+    pastille: "bg-surface-container text-on-surface-variant/40",
+    texte: "text-on-surface-variant/70",
+    badge: "bg-surface-container text-on-surface-variant/60",
+  },
+};
 
 type Movement = {
   ingredient_id: string;
@@ -154,8 +187,9 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
   const [tab, setTab] = useState<"count" | "sessions" | "history" | "count-f" | "sessions-f">("count");
   // Vue Stock : la liste des produits, ou les statistiques dans le temps.
   const [stockTab, setStockTab] = useState<"stock" | "stats">("stock");
-  const [expandedIng, setExpandedIng] = useState<string | null>(null);
   const [moveSearch, setMoveSearch] = useState("");
+  const [stockFiltre, setStockFiltre] = useState<"tous" | "commander" | "stock" | "jamais">("tous");
+  const [stockTri, setStockTri] = useState<"valeur" | "etat" | "nom">("valeur");
   const [sessions, setSessions] = useState<InventorySession[]>(inventorySessions);
   const [expandedSession, setExpandedSession] = useState<string | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -220,7 +254,7 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
     }, 0);
   }, [localIngredients]);
 
-  const lowStockCount = localIngredients.filter(needsReorder).length;
+
 
   // ---- MEP / recettes comptables (vue alimentaire uniquement) ----
   const countableMeps = useMemo(() => recipes.filter((r) => r.is_prep), [recipes]);
@@ -586,40 +620,60 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
     return map;
   }, [recentMovements]);
 
-  // Ingredient rows for the stock & mouvements list (with current stock + value)
+  // Lignes de l ecran « Etat des stocks » : stock, valeur, etat et date du
+  // dernier mouvement. Le tri est applique ici pour que la liste et les
+  // compteurs restent coherents.
   const stockRows = useMemo(() => {
     const q = moveSearch.trim().toLowerCase();
-    return localIngredients
+    const maintenant = Date.now();
+    const rows = localIngredients
       .filter((i) => !q || i.name.toLowerCase().includes(q) || (i.category ?? "").toLowerCase().includes(q))
       .map((i) => {
         const qty = Number(i.stock_qty ?? 0);
         const cmup = Number(i.cmup ?? i.cost_per_base_unit ?? 0);
-        return { ing: i, qty, value: qty * cmup, moves: movesByIngredient.get(i.id) ?? [] };
-      })
-      .sort((a, b) => a.ing.name.localeCompare(b.ing.name));
-  }, [localIngredients, moveSearch, movesByIngredient]);
+        const moves = movesByIngredient.get(i.id) ?? [];
+        return {
+          ing: i, qty, value: qty * cmup, moves,
+          etat: etatStock(i, moves.length),
+          depuis: depuisQuand(dernierMouvement(moves), maintenant),
+        };
+      });
 
-  const MOVE_META: Record<string, { label: string; sign: string; color: string }> = {
-    in: { label: "Réception", sign: "+", color: "text-emerald-600" },
-    out: { label: "Vente (déstockage)", sign: "-", color: "text-gray-600" },
-    loss: { label: "Perte", sign: "-", color: "text-red-500" },
-    adjustment: { label: "Ajustement", sign: "±", color: "text-blue-600" },
-  };
-  // Group one ingredient's movements by month (label + list)
-  function movesByMonth(moves: Movement[]) {
-    const groups = new Map<string, Movement[]>();
-    for (const m of moves) {
-      const key = m.created_at.slice(0, 7);
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(m);
-    }
-    return Array.from(groups.entries()).sort((a, b) => b[0].localeCompare(a[0]));
-  }
-  function monthLabel(key: string) {
-    const MONTHS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
-    const [y, m] = key.split("-");
-    return `${MONTHS[parseInt(m, 10) - 1] ?? m} ${y}`;
-  }
+    const rang: Record<EtatStock, number> = { rupture: 0, bas: 1, ok: 2, jamais: 3 };
+    const parNom = (a: typeof rows[number], b: typeof rows[number]) => a.ing.name.localeCompare(b.ing.name, "fr");
+    rows.sort((a, b) =>
+      stockTri === "nom" ? parNom(a, b)
+      : stockTri === "etat" ? (rang[a.etat] - rang[b.etat]) || parNom(a, b)
+      // A valeur egale (tout un tas de produits a zero), on remonte ce qui
+      // appelle une action : une rupture doit passer avant une fiche jamais
+      // recue, sinon l urgence se retrouve en bas de liste.
+      : (b.value - a.value) || (rang[a.etat] - rang[b.etat]) || parNom(a, b));
+    return rows;
+  }, [localIngredients, moveSearch, movesByIngredient, stockTri]);
+
+  // Compteurs calcules sur TOUTE la carte, pas sur les lignes filtrees : les
+  // cartes du haut ne doivent pas changer quand on tape dans la recherche.
+  const etats = useMemo(() => compteEtats(
+    localIngredients.map((i) => {
+      const qty = Number(i.stock_qty ?? 0);
+      const cmup = Number(i.cmup ?? i.cost_per_base_unit ?? 0);
+      return { etat: etatStock(i, (movesByIngredient.get(i.id) ?? []).length), value: qty * cmup };
+    }),
+  ), [localIngredients, movesByIngredient]);
+
+  const nbACommander = etats.rupture + etats.bas;
+  const nbEnStock = useMemo(
+    () => localIngredients.filter((i) => Number(i.stock_qty ?? 0) > 0).length,
+    [localIngredients],
+  );
+
+  const stockVisibles = useMemo(() => stockRows.filter((r) =>
+    stockFiltre === "commander" ? aCommander(r.etat)
+    : stockFiltre === "jamais" ? r.etat === "jamais"
+    : stockFiltre === "stock" ? r.qty > 0
+    : true), [stockRows, stockFiltre]);
+
+
 
   return (
     <div className="p-8 max-w-5xl mx-auto">
@@ -640,23 +694,65 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
         </a>
       </div>
 
-      {/* KPI glass cards — derived from live data (stock view only) */}
+      {/* Trois chiffres : ce que vaut le stock, ce qu'il faut recommander, et
+          ce qui n'a jamais servi. Séparer les deux derniers évite d'afficher
+          « 97 à commander » alors que 95 fiches n'ont jamais rien reçu. */}
       {!isInventaire && (
-      <section className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+      <section className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <div className="glass-card rounded-2xl p-5 flex flex-col gap-3 border-l-4 border-primary">
           <div className="flex justify-between items-center">
             <span className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Valeur du stock</span>
             <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary"><Warehouse size={18} /></div>
           </div>
-          <h3 className="text-2xl font-extrabold text-primary tabular-nums">€{totalValue.toFixed(2)}</h3>
+          <div>
+            <h3 className="text-2xl font-extrabold text-primary tabular-nums">{eur(totalValue)}</h3>
+            <p className="text-2xs text-on-surface-variant/60 mt-0.5">
+              {nbEnStock} produit{nbEnStock !== 1 ? "s" : ""} en stock sur {etats.total}
+            </p>
+          </div>
         </div>
-        <div className={clsx("glass-card rounded-2xl p-5 flex flex-col gap-3 border-l-4", lowStockCount > 0 ? "border-red" : "border-outline-variant/30")}>
+
+        <button
+          type="button"
+          onClick={() => setStockFiltre(nbACommander > 0 ? "commander" : "tous")}
+          title="Voir uniquement les produits à commander"
+          className={clsx(
+            "glass-card rounded-2xl p-5 flex flex-col gap-3 border-l-4 text-left transition hover:bg-surface-container-low/40",
+            nbACommander > 0 ? "border-red" : "border-green/40",
+          )}
+        >
           <div className="flex justify-between items-center">
             <span className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">À commander</span>
-            <div className={clsx("w-10 h-10 rounded-full flex items-center justify-center", lowStockCount > 0 ? "bg-red-light text-red" : "bg-surface-container text-on-surface-variant/50")}><AlertTriangle size={18} /></div>
+            <div className={clsx("w-10 h-10 rounded-full flex items-center justify-center", nbACommander > 0 ? "bg-red-light text-red" : "bg-green-light text-green")}>
+              {nbACommander > 0 ? <AlertTriangle size={18} /> : <Check size={18} />}
+            </div>
           </div>
-          <h3 className={clsx("text-2xl font-extrabold tabular-nums", lowStockCount > 0 ? "text-red" : "text-on-surface")}>{lowStockCount}</h3>
-        </div>
+          <div>
+            <h3 className={clsx("text-2xl font-extrabold tabular-nums", nbACommander > 0 ? "text-red" : "text-green")}>{nbACommander}</h3>
+            <p className="text-2xs text-on-surface-variant/60 mt-0.5">
+              {nbACommander === 0
+                ? "aucun produit sous son seuil"
+                : [etats.rupture > 0 ? `${etats.rupture} en rupture` : null,
+                   etats.bas > 0 ? `${etats.bas} sous le seuil` : null].filter(Boolean).join(" · ")}
+            </p>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setStockFiltre(etats.jamais > 0 ? "jamais" : "tous")}
+          title="Voir les fiches qui n'ont jamais reçu de marchandise"
+          className="glass-card rounded-2xl p-5 flex flex-col gap-3 border-l-4 border-outline-variant/30 text-left transition hover:bg-surface-container-low/40"
+        >
+          <div className="flex justify-between items-center">
+            <span className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Jamais reçus</span>
+            <div className="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-on-surface-variant/50"><Package size={18} /></div>
+          </div>
+          <div>
+            <h3 className="text-2xl font-extrabold text-on-surface-variant tabular-nums">{etats.jamais}</h3>
+            <p className="text-2xs text-on-surface-variant/60 mt-0.5">fiches créées, aucune marchandise entrée</p>
+          </div>
+        </button>
       </section>
       )}
 
@@ -1111,103 +1207,131 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
 
       {!isInventaire && stockTab === "stock" && (
         <div className="space-y-4">
-          <div className="relative max-w-sm">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/40" />
-            <input value={moveSearch} onChange={(e) => setMoveSearch(e.target.value)} placeholder="Rechercher un ingrédient…"
-              className="w-full pl-9 pr-3 py-2 text-sm bg-surface-container-low border-none rounded-xl outline-none focus:ring-2 focus:ring-primary/20 placeholder:text-on-surface-variant/40" />
+          {/* Recherche + tri */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative flex-1 min-w-[220px] max-w-sm">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/40" />
+              <input value={moveSearch} onChange={(e) => setMoveSearch(e.target.value)} placeholder="Rechercher un produit…"
+                className="w-full pl-9 pr-3 py-2.5 text-sm bg-surface-container-low border-none rounded-xl outline-none focus:ring-2 focus:ring-primary/20 placeholder:text-on-surface-variant/40" />
+            </div>
+            <div className="flex gap-1 p-1 bg-surface-container-low/70 rounded-xl">
+              {([
+                { key: "valeur", label: "Valeur" },
+                { key: "etat", label: "Urgence" },
+                { key: "nom", label: "A → Z" },
+              ] as const).map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setStockTri(key)}
+                  className={clsx(
+                    "px-3 py-1.5 rounded-lg text-2xs font-bold uppercase tracking-wider transition",
+                    stockTri === key ? "bg-surface-container-lowest text-primary shadow-sm" : "text-on-surface-variant/60 hover:text-on-surface-variant",
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
 
+          {/* Filtres par état */}
+          <div className="flex flex-wrap gap-2">
+            {([
+              { key: "tous", label: "Tous", n: etats.total },
+              { key: "commander", label: "À commander", n: nbACommander },
+              { key: "stock", label: "En stock", n: nbEnStock },
+              { key: "jamais", label: "Jamais reçus", n: etats.jamais },
+            ] as const).map(({ key, label, n }) => (
+              <button
+                key={key}
+                onClick={() => setStockFiltre(key)}
+                className={clsx(
+                  "px-3 py-1.5 rounded-full text-xs font-semibold transition",
+                  stockFiltre === key
+                    ? "bg-primary text-on-primary"
+                    : "bg-surface-container-low text-on-surface-variant hover:bg-surface-variant/50",
+                )}
+              >
+                {label} · {n}
+              </button>
+            ))}
+          </div>
+
+          {stockFiltre === "jamais" && (
+            <p className="text-xs text-on-surface-variant/70 bg-surface-container-low/60 rounded-xl px-4 py-3">
+              Ces fiches produit existent mais n&apos;ont jamais reçu de marchandise. C&apos;est normal tant que tu n&apos;as pas
+              commandé ces produits — ce n&apos;est pas une alerte. Si certaines ne te serviront jamais, tu peux les désactiver
+              depuis <strong>Ingrédients</strong> pour alléger tes écrans.
+            </p>
+          )}
+
           <div className="glass-card rounded-2xl overflow-hidden">
-            {stockRows.length === 0 ? (
-              <div className="p-10 text-center text-on-surface-variant/50 text-sm">Aucun ingrédient.</div>
+            {stockVisibles.length === 0 ? (
+              <div className="p-10 text-center text-on-surface-variant/50 text-sm">
+                {moveSearch.trim()
+                  ? `Aucun produit ne correspond à « ${moveSearch.trim()} ».`
+                  : stockFiltre === "commander"
+                    ? "Rien à commander : aucun produit n'est sous son seuil."
+                    : "Aucun produit dans cette vue."}
+              </div>
             ) : (
               <div className="divide-y divide-outline-variant/10">
-                {stockRows.map(({ ing, qty, value, moves }) => {
-                  const open = false; // rows now link to a dedicated history page instead of expanding
-                  const low = needsReorder(ing);
+                {stockVisibles.map(({ ing, qty, value, etat, depuis }) => {
+                  const st = ETAT_STYLE[etat];
                   return (
-                    <div key={ing.id}>
-                      <Link href={`/ingredients/${ing.id}/history`}
-                        className={clsx(
-                          "w-full flex items-center gap-3 px-5 py-4 hover:bg-surface-container-low/40 transition-colors text-left",
-                          low && "border-l-4 border-red/40"
-                        )}>
-                        <div className={clsx("w-10 h-10 rounded-xl flex items-center justify-center shrink-0", low ? "bg-red-light text-red" : "bg-tertiary-fixed text-primary")}>
-                          <Package size={18} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <p className={clsx("text-sm font-semibold truncate", low ? "text-red" : "text-on-surface")}>{ing.name}</p>
-                            {ing.category && (
-                              <span className="inline-flex px-2.5 py-1 rounded-full bg-surface-container text-on-surface-variant text-2xs font-bold uppercase tracking-wide">{ing.category}</span>
-                            )}
-                            {low && (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-red-light text-red text-2xs font-bold uppercase tracking-wide">
-                                <AlertTriangle size={11} /> À commander
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-2xs text-on-surface-variant/50 mt-0.5">{moves.length} mouvement{moves.length !== 1 ? "s" : ""}</p>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <p className={clsx("text-sm font-semibold tabular-nums", low ? "text-red" : "text-on-surface")}>
-                            {formatQty(qty, ing.unit)}
-                            {(() => {
-                              const sec = secOf(ing);
-                              if (!sec) return null;
-                              const n = Number((baseToDisplay(qty, ing.unit) / sec.size).toFixed(1));
-                              return <span className="font-normal text-on-surface-variant/60"> · {fmtNum(n)} {sec.label}{n >= 2 ? "s" : ""}</span>;
-                            })()}
-                          </p>
-                          <p className="text-2xs text-on-surface-variant/50 tabular-nums">{value > 0 ? `€${value.toFixed(2)}` : "—"}</p>
-                        </div>
-                        <ChevronRight size={16} className="text-on-surface-variant/30 shrink-0" />
-                      </Link>
-
-                      {open && (
-                        <div className="bg-surface-container-low/30 border-t border-outline-variant/10 px-5 py-4">
-                          {moves.length === 0 ? (
-                            <p className="text-xs text-on-surface-variant/50 py-2">Aucun mouvement pour ce produit.</p>
-                          ) : (
-                            movesByMonth(moves).map(([mk, ms]) => {
-                              const inQty = ms.filter((m) => m.movement_type === "in").reduce((s, m) => s + m.qty, 0);
-                              const outQty = ms.filter((m) => m.movement_type === "out" || m.movement_type === "loss").reduce((s, m) => s + m.qty, 0);
-                              return (
-                                <div key={mk} className="mb-3 last:mb-0">
-                                  <div className="flex items-center justify-between mb-1">
-                                    <p className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-wide">{monthLabel(mk)}</p>
-                                    <p className="text-2xs text-on-surface-variant/50">
-                                      {inQty > 0 && <span className="text-primary">+{formatQty(inQty, ing.unit)} reçu</span>}
-                                      {inQty > 0 && outQty > 0 && " · "}
-                                      {outQty > 0 && <span className="text-red">-{formatQty(outQty, ing.unit)} sorti</span>}
-                                    </p>
-                                  </div>
-                                  <div className="space-y-1">
-                                    {ms.map((m, i) => {
-                                      const meta = MOVE_META[m.movement_type] ?? MOVE_META.adjustment;
-                                      return (
-                                        <div key={i} className="flex items-center justify-between text-xs bg-surface-container-lowest border border-outline-variant/20 rounded-lg px-3 py-1.5">
-                                          <span className="text-on-surface-variant/70">
-                                            {new Date(m.created_at).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })} · {meta.label}
-                                            {m.loss_reason ? ` (${m.loss_reason})` : ""}
-                                          </span>
-                                          <span className={clsx("font-semibold tabular-nums", meta.color)}>{meta.sign}{formatQty(m.qty, ing.unit)}</span>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              );
-                            })
+                    <Link key={ing.id} href={`/ingredients/${ing.id}/history`}
+                      title={ETAT_AIDE[etat]}
+                      className={clsx(
+                        "w-full flex items-center gap-3 px-5 py-3.5 hover:bg-surface-container-low/40 transition-colors text-left",
+                        st.bordure,
+                      )}>
+                      <div className={clsx("w-10 h-10 rounded-xl flex items-center justify-center shrink-0", st.pastille)}>
+                        <Package size={18} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className={clsx("text-sm font-semibold truncate", st.texte)}>{ing.name}</p>
+                          {ing.category && (
+                            <span className="inline-flex px-2 py-0.5 rounded-full bg-surface-container text-on-surface-variant/70 text-2xs font-bold uppercase tracking-wide">{ing.category}</span>
+                          )}
+                          {etat !== "ok" && (
+                            <span className={clsx("inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-bold uppercase tracking-wide", st.badge)}>
+                              {etat === "rupture" || etat === "bas" ? <AlertTriangle size={10} /> : null}
+                              {ETAT_LABEL[etat]}
+                            </span>
                           )}
                         </div>
-                      )}
-                    </div>
+                        <p className="text-2xs text-on-surface-variant/50 mt-0.5">
+                          {ing.suppliers?.name ? `${ing.suppliers.name} · ` : ""}
+                          {depuis === "jamais reçu" ? "jamais reçu" : `dernier mouvement ${depuis}`}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className={clsx("text-sm font-semibold tabular-nums", st.texte)}>
+                          {formatQty(qty, ing.unit)}
+                          {(() => {
+                            const sec = secOf(ing);
+                            if (!sec) return null;
+                            const n = Number((baseToDisplay(qty, ing.unit) / sec.size).toFixed(1));
+                            return <span className="font-normal text-on-surface-variant/60"> · {fmtNum(n)} {sec.label}{n >= 2 ? "s" : ""}</span>;
+                          })()}
+                        </p>
+                        <p className="text-2xs text-on-surface-variant/50 tabular-nums">{value > 0 ? eur(value) : "—"}</p>
+                      </div>
+                      <ChevronRight size={16} className="text-on-surface-variant/30 shrink-0" />
+                    </Link>
                   );
                 })}
               </div>
             )}
           </div>
+
+          {stockVisibles.length > 0 && (
+            <p className="text-xs text-on-surface-variant/50">
+              💡 Clique une ligne pour voir tout l&apos;historique du produit. « À commander » ne compte que les produits
+              que tu utilises réellement : une fiche jamais reçue n&apos;est pas une alerte.
+            </p>
+          )}
         </div>
       )}
     </div>

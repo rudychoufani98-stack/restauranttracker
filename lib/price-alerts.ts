@@ -17,6 +17,10 @@
 // =====================================================================
 import { summarizePurchases, packSize, type Purchase, type CostSummary } from "./cost-history";
 import { displayUnitLabel, perDisplayUnit, qtyToDisplay } from "./ingredient-helpers";
+import { eur, pct } from "./format";
+
+// Re-exportes : les ecrans qui affichent des alertes formatent aussi des montants.
+export { eur, pct };
 
 /** Au-delà, le prix d'achat a « vraiment » augmenté depuis le premier achat. */
 export const SEUIL_HAUSSE_PCT = 10;
@@ -53,10 +57,6 @@ export type AlertIngredient = {
   unit_size?: number | null;
 };
 
-/** « 12,50 € » — formatage stable, sans dépendre de l'ICU de l'environnement. */
-export const eur = (n: number) => `${(Math.round(n * 100) / 100).toFixed(2).replace(".", ",")} €`;
-/** « +12,4 % » — le signe est porteur de sens ici, on le garde toujours. */
-export const pct = (n: number) => `${n >= 0 ? "+" : "−"}${Math.abs(n).toFixed(1).replace(".", ",")} %`;
 
 /** Prix payé pour UN kg / L / pièce au dernier achat facturé. */
 export function pricePerDisplayUnit(prixColis: number, tailleColis: number): number {
