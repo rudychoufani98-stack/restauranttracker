@@ -1,12 +1,52 @@
 "use client";
 
 import { useState } from "react";
-import { Download, Loader2, Warehouse, ShoppingBasket, ChefHat, ShoppingCart, Trash2, TrendingUp, History, LineChart } from "lucide-react";
+import {
+  Download, Loader2, Warehouse, ShoppingBasket, ChefHat, ShoppingCart,
+  Trash2, TrendingUp, History, LineChart,
+} from "lucide-react";
 
 const ICONS = { Warehouse, ShoppingBasket, ChefHat, ShoppingCart, Trash2, TrendingUp, History, LineChart };
-export type ExportDef = { type: string; icon: keyof typeof ICONS; titre: string; desc: string };
+type ExportDef = { type: string; icon: keyof typeof ICONS; titre: string; desc: string };
 
-export default function ExportsClient({ exports: defs }: { exports: ExportDef[] }) {
+// Tous les chiffres de la plateforme, exportables en Excel — pour le
+// comptable, les analyses ou une sauvegarde.
+const EXPORTS: ExportDef[] = [
+  {
+    type: "inventaire", icon: "Warehouse", titre: "Inventaire valorisé",
+    desc: "Ton stock actuel produit par produit, valorisé au CMUP, avec sous-totaux par catégorie.",
+  },
+  {
+    type: "achats", icon: "ShoppingBasket", titre: "Mercuriale d'achats",
+    desc: "Tous tes produits avec conditionnement, prix HT/TTC, coût au kg/L/pièce et rendement, groupés par fournisseur.",
+  },
+  {
+    type: "recettes", icon: "ChefHat", titre: "Fiches techniques & food cost",
+    desc: "Toutes tes recettes : coût total, coût par portion, prix de vente, food cost % et marge.",
+  },
+  {
+    type: "commandes", icon: "ShoppingCart", titre: "Commandes fournisseurs",
+    desc: "L'historique complet de tes bons de commande, ligne par ligne, avec statuts et totaux.",
+  },
+  {
+    type: "ventes", icon: "TrendingUp", titre: "Ventes & marges",
+    desc: "Tes ventes mois par mois et canal par canal : CA, coût matière, marge et food cost par article.",
+  },
+  {
+    type: "pertes", icon: "Trash2", titre: "Pertes & gaspillage",
+    desc: "Toutes les pertes enregistrées avec cause, quantité et valeur.",
+  },
+  {
+    type: "mouvements", icon: "History", titre: "Journal des mouvements de stock",
+    desc: "Chaque entrée et sortie de stock tracée : réceptions, ventes, pertes, ajustements, inventaires.",
+  },
+  {
+    type: "cout-produit", icon: "LineChart", titre: "Coût produit — évolution des prix",
+    desc: "La version détaillée de l'onglet « Évolution des prix » : variation depuis le premier achat, prix mini/maxi, moyenne pondérée, et le détail facture par facture.",
+  },
+];
+
+export default function ExportsTab() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,7 +87,7 @@ export default function ExportsClient({ exports: defs }: { exports: ExportDef[] 
         <div className="mb-4 text-sm text-red bg-error-container border border-red/20 rounded-xl px-4 py-3">{error}</div>
       )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {defs.map(({ type, icon, titre, desc }) => {
+        {EXPORTS.map(({ type, icon, titre, desc }) => {
           const Icon = ICONS[icon];
           const loading = busy === type;
           return (
@@ -73,6 +113,11 @@ export default function ExportsClient({ exports: defs }: { exports: ExportDef[] 
           );
         })}
       </div>
+
+      <p className="text-xs text-on-surface-variant/50 mt-6">
+        💡 Les fichiers sont générés à l&apos;instant du téléchargement, avec les données à jour. Les coûts sont valorisés
+        au CMUP actuel — sauf la mercuriale d&apos;achats, qui indique le coût net rendement déduit.
+      </p>
     </>
   );
 }

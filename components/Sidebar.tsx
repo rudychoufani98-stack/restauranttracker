@@ -23,6 +23,7 @@ import {
   LogOut,
   Crown,
   FileSpreadsheet,
+  LineChart,
 } from "lucide-react";
 import clsx from "clsx";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -59,9 +60,21 @@ const NAV_GROUPS = [
     items: [
       { href: "/caisse",      label: "Caisse",   icon: CreditCard },
       { href: "/rentabilite", label: "Ventes & marges", icon: TrendingUp },
-      { href: "/exports",     label: "Exports Excel", icon: FileSpreadsheet },
     ],
   },
+  {
+    label: "Statistiques",
+    items: [
+      { href: "/statistiques", label: "Évolution des prix", icon: LineChart },
+      { href: "/statistiques?vue=exports", label: "Exports Excel", icon: FileSpreadsheet },
+    ],
+  },
+];
+
+/** Routes servant deux entrées de menu, départagées par le paramètre ?vue=. */
+const VUES_PARTAGEES = [
+  { base: "/inventaire", param: "inventaire" },
+  { base: "/statistiques", param: "exports" },
 ];
 
 export default function Sidebar({ restaurantName, isAdmin = false }: { restaurantName: string; isAdmin?: boolean }) {
@@ -72,12 +85,14 @@ export default function Sidebar({ restaurantName, isAdmin = false }: { restauran
   const searchParams = useSearchParams();
   const vue = searchParams.get("vue");
 
-  // The two /inventaire entries (Stock vs Inventaire) share one route and are
-  // distinguished by the ?vue=inventaire param; everything else matches by path.
+  // Certaines entrées partagent une même route et ne se distinguent que par
+  // ?vue= (Stock/Inventaire, Évolution des prix/Exports). Sans ce traitement,
+  // les deux entrées du groupe s'allumeraient en même temps.
   function isActive(href: string) {
-    if (href.startsWith("/inventaire")) {
-      if (pathname !== "/inventaire") return false;
-      return href.includes("vue=inventaire") ? vue === "inventaire" : vue !== "inventaire";
+    for (const { base, param } of VUES_PARTAGEES) {
+      if (!href.startsWith(base)) continue;
+      if (pathname !== base) return false;
+      return href.includes(`vue=${param}`) ? vue === param : vue !== param;
     }
     return pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
   }

@@ -6,7 +6,8 @@ import {
   newWorkbook, addTitle, styleHeader, styleSubtotal, styleDelta, autoWidth,
   workbookToResponse, FMT, todayStamp,
 } from "@/lib/excel";
-import { buildPurchaseHistory, summarizePurchases, packSize } from "@/lib/cost-history";
+import { summarizePurchases, packSize } from "@/lib/cost-history";
+import { loadPurchaseHistory } from "@/lib/purchase-history-query";
 
 const displayUnit = (u: string) => (u === "g" || u === "kg" ? "kg" : u === "ml" || u === "l" ? "L" : u === "unit" || u === "piece" ? "pce" : u);
 const qtyDisplay = (base: number, u: string) => (["g", "kg", "ml", "l"].includes(u) ? base / 1000 : base);
@@ -382,50 +383,11 @@ async function exportMouvements(supabase: any, restaurant: any, stamp: string, d
 // L'agrégation vit dans lib/cost-history.ts (testée à part) ; ici on ne fait
 // que charger les données et les mettre en forme.
 
-/** `.in()` par lots : évite une URL trop longue quand l'historique est gros. */
-async function fetchIn(supabase: any, table: string, select: string, column: string, ids: string[]) {
-  const out: any[] = [];
-  for (let i = 0; i < ids.length; i += 200) {
-    const { data } = await supabase.from(table).select(select).in(column, ids.slice(i, i + 200));
-    if (data) out.push(...data);
-  }
-  return out;
-}
-
 async function exportCoutProduit(supabase: any, restaurant: any, stamp: string, dateLabel: string) {
-  const { data: invoices } = await supabase
-    .from("invoices")
-    .select("id, invoice_number, invoice_date, created_at, po_id")
-    .eq("restaurant_id", restaurant.id)
-    .eq("validated", true)
-    .order("invoice_date", { ascending: true });
+  // Chargement partagé avec l'écran Statistiques → Évolution des prix, pour
+  // que le tableau affiché et le classeur téléchargé disent la même chose.
+  const { byIngredient, ingById, invoiceCount } = await loadPurchaseHistory(supabase, restaurant.id);
 
-  const invoiceIds = (invoices ?? []).map((i: any) => i.id);
-  const poIds = Array.from(new Set((invoices ?? []).map((i: any) => i.po_id).filter(Boolean))) as string[];
-
-  const [invLines, pos, poLines, ingRes] = await Promise.all([
-    invoiceIds.length
-      ? fetchIn(supabase, "invoice_lines", "invoice_id, ingredient_id, quantity, unit_price", "invoice_id", invoiceIds)
-      : Promise.resolve([] as any[]),
-    poIds.length
-      ? fetchIn(supabase, "purchase_orders", "id, order_number, suppliers(name)", "id", poIds)
-      : Promise.resolve([] as any[]),
-    poIds.length
-      ? fetchIn(supabase, "purchase_order_lines", "po_id, ingredient_id, expected_price", "po_id", poIds)
-      : Promise.resolve([] as any[]),
-    supabase
-      .from("ingredients")
-      .select("id, name, category, unit, pack_units, unit_size, pack_quantity, cmup, cost_per_base_unit, suppliers(name)")
-      .eq("restaurant_id", restaurant.id),
-  ]);
-
-  const ingById = new Map<string, any>((ingRes.data ?? []).map((i: any) => [i.id, i]));
-  const byIngredient = buildPurchaseHistory({
-    invoices: invoices ?? [],
-    invoiceLines: invLines,
-    purchaseOrders: pos,
-    poLines,
-  });
   const frDate = (iso: string) => (iso ? new Date(iso).toLocaleDateString("fr-FR") : "—");
 
   const wb = newWorkbook();
@@ -443,7 +405,7 @@ async function exportCoutProduit(supabase: any, restaurant: any, stamp: string, 
   let r = addTitle(
     ws,
     `Coût produit — ${restaurant.name}`,
-    `Au ${dateLabel} · évolution du prix d'achat facturé, colis par colis · ${invoiceIds.length} facture${invoiceIds.length !== 1 ? "s" : ""}`,
+    `Au ${dateLabel} · évolution du prix d'achat facturé, colis par colis · ${invoiceCount} facture${invoiceCount !== 1 ? "s" : ""}`,
     headers.length,
   );
   ws.getRow(r).values = headers;
