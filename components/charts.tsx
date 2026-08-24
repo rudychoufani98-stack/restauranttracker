@@ -212,3 +212,40 @@ export function Legend({ items }: { items: { name: string; color: string }[] }) 
     </div>
   );
 }
+
+// ── Mini-courbe (sparkline) ───────────────────────────────────────────
+// Pour une liste : donner la tendance d'un produit en un coup d'œil, sans
+// axes ni légende. Un seul point ne dit rien d'une évolution — on n'affiche
+// alors qu'un repère.
+export function Sparkline({
+  points, color = CHART.orange, width = 72, height = 24, ariaLabel,
+}: {
+  points: { t: number; y: number }[];
+  color?: string;
+  width?: number;
+  height?: number;
+  ariaLabel?: string;
+}) {
+  const pts = [...points].sort((a, b) => a.t - b.t);
+  if (pts.length === 0) return null;
+
+  const pad = 3;
+  const ys = pts.map((p) => p.y);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const spanY = maxY - minY || Math.abs(maxY) || 1;
+  const x = (i: number) => pad + (pts.length === 1 ? (width - pad * 2) / 2 : (i / (pts.length - 1)) * (width - pad * 2));
+  const y = (v: number) => pad + (1 - (v - minY) / spanY) * (height - pad * 2);
+
+  const d = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(p.y)}`).join(" ");
+  const aire = `${d} L ${x(pts.length - 1)} ${height} L ${x(0)} ${height} Z`;
+  const dernier = pts[pts.length - 1];
+
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img"
+      aria-label={ariaLabel ?? "Tendance du prix"} className="shrink-0">
+      {pts.length > 1 && <path d={aire} fill={color} opacity="0.12" />}
+      {pts.length > 1 && <path d={d} fill="none" stroke={color} strokeWidth="1.75" strokeLinejoin="round" strokeLinecap="round" />}
+      <circle cx={x(pts.length - 1)} cy={y(dernier.y)} r="2.5" fill={color} />
+    </svg>
+  );
+}

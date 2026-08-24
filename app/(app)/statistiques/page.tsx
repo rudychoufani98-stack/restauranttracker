@@ -11,6 +11,10 @@ import StatistiquesClient, { type ProduitPrix } from "./StatistiquesClient";
 
 export const dynamic = "force-dynamic";
 
+/** buildPurchaseHistory met « — » quand la commande d'origine est introuvable. */
+const dernierFournisseur = (facture: string, parDefaut?: string | null) =>
+  facture && facture !== "—" ? facture : parDefaut ?? "—";
+
 // Tout le calcul se fait ici, côté serveur : le navigateur ne reçoit que des
 // nombres déjà prêts à afficher. C'est aussi ce qui garantit que l'écran et
 // l'export Excel « Coût produit » racontent la même histoire — ils partagent
@@ -48,7 +52,10 @@ export default async function StatistiquesPage({
       id,
       nom: ing.name ?? "Produit supprimé",
       categorie: ing.category || "Autre",
-      fournisseur: ing.suppliers?.name ?? achats[achats.length - 1].supplier,
+      // Celui qui a RÉELLEMENT facturé le dernier achat prime sur le
+      // fournisseur par défaut de la fiche produit : c'est lui qu'on retrouve
+      // sur la facture, et c'est lui qu'on appellera en cas d'écart.
+      fournisseur: dernierFournisseur(achats[achats.length - 1].supplier, ing.suppliers?.name),
       unite,
       inactif: ing.is_active === false,
       taille,
