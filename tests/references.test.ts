@@ -23,8 +23,36 @@ describe("Familles reconnues", () => {
     expect(familleDe("Légumes")!.debut).toBe(3000);
     expect(familleDe("Fromages")!.debut).toBe(4000);
     expect(familleDe("Épicerie")!.debut).toBe(5000);
-    expect(familleDe("Bières")!.debut).toBe(7000);
-    expect(familleDe("Fournitures")!.debut).toBe(9000);
+    expect(familleDe("Surgelés")!.debut).toBe(7000);
+    expect(familleDe("Fournitures")!.debut).toBe(12000);
+  });
+
+  it("donne à chaque famille d'alcool son PROPRE bloc", () => {
+    // Avec un seul bloc « Boissons », la première catégorie servie l'aurait
+    // pris et les autres seraient parties dans les blocs libres — donc
+    // rangées au hasard. Or la cave se gère et s'inventorie à part.
+    expect(familleDe("Softs")!.debut).toBe(8000);
+    expect(familleDe("Bières")!.debut).toBe(9000);
+    expect(familleDe("Vins")!.debut).toBe(10000);
+    expect(familleDe("Spiritueux")!.debut).toBe(11000);
+    expect(familleDe("Alcools")!.debut).toBe(11000);
+    expect(familleDe("Champagne")!.debut).toBe(10000);
+    expect(familleDe("Apéritifs")!.debut).toBe(11000);
+  });
+
+  it("ne confond pas une eau et un alcool", () => {
+    expect(familleDe("Eaux")!.debut).toBe(8000);
+    expect(familleDe("Softs")!.debut).toBe(8000);
+  });
+
+  it("tranche les noms ambigus par le mot qui porte le sens", () => {
+    // « Jus de fruits » contient « fruits », « Fruits de mer » aussi — et
+    // pourtant l'un est une boisson et l'autre de la marée.
+    expect(familleDe("Jus de fruits")!.debut).toBe(8000);
+    expect(familleDe("Fruits de mer")!.debut).toBe(2000);
+    expect(familleDe("Fruits")!.debut).toBe(3000);
+    expect(familleDe("Vins rouges")!.debut).toBe(10000);
+    expect(familleDe("Herbes fraîches")!.debut).toBe(3000);
   });
 
   it("se moque des accents et de la casse", () => {
@@ -48,7 +76,12 @@ describe("Attribution des blocs aux catégories", () => {
     const p = suggerePlages(cat("Viande", "Épicerie", "Bières"));
     expect(p.get("Viande")).toBe(1000);
     expect(p.get("Épicerie")).toBe(5000);
-    expect(p.get("Bières")).toBe(7000);
+    expect(p.get("Bières")).toBe(9000);
+  });
+
+  it("fait cohabiter les quatre familles de boissons d'une vraie carte", () => {
+    const p = suggerePlages(cat("Softs", "Bières", "Vins", "Spiritueux"));
+    expect(Array.from(p.values()).sort((a, b) => a - b)).toEqual([8000, 9000, 10000, 11000]);
   });
 
   it("case les catégories inconnues après les familles connues", () => {

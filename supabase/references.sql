@@ -3,7 +3,8 @@
 --  À EXÉCUTER dans Supabase → SQL Editor. Idempotent (relançable).
 --
 --  1) Chaque produit reçoit un numéro interne unique, attribué par blocs
---     de famille : 1xxx = viandes, 5xxx = épicerie, 7xxx = boissons…
+--     de famille : 1xxx = viandes, 5xxx = épicerie, 9xxx = bières,
+--     10xxx = vins, 11xxx = spiritueux…
 --     Le premier chiffre dit la famille, ce qui rend le numéro lisible
 --     à l'œil sur un bon de commande ou une étiquette de bac.
 --

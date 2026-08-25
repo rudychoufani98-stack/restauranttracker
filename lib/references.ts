@@ -5,11 +5,19 @@
 //  bon de commande ou une étiquette de bac, on sait qu'on est en épicerie
 //  sans rien consulter.
 //
-//    1xxx  Viandes            5xxx  Épicerie
-//    2xxx  Poissons           6xxx  Boulangerie & pâtisserie
-//    3xxx  Fruits & légumes   7xxx  Boissons
-//    4xxx  Crèmerie           8xxx  Surgelés
-//                             9xxx  Fournitures & emballages
+//    1xxx  Viandes                 7xxx  Surgelés
+//    2xxx  Poissons                8xxx  Boissons sans alcool
+//    3xxx  Fruits & légumes        9xxx  Bières & cidres
+//    4xxx  Crèmerie & fromages    10xxx  Vins & champagnes
+//    5xxx  Épicerie               11xxx  Spiritueux & apéritifs
+//    6xxx  Boulangerie            12xxx  Fournitures & emballages
+//
+//  L'alcool occupe TROIS blocs distincts, et ce n'est pas du luxe : la
+//  cave se gère et s'inventorie à part, sa TVA n'est pas celle de la
+//  nourriture, et un seul bloc « Boissons » aurait envoyé les vins et les
+//  spiritueux dans les blocs libres — donc rangés au hasard.
+//  Bénéfice au passage : le coût boissons se sépare du coût matière d'un
+//  simple regard sur le premier chiffre.
 //
 //  Des blocs de MÊME taille, sans chevauchement : « viandes 0-100 puis
 //  épicerie 100-1000 » se marcherait dessus dès le centième produit, et
@@ -32,13 +40,16 @@ export const FAMILLES: Famille[] = [
   { debut: 4000, nom: "Crèmerie & fromages", motsCles: ["cremerie", "fromage", "fromages", "laitier", "laitiers", "lait", "beurre", "creme", "oeuf", "oeufs", "yaourt"] },
   { debut: 5000, nom: "Épicerie", motsCles: ["epicerie", "huile", "huiles", "sauce", "sauces", "condiment", "condiments", "herbe", "herbes", "epice", "epices", "grain", "grains", "riz", "pate", "pates", "conserve", "conserves", "farine", "sucre", "sec", "secs", "legumineuse"] },
   { debut: 6000, nom: "Boulangerie & pâtisserie", motsCles: ["pain", "pains", "boulangerie", "patisserie", "viennoiserie", "viennoiseries", "dessert", "desserts"] },
-  { debut: 7000, nom: "Boissons", motsCles: ["boisson", "boissons", "soft", "softs", "biere", "bieres", "vin", "vins", "alcool", "alcools", "spiritueux", "eau", "eaux", "jus", "cafe", "the", "cave"] },
-  { debut: 8000, nom: "Surgelés", motsCles: ["surgele", "surgeles", "congele", "congeles", "glace", "glaces", "sorbet"] },
-  { debut: 9000, nom: "Fournitures & emballages", motsCles: ["fourniture", "fournitures", "emballage", "emballages", "entretien", "hygiene", "consommable", "consommables", "gobelet", "gobelets", "barquette", "serviette", "produit menager"] },
+  { debut: 7000, nom: "Surgelés", motsCles: ["surgele", "surgeles", "congele", "congeles", "glace", "glaces", "sorbet"] },
+  { debut: 8000, nom: "Boissons sans alcool", motsCles: ["boisson", "boissons", "soft", "softs", "soda", "sodas", "eau", "eaux", "jus", "cafe", "the", "infusion", "sirop", "sirops"] },
+  { debut: 9000, nom: "Bières & cidres", motsCles: ["biere", "bieres", "cidre", "cidres", "pression"] },
+  { debut: 10000, nom: "Vins & champagnes", motsCles: ["vin", "vins", "champagne", "champagnes", "cave", "rouge", "blanc", "rose", "petillant"] },
+  { debut: 11000, nom: "Spiritueux & apéritifs", motsCles: ["spiritueux", "alcool", "alcools", "aperitif", "aperitifs", "digestif", "digestifs", "whisky", "vodka", "rhum", "gin", "liqueur", "liqueurs", "cocktail", "cocktails"] },
+  { debut: 12000, nom: "Fournitures & emballages", motsCles: ["fourniture", "fournitures", "emballage", "emballages", "entretien", "hygiene", "consommable", "consommables", "gobelet", "gobelets", "barquette", "serviette", "produit menager"] },
 ];
 
 /** Premier bloc laissé aux catégories que l'on ne reconnaît pas. */
-export const PREMIER_BLOC_LIBRE = 10000;
+export const PREMIER_BLOC_LIBRE = 13000;
 
 /** « 5042 » — toujours au moins 4 chiffres, pour que le tri texte marche. */
 export function formatRef(n: number | null | undefined): string {
@@ -46,19 +57,36 @@ export function formatRef(n: number | null | undefined): string {
   return String(Math.trunc(Number(n))).padStart(4, "0");
 }
 
-/** La famille dont un nom de catégorie relève, ou null si on ne sait pas. */
+/**
+ * La famille dont un nom de catégorie relève, ou null si on ne sait pas.
+ *
+ * L'ordre des tentatives compte, parce que les noms de catégories sont
+ * ambigus : « Jus de fruits » contient « fruits » mais c'est une boisson,
+ * et « Fruits de mer » contient « fruits » mais c'est de la marée.
+ */
 export function familleDe(nomCategorie: string): Famille | null {
   const t = normalise(nomCategorie);
   if (!t) return null;
-
-  // Un mot-clé qui EST le nom de la catégorie l'emporte sur un simple
-  // fragment : « Pâtes » ne doit pas basculer en boulangerie via « patisserie ».
-  for (const f of FAMILLES) if (f.motsCles.some((m) => normalise(m) === t)) return f;
-
   const mots = t.split(" ").filter(Boolean);
+  const cle = (m: string) => normalise(m);
+
+  // 1. Le nom EST un mot-clé. « Pâtes » ne doit pas basculer en boulangerie
+  //    par le fragment « patisserie ».
+  for (const f of FAMILLES) if (f.motsCles.some((m) => cle(m) === t)) return f;
+
+  // 2. Un mot-clé en PLUSIEURS mots apparaît tel quel : « Fruits de mer »
+  //    est de la marée, pas du primeur.
   for (const f of FAMILLES) {
-    if (f.motsCles.some((m) => mots.includes(normalise(m)))) return f;
+    if (f.motsCles.some((m) => cle(m).includes(" ") && t.includes(cle(m)))) return f;
   }
+
+  // 3. Le PREMIER mot décide : en français c'est lui qui porte le sens.
+  //    « Jus de fruits » est un jus ; « Vins rouges » est un vin.
+  for (const f of FAMILLES) if (f.motsCles.some((m) => cle(m) === mots[0])) return f;
+
+  // 4. À défaut, n'importe quel mot du nom.
+  for (const f of FAMILLES) if (f.motsCles.some((m) => mots.includes(cle(m)))) return f;
+
   return null;
 }
 
