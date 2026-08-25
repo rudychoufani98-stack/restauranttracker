@@ -8,7 +8,7 @@ import { Plus, Search, Trash2, Check, ChevronDown, Copy, Package, Layers, Trendi
 import { Card, Button, Input, Select, Modal, Alert, EmptyState } from "@/components/ui";
 import clsx from "clsx";
 import { useConfirm, useAlert } from "@/components/ConfirmDialog";
-import { formatRef, attribueReferences, TAILLE_BLOC } from "@/lib/references";
+import { formatRef, attribueReferences, normaliseRefCaisse, TAILLE_BLOC } from "@/lib/references";
 
 // L'interface ne parle que kg / L / pièce (g/ml restent internes).
 const UNIT_CHOICES = [
@@ -38,6 +38,8 @@ type Ingredient = {
   pack_description: string | null; pack_price: number; pack_quantity: number;
   unit: string; cost_per_base_unit: number; cmup?: number | null; vat_rate: number;
   selling_price: number | null;
+  /** Touche de caisse, pour un produit vendu tel quel (un Coca, une bière). */
+  pos_ref?: string | null;
   pack_units?: number | null; unit_size?: number | null; yield_pct?: number | null;
   reorder_threshold?: number | null;
   supplier_reference?: string | null;
@@ -93,7 +95,7 @@ const EMPTY_FORM = {
   name: "", category: "Légumes/Fruits", supplier_id: "",
   pack_description: "", pack_price: "",
   pack_units: "1", unit_size: "", unit: "kg", supplier_reference: "",
-  yield_pct: "100", reorder_threshold: "0", vat_rate: "0", selling_price: "",
+  yield_pct: "100", reorder_threshold: "0", vat_rate: "0", selling_price: "", pos_ref: "",
 };
 
 function toBaseUnits(qty: number, unit: string): number {
@@ -219,6 +221,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
       supplier_reference: ing.supplier_reference ?? "",
       vat_rate: String(ing.vat_rate ?? 0),
       selling_price: ing.selling_price != null ? String(ing.selling_price) : "",
+      pos_ref: ing.pos_ref ?? "",
     });
     setSupplierLines((ing.ingredient_suppliers ?? []).map((s) => ({
       id: s.id,
@@ -319,6 +322,9 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
       supplier_reference: form.supplier_reference || null,
       cost_per_base_unit, vat_rate: vat,
       selling_price: selling,
+      // Une touche de caisse n'a de sens que pour un produit revendu tel
+      // quel : on ne la garde pas sur un ingrédient de recette.
+      pos_ref: selling != null ? (normaliseRefCaisse(form.pos_ref) || null) : null,
       allergens: selectedAllergens,
       restaurant_id: restaurantId,
       updated_at: new Date().toISOString(),
@@ -542,6 +548,14 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
     setAttribuant(false);
     router.refresh();
   }
+
+  // Deux articles ne peuvent pas partager une touche de caisse : la vente
+  // serait imputée au mauvais produit.
+  const toucheDejaPrise = (() => {
+    const t = normaliseRefCaisse(form.pos_ref);
+    if (!t) return false;
+    return ingredients.some((i) => i.id !== editingId && normaliseRefCaisse(i.pos_ref ?? "") === t);
+  })();
 
   async function handleDuplicate(ing: Ingredient) {
     setDuplicatingId(ing.id);
@@ -937,6 +951,24 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                       placeholder="ex. 2.00"
                       className="w-full pl-6 pr-3 py-2 text-sm bg-white border border-blue-200 rounded-lg outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition" />
                   </div>
+                  {form.selling_price !== "" && (
+                    <>
+                      <label className="block text-xs font-medium text-gray-600 mb-1.5 mt-3">Référence de caisse</label>
+                      <input
+                        value={form.pos_ref}
+                        onChange={(e) => setForm({ ...form, pos_ref: e.target.value })}
+                        placeholder="ex. BOI04"
+                        className="w-full px-3 py-2 text-sm bg-white border border-blue-200 rounded-lg outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition" />
+                      <p className="text-xs text-blue-500 mt-1">
+                        Le code de la touche qui vend ce produit sur ta caisse.
+                      </p>
+                      {toucheDejaPrise && (
+                        <p className="text-xs text-red-600 mt-1">
+                          Cette touche est déjà utilisée par un autre produit — deux articles ne peuvent pas partager la même.
+                        </p>
+                      )}
+                    </>
+                  )}
                 </div>
                 {form.selling_price && parseFloat(form.selling_price) > 0 && priceHT > 0 && (
                   <div className="px-3 py-2.5 bg-white border border-blue-200 rounded-lg">

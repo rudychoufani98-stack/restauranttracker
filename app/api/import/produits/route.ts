@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getRestaurant } from "@/lib/auth";
 import { newWorkbook, autoWidth, styleHeader, addTitle, workbookToResponse, todayStamp } from "@/lib/excel";
 import { selectIngredients } from "@/lib/ingredients-query";
+import { familleDe, familleDuNom, categorieGenerique, prochaineRef, PREMIER_BLOC_LIBRE } from "@/lib/references";
 import { qtyToDisplay, displayUnitLabel as displayUnit } from "@/lib/ingredient-helpers";
 import {
   analyseTableau, parseCsv, normalise, CHAMP_LABEL,
@@ -244,6 +245,15 @@ export async function PUT(req: Request) {
   const ctx = await contexte(supabase, restaurant.id);
 
   const fournisseurs = new Map(ctx.fournisseurs);
+
+  // Un produit créé sans numéro en reçoit un tout de suite : sinon il
+  // faudrait penser à cliquer « Numéroter » après chaque import, et une
+  // fiche sans référence finit toujours par gêner quelqu'un.
+  const refsPrises = new Set<number>(ctx.refsPrises ?? []);
+  const blocDe = (nom: string, categorie: string): number =>
+    (categorieGenerique(categorie) ? null : familleDe(categorie)?.debut ?? null)
+    ?? familleDuNom(nom)
+    ?? PREMIER_BLOC_LIBRE;
   let crees = 0, misAJour = 0;
   const echecs: { nom: string; raison: string }[] = [];
 
@@ -293,12 +303,19 @@ export async function PUT(req: Request) {
         if (error) throw new Error(error.message);
         misAJour++;
       } else {
+        // Numéro interne : celui du fichier, ou le prochain libre du bloc
+        // que la catégorie — ou à défaut le NOM du produit — désigne.
+        let ref = p.internal_ref;
+        if (ref == null) ref = prochaineRef(blocDe(p.name, p.category), refsPrises);
+        if (ref != null) refsPrises.add(ref);
+
         // Le CMUP part du prix d'achat : sans lui, un stock initial ne vaudrait rien.
         const { error } = await supabase.from("ingredients").insert({
           ...payload,
           restaurant_id: restaurant.id,
           stock_qty: p.stock_qty ?? 0,
           cmup: p.cost_per_base_unit,
+          ...(ref != null ? { internal_ref: ref } : {}),
         });
         if (error) throw new Error(error.message);
         crees++;

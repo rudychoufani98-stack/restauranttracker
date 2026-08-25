@@ -34,12 +34,23 @@ create unique index if not exists idx_recipes_pos_ref
   on recipes(restaurant_id, lower(pos_ref))
   where pos_ref is not null and pos_ref <> '';
 
+
+-- 4) Touche de caisse sur les PRODUITS vendus tels quels (un Coca, une
+--    bière) : ils passent en caisse au meme titre qu un plat, sans fiche
+--    technique. Sans ca, la moitie du plan de caisse serait introuvable.
+alter table ingredients add column if not exists pos_ref text;
+
+create unique index if not exists idx_ingredients_pos_ref
+  on ingredients(restaurant_id, lower(pos_ref))
+  where pos_ref is not null and pos_ref <> '';
+
 -- =====================================================================
---  Vérification — doit renvoyer 3 lignes
+--  Vérification — doit renvoyer 4 lignes
 -- =====================================================================
 select table_name, column_name
 from information_schema.columns
 where (table_name = 'ingredients' and column_name = 'internal_ref')
    or (table_name = 'categories'  and column_name = 'ref_start')
    or (table_name = 'recipes'     and column_name = 'pos_ref')
+   or (table_name = 'ingredients' and column_name = 'pos_ref')
 order by table_name;

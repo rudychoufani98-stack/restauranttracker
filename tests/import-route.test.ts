@@ -63,6 +63,14 @@ describe("Import de produits — parcours complet", () => {
     const fournisseurCree = ecrits.filter((e) => e.t === "suppliers");
     expect(fournisseurCree).toHaveLength(1);            // Metro réutilisé, pas recréé
     expect(fournisseurCree[0].v.name).toBe("Nouveau Grossiste");
+    // Chaque produit CREE repart avec un numero interne, sans clic en plus,
+    // et dans le bloc que son nom ou sa categorie designe.
+    const crees = ecrits.filter((e) => e.t === "ingredients" && !e.op);
+    expect(crees.every((e) => Number.isFinite(e.v.internal_ref))).toBe(true);
+    const parNom = new Map(crees.map((e) => [e.v.name, e.v.internal_ref]));
+    expect(Math.floor(parNom.get("Tomate grappe") / 1000)).toBe(3);   // legumes
+    expect(Math.floor(parNom.get("Coca 33 cl") / 1000)).toBe(8);      // softs
+
     const maj = ecrits.find((e) => e.op === "update");
     expect(maj.v.stock_qty).toBeUndefined();            // le stock d'un produit suivi n'est pas écrasé
   });

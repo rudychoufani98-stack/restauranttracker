@@ -9,7 +9,7 @@
 import { describe, it, expect } from "vitest";
 import {
   formatRef, familleDe, suggerePlages, prochaineRef, attribueReferences,
-  normaliseRefCaisse, refCaisseEnDouble,
+  normaliseRefCaisse, refCaisseEnDouble, familleDuNom, categorieGenerique,
   TAILLE_BLOC, PREMIER_BLOC_LIBRE,
 } from "@/lib/references";
 
@@ -228,5 +228,88 @@ describe("Référence de caisse des recettes", () => {
       { id: "1", name: "A", pos_ref: "" },
       { id: "2", name: "B", pos_ref: null },
     ])).toEqual([]);
+  });
+});
+
+describe("Le NOM du produit sauve un catalogue mal rangé", () => {
+  // Les vrais produits vus sur l'écran d'Amaly, tous rangés dans « Autre ».
+  const catalogue = [
+    { id: "a", name: "Acide citrique", category: "Autre" },
+    { id: "b", name: "Agneau de lait", category: "Autre" },
+    { id: "c", name: "Ail", category: "Autre" },
+    { id: "d", name: "Ailes de poulet halal", category: "Viande" },
+    { id: "e", name: "Almaza 33 cl", category: "Bières" },
+    { id: "f", name: "Tahina Tiba 18kg", category: "Épicerie" },
+    { id: "g", name: "Coca Cola 33 cl", category: "Autre" },
+  ];
+
+  it("range chaque produit dans sa vraie famille malgré « Autre »", () => {
+    const r = attribueReferences(catalogue, cat("Autre", "Viande", "Bières", "Épicerie"));
+    const par = new Map(r.attributions.map((a) => [a.nom, a.ref]));
+
+    expect(Math.floor(par.get("Agneau de lait")! / 1000)).toBe(1);    // viandes
+    expect(Math.floor(par.get("Ailes de poulet halal")! / 1000)).toBe(1);
+    expect(Math.floor(par.get("Ail")! / 1000)).toBe(3);               // légumes
+    expect(Math.floor(par.get("Acide citrique")! / 1000)).toBe(5);    // épicerie
+    expect(Math.floor(par.get("Tahina Tiba 18kg")! / 1000)).toBe(5);
+    expect(Math.floor(par.get("Coca Cola 33 cl")! / 1000)).toBe(8);   // softs
+    expect(Math.floor(par.get("Almaza 33 cl")! / 1000)).toBe(9);      // bières
+    expect(r.refuses).toEqual([]);
+  });
+
+  it("aucun produit ne reste dans le bloc fourre-tout", () => {
+    const r = attribueReferences(catalogue, cat("Autre", "Viande", "Bières", "Épicerie"));
+    expect(r.attributions.every((a) => a.ref < PREMIER_BLOC_LIBRE)).toBe(true);
+  });
+});
+
+describe("Reconnaissance par le nom", () => {
+  it("le premier mot porte le sens", () => {
+    // « Agneau de lait » est un agneau, pas du lait.
+    expect(familleDuNom("Agneau de lait")).toBe(1000);
+    expect(familleDuNom("Lait entier")).toBe(4000);
+    // « Pommes de terre » : la pomme de terre reste au rayon légumes.
+    expect(familleDuNom("Pommes de terre")).toBe(3000);
+  });
+
+  it("trouve le mot utile même en fin de nom", () => {
+    expect(familleDuNom("Ailes de poulet halal")).toBe(1000);
+  });
+
+  it("une découpe ne décide qu'à défaut d'autre chose", () => {
+    // « filet » vaut pour une viande comme pour un poisson : c'est le mot
+    // qui l'accompagne qui tranche.
+    expect(familleDuNom("Filet de saumon fumé")).toBe(2000);
+    expect(familleDuNom("Filet de bœuf")).toBe(1000);
+    expect(familleDuNom("Filet mignon")).toBe(1000);
+    expect(familleDuNom("Côte de bœuf")).toBe(1000);
+    expect(familleDuNom("Escalope de dinde")).toBe(1000);
+  });
+
+  it("comprend les produits d'une carte libanaise", () => {
+    expect(familleDuNom("Tahina Tiba 18kg")).toBe(5000);
+    expect(familleDuNom("Labneh")).toBe(4000);
+    expect(familleDuNom("Pain pita")).toBe(6000);
+    expect(familleDuNom("Arak")).toBe(10000);
+  });
+
+  it("reconnaît les boissons par leur marque", () => {
+    expect(familleDuNom("Coca Cola 33 cl")).toBe(8000);
+    expect(familleDuNom("Almaza 33 cl")).toBe(9000);
+    expect(familleDuNom("Perrier 50 cl")).toBe(8000);
+  });
+
+  it("ne devine rien quand le nom ne dit rien", () => {
+    expect(familleDuNom("Article 4521")).toBeNull();
+    expect(familleDuNom("")).toBeNull();
+  });
+
+  it("la catégorie garde la main quand elle classe vraiment", () => {
+    // Le restaurateur a rangé son « Filet de saumon » en Poissons : on le suit.
+    const r = attribueReferences(
+      [{ id: "x", name: "Filet de saumon fumé", category: "Poissons" }],
+      cat("Poissons"),
+    );
+    expect(Math.floor(r.attributions[0].ref / 1000)).toBe(2);
   });
 });

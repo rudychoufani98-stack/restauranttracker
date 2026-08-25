@@ -48,6 +48,92 @@ export const FAMILLES: Famille[] = [
   { debut: 12000, nom: "Fournitures & emballages", motsCles: ["fourniture", "fournitures", "emballage", "emballages", "entretien", "hygiene", "consommable", "consommables", "gobelet", "gobelets", "barquette", "serviette", "produit menager"] },
 ];
 
+/**
+ * Catégories qui ne classent rien : quand un produit porte l'une d'elles,
+ * c'est son NOM qui doit décider de sa famille.
+ */
+const CATEGORIES_GENERIQUES = ["autre", "autres", "divers", "non classe", "sans categorie", "a classer"];
+
+/**
+ * Vocabulaire des noms de PRODUITS, par bloc de famille.
+ *
+ * Sur un catalogue réel, la moitié des fiches est rangée dans « Autre » —
+ * les numéroter sur la seule foi de la catégorie n'apprendrait rien. Le nom,
+ * lui, dit presque toujours la vérité : « Agneau de lait » est une viande,
+ * « Ailes de poulet halal » aussi.
+ *
+ * Cette liste n'a pas vocation à être exhaustive : elle couvre ce qu'on
+ * rencontre vraiment, et tout ce qu'elle ne reconnaît pas retombe sur la
+ * catégorie, comme avant.
+ */
+export const MOTS_PRODUITS: Record<number, string[]> = {
+  1000: [
+    "agneau", "boeuf", "veau", "porc", "poulet", "poule", "dinde", "canard", "lapin", "mouton",
+    "entrecote", "bavette", "onglet", "gigot", "epaule", "collier", "jarret", "abats", "foie",
+    "merguez", "chipolata", "saucisse", "saucisses", "jambon", "bacon", "lardons", "chorizo",
+    "kefta", "kafta", "chawarma", "shawarma", "taouk", "kebab", "viande", "halal", "carcasse",
+  ],
+  2000: [
+    "saumon", "thon", "cabillaud", "colin", "merlu", "dorade", "daurade",
+    "truite", "sardine", "sardines", "anchois", "maquereau", "crevette", "crevettes", "gambas",
+    "moule", "moules", "huitre", "huitres", "calamar", "calamars", "poulpe", "encornet", "seiche",
+    "homard", "langoustine", "langoustines", "crabe", "poisson", "surimi",
+  ],
+  3000: [
+    "tomate", "tomates", "salade", "laitue", "roquette", "concombre", "courgette", "courgettes",
+    "aubergine", "aubergines", "poivron", "poivrons", "oignon", "oignons", "ail", "echalote",
+    "carotte", "carottes", "pomme", "pommes", "patate", "navet", "poireau", "celeri", "chou",
+    "champignon", "champignons", "epinard", "epinards", "haricot", "haricots", "petit pois",
+    "citron", "citrons", "orange", "oranges", "banane", "bananes", "fraise", "fraises", "raisin",
+    "melon", "pasteque", "avocat", "avocats", "persil", "coriandre", "menthe", "basilic", "aneth",
+    "radis", "betterave", "courge", "potiron", "gingembre", "grenade", "figue", "figues", "datte", "dattes",
+  ],
+  4000: [
+    "lait", "beurre", "creme", "yaourt", "yaourts", "fromage", "mozzarella", "feta", "halloumi",
+    "labneh", "labne", "akkawi", "kachkaval", "gruyere", "emmental", "parmesan", "comte", "chevre",
+    "ricotta", "mascarpone", "oeuf", "oeufs", "cheddar", "raclette",
+  ],
+  5000: [
+    "huile", "vinaigre", "sel", "poivre", "sucre", "farine", "riz", "boulgour", "semoule",
+    "couscous", "lentille", "lentilles", "pois chiche", "pois chiches", "haricot sec", "quinoa",
+    "tahina", "tahini", "houmous", "melasse", "sumac", "zaatar", "za atar", "cumin", "curcuma",
+    "paprika", "cannelle", "muscade", "curry", "safran", "origan", "thym", "laurier", "epice", "epices",
+    "sauce", "ketchup", "mayonnaise", "moutarde", "harissa", "concentre", "conserve", "bocal",
+    "olive", "olives", "cornichon", "cornichons", "miel", "confiture", "levure", "bicarbonate",
+    "acide", "citrique", "amidon", "gelatine", "agar", "sesame", "noix", "amande", "amandes",
+    "pistache", "pistaches", "noisette", "cacahuete", "chocolat", "cacao", "vanille", "pate", "pates",
+  ],
+  6000: ["pain", "pita", "baguette", "brioche", "croissant", "biscuit", "biscuits", "gateau", "tarte", "feuille de brick", "filo", "kunafa", "baklava"],
+  7000: ["surgele", "surgelee", "congele", "congelee", "glace", "glaces", "sorbet", "frite", "frites"],
+  8000: [
+    "eau", "eaux", "jus", "soda", "limonade", "sirop", "cafe", "the", "infusion", "tisane",
+    "coca", "cola", "pepsi", "fanta", "sprite", "seven up", "orangina", "schweppes", "perrier",
+    "evian", "vittel", "badoit", "san pellegrino", "ice tea", "red bull", "ayran", "jallab",
+  ],
+  9000: ["biere", "bieres", "cidre", "almaza", "heineken", "kronenbourg", "corona", "desperados", "leffe", "1664", "beirut beer", "961"],
+  10000: ["vin", "vins", "champagne", "prosecco", "arak", "chardonnay", "merlot", "cabernet", "rose", "bordeaux", "ksara"],
+  11000: ["whisky", "vodka", "rhum", "gin", "tequila", "liqueur", "cognac", "armagnac", "porto", "martini", "aperol", "campari", "triple sec", "curacao"],
+  12000: [
+    "gobelet", "gobelets", "serviette", "serviettes", "barquette", "barquettes", "sac", "sacs",
+    "papier", "aluminium", "film", "essuie", "detergent", "javel", "liquide vaisselle", "gant",
+    "gants", "couvercle", "couvercles", "boite a emporter", "carton", "cartons", "paille", "pailles",
+  ],
+};
+
+/**
+ * Mots qui n'engagent presque rien tout seuls : une découpe s'applique
+ * aussi bien à une viande qu'à un poisson, et « bar », « sole » ou « lieu »
+ * sont des mots courants du français avant d'être des poissons.
+ *
+ * Ils ne décident qu'en DERNIER recours : « Filet de saumon » est un
+ * saumon, « Filet mignon » est une viande.
+ */
+export const MOTS_FAIBLES: Record<number, string[]> = {
+  1000: ["filet", "filets", "cote", "cotes", "escalope", "escalopes", "aile", "ailes",
+         "cuisse", "cuisses", "hache", "steak", "brochette", "brochettes"],
+  2000: ["bar", "sole", "lieu", "raie"],
+};
+
 /** Premier bloc laissé aux catégories que l'on ne reconnaît pas. */
 export const PREMIER_BLOC_LIBRE = 13000;
 
@@ -87,6 +173,43 @@ export function familleDe(nomCategorie: string): Famille | null {
   // 4. À défaut, n'importe quel mot du nom.
   for (const f of FAMILLES) if (f.motsCles.some((m) => mots.includes(cle(m)))) return f;
 
+  return null;
+}
+
+/** Un nom de catégorie qui ne classe rien (« Autre », « Divers », vide). */
+export function categorieGenerique(nom: string | null | undefined): boolean {
+  const t = normalise(String(nom ?? ""));
+  return !t || CATEGORIES_GENERIQUES.includes(t);
+}
+
+/**
+ * Le bloc que le NOM d'un produit désigne, ou null.
+ *
+ * Même précédence que pour les catégories : un mot-clé en plusieurs mots
+ * d'abord (« pois chiche »), puis le premier mot (« Agneau de lait » est un
+ * agneau, pas du lait), puis n'importe quel mot (« Ailes de poulet »).
+ */
+export function familleDuNom(nomProduit: string): number | null {
+  const t = normalise(String(nomProduit ?? ""));
+  if (!t) return null;
+  const mots = t.split(" ").filter(Boolean);
+  const blocs = Object.keys(MOTS_PRODUITS).map(Number).sort((a, b) => a - b);
+
+  for (const b of blocs) {
+    if (MOTS_PRODUITS[b].some((m) => m.includes(" ") && t.includes(normalise(m)))) return b;
+  }
+  for (const b of blocs) {
+    if (MOTS_PRODUITS[b].some((m) => normalise(m) === mots[0])) return b;
+  }
+  for (const b of blocs) {
+    if (MOTS_PRODUITS[b].some((m) => mots.includes(normalise(m)))) return b;
+  }
+
+  // Dernier recours : les mots faibles. « Filet mignon » n'a rien d'autre
+  // pour se faire reconnaître, mais « Filet de saumon » est déjà parti.
+  for (const b of Object.keys(MOTS_FAIBLES).map(Number).sort((x, y) => x - y)) {
+    if (MOTS_FAIBLES[b].some((m) => mots.includes(normalise(m)))) return b;
+  }
   return null;
 }
 
@@ -188,8 +311,17 @@ export function attribueReferences(
 
   for (const p of aNumeroter) {
     const categorie = p.category || "Autre";
-    const debut = plages.get(categorie);
-    if (debut === undefined) {
+
+    // Précédence : un bloc réglé à la main, puis une catégorie qui classe
+    // vraiment, puis le NOM du produit, puis le bloc de repli de la
+    // catégorie. C'est le 3ᵉ cas qui sauve un catalogue où tout est rangé
+    // dans « Autre » — sans lui, tous les produits auraient le même préfixe.
+    const regleAlaMain = categories.find((c) => c.name === categorie)?.ref_start ?? null;
+    const parCategorie = categorieGenerique(categorie) ? null : familleDe(categorie)?.debut ?? null;
+    const parNom = familleDuNom(p.name);
+    const debut = regleAlaMain ?? parCategorie ?? parNom ?? plages.get(categorie);
+
+    if (debut === undefined || debut === null) {
       refuses.push({ nom: p.name, raison: `Catégorie « ${categorie} » sans bloc de numérotation.` });
       continue;
     }
