@@ -186,14 +186,23 @@ export default function ImportClient() {
               <div className="flex-1">
                 <h2 className="text-base font-semibold text-on-surface">Tu n&apos;as pas de fichier prêt ?</h2>
                 <p className="text-sm text-on-surface-variant/70 mt-1 mb-3">
-                  Télécharge le modèle : il contient deux exemples remplis et une feuille qui explique chaque colonne.
+                  Télécharge <strong>ton catalogue actuel</strong> pour corriger en masse des catégories, des conditionnements ou des prix — un produit dont le nom ne change pas est mis à jour, jamais dupliqué. Ou pars du modèle vierge.
                 </p>
-                <a
-                  href="/api/import/produits"
-                  className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-on-surface-variant border border-outline-variant/40 rounded-xl hover:bg-surface-container-low transition"
-                >
-                  <Download size={15} /> Télécharger le modèle Excel
-                </a>
+                <div className="flex flex-wrap gap-2">
+                  <a
+                    href="/api/import/produits"
+                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-on-surface-variant border border-outline-variant/40 rounded-xl hover:bg-surface-container-low transition"
+                  >
+                    <Download size={15} /> Modèle vierge
+                  </a>
+                  <a
+                    href="/api/import/produits?catalogue=1"
+                    title="Tes produits actuels, dans le format d’import — pour les corriger en masse"
+                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-on-primary bg-primary rounded-xl hover:bg-primary-container transition"
+                  >
+                    <Download size={15} /> Mon catalogue actuel
+                  </a>
+                </div>
               </div>
             </div>
             <p className="text-xs text-on-surface-variant/50 mt-4">

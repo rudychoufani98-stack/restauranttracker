@@ -69,8 +69,35 @@ describe("Import de produits — parcours complet", () => {
 
   it("le modèle Excel se génère", async () => {
     const { GET } = await import("@/app/api/import/produits/route");
-    const res = await GET();
+    const res = await GET(new Request("http://x/api/import/produits"));
     expect(res.status).toBe(200);
     expect((await res.arrayBuffer()).byteLength).toBeGreaterThan(3000);
+  });
+});
+
+describe("Catalogue exportable — l'aller-retour", () => {
+  it("rend les produits existants dans le format que l'import sait relire", async () => {
+    const { GET } = await import("@/app/api/import/produits/route");
+    const res = await GET(new Request("http://x/api/import/produits?catalogue=1"));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Disposition")).toContain("Catalogue_");
+
+    // On relit le classeur produit et on vérifie que l'analyse le comprend.
+    const ExcelJS = (await import("exceljs")).default;
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(await res.arrayBuffer());
+    const ws = wb.worksheets[0];
+
+    const lignes: unknown[][] = [];
+    ws.eachRow({ includeEmpty: false }, (row) => {
+      const vals = row.values as unknown[];
+      lignes.push(vals.slice(1));
+    });
+    const debut = lignes.findIndex((l) => String(l[0] ?? "").toLowerCase() === "nom");
+    expect(debut).toBeGreaterThanOrEqual(0);
+
+    const { analyseTableau } = await import("@/lib/import-produits");
+    const a = analyseTableau(lignes.slice(debut), { existants: new Map(), fournisseurs: new Map() });
+    expect(a.manquantes).toEqual([]);   // toutes les colonnes obligatoires sont là
   });
 });

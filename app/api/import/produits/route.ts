@@ -1,7 +1,9 @@
 import ExcelJS from "exceljs";
 import { createClient } from "@/lib/supabase/server";
 import { getRestaurant } from "@/lib/auth";
-import { newWorkbook, autoWidth, styleHeader, addTitle, workbookToResponse } from "@/lib/excel";
+import { newWorkbook, autoWidth, styleHeader, addTitle, workbookToResponse, todayStamp } from "@/lib/excel";
+import { selectIngredients } from "@/lib/ingredients-query";
+import { qtyToDisplay, displayUnitLabel as displayUnit } from "@/lib/ingredient-helpers";
 import {
   analyseTableau, parseCsv, normalise, CHAMP_LABEL,
   type Contexte, type LigneAnalysee, type ProduitImporte,
@@ -120,9 +122,77 @@ async function contexte(supabase: any, restaurantId: string): Promise<Contexte> 
   };
 }
 
-export async function GET() {
+/** Le catalogue actuel, écrit dans le format que l'import sait relire. */
+async function catalogue(supabase: any, restaurant: any) {
+  const { data: produits } = await selectIngredients(
+    supabase,
+    restaurant.id,
+    "id, name, category, unit, pack_units, unit_size, pack_price, vat_rate, yield_pct, reorder_threshold, stock_qty, selling_price, supplier_reference, internal_ref, suppliers(name)",
+  );
+
+  const wb = newWorkbook();
+  const ws = wb.addWorksheet("Produits");
+  const entetes = COLONNES_MODELE.map((c) => c[0] as string);
+  autoWidth(ws, entetes.map(() => 18));
+
+  const n = (produits ?? []).length;
+  const r = addTitle(
+    ws,
+    `Catalogue de ${restaurant.name}`,
+    "Corrige ce que tu veux, puis redépose le fichier dans Ingrédients → Importer. Un produit dont le nom ne change pas est MIS À JOUR, jamais dupliqué.",
+    entetes.length,
+  );
+  ws.getRow(r).values = entetes;
+  styleHeader(ws, r);
+
+  // Les quantités repassent en unité d'affichage : le fichier doit se lire
+  // comme on parle en cuisine (5 kg), pas comme la base stocke (5000 g).
+  const enDisplay = (base: number | null | undefined, unit: string) =>
+    base == null || base === 0 ? "" : qtyToDisplay(Number(base), unit);
+
+  for (const p of produits ?? []) {
+    ws.addRow([
+      p.name,
+      p.category ?? "",
+      p.suppliers?.name ?? "",
+      p.supplier_reference ?? "",
+      displayUnit(p.unit),
+      Number(p.pack_units ?? 1),
+      Number(p.unit_size ?? 0),
+      Number(p.pack_price ?? 0),
+      Number(p.vat_rate ?? 0),
+      Number(p.yield_pct ?? 100),
+      enDisplay(p.reorder_threshold, p.unit),
+      enDisplay(p.stock_qty, p.unit),
+      p.selling_price ?? "",
+      p.internal_ref ?? "",
+    ]);
+  }
+
+  const aide = wb.addWorksheet("Mode d'emploi");
+  autoWidth(aide, [22, 18, 80]);
+  const ra = addTitle(aide, "Comment remplir le fichier", `${n} produit${n !== 1 ? "s" : ""} exporté${n !== 1 ? "s" : ""}. Les colonnes peuvent être dans n'importe quel ordre ; seuls les intitulés comptent.`, 3);
+  aide.getRow(ra).values = ["Colonne", "Exemple", "À quoi ça sert"];
+  styleHeader(aide, ra);
+  for (const [nom, exemple, explication] of COLONNES_MODELE) aide.addRow([nom, exemple, explication]);
+  aide.addRow([]);
+  aide.addRow(["", "", "Ne change PAS le nom d'un produit existant : c'est lui qui fait le lien. Un nom modifié crée un nouveau produit."]);
+  aide.addRow(["", "", "Le stock d'un produit déjà suivi n'est pas réécrit par l'import : il appartient aux réceptions et aux inventaires."]);
+
+  return workbookToResponse(wb, `Catalogue_${todayStamp()}.xlsx`);
+}
+
+export async function GET(req: Request) {
   const restaurant = await getRestaurant();
   if (!restaurant) return new Response("Non autorisé", { status: 401 });
+
+  // ?catalogue=1 : le fichier est pré-rempli avec les produits existants.
+  // C'est ce qui permet de corriger en masse des catégories, des
+  // conditionnements ou des prix, puis de tout réimporter d'un coup —
+  // le même nom met à jour le produit au lieu d'en créer un second.
+  if (new URL(req.url).searchParams.get("catalogue") === "1") {
+    return catalogue(createClient(), restaurant);
+  }
   return modele();
 }
 
