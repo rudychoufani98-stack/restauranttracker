@@ -24,7 +24,12 @@ export type IdentiteType = {
   pastille: string;
   /** Étiquette de type, à côté d'un nom. */
   badge: string;
-  /** Filet de gauche sur une ligne de liste ou une carte. */
+  /**
+   * Filet de GAUCHE. On vise border-l-* et non border-* : une carte porte
+   * deja "border border-gray-100", et deux classes qui definissent
+   * border-color se departagent selon l ordre du CSS genere, pas celui de
+   * l attribut. Mesure faite : le filet ambre ressortait gris.
+   */
   bordure: string;
   /** Teinte de fond très légère, pour un bloc entier. */
   fond: string;
@@ -38,7 +43,7 @@ export const TYPE_IDENTITE: Record<TypeArticle, IdentiteType> = {
     labelPluriel: "Produits",
     pastille: "bg-tertiary-fixed text-primary",
     badge: "bg-tertiary-fixed text-primary",
-    bordure: "border-primary/40",
+    bordure: "border-l-primary/40",
     fond: "bg-tertiary-fixed/40",
     texte: "text-primary",
   },
@@ -47,7 +52,7 @@ export const TYPE_IDENTITE: Record<TypeArticle, IdentiteType> = {
     labelPluriel: "Mises en place",
     pastille: "bg-amber-light text-amber-dark",
     badge: "bg-amber-light text-amber-dark",
-    bordure: "border-amber/50",
+    bordure: "border-l-amber",
     fond: "bg-amber-light/50",
     texte: "text-amber-dark",
   },
@@ -61,7 +66,7 @@ export const TYPE_IDENTITE: Record<TypeArticle, IdentiteType> = {
     // mérite de ressortir.
     pastille: "bg-primary text-on-primary",
     badge: "bg-primary text-on-primary",
-    bordure: "border-primary",
+    bordure: "border-l-primary",
     fond: "bg-primary/5",
     texte: "text-primary",
   },

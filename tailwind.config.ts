@@ -5,6 +5,11 @@ const config: Config = {
     "./pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
+    // lib/ porte des jetons de style (lib/type-article.ts : le code couleur
+    // des produits, MEP et fiches techniques). Sans ce chemin, ces classes
+    // sont purgées : elles ne « marchaient » que lorsqu'un écran les écrivait
+    // aussi de son côté — le filet ambre des MEP, lui, ressortait gris.
+    "./lib/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
     extend: {

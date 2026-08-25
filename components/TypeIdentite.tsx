@@ -15,7 +15,11 @@ import clsx from "clsx";
 import { Package, Soup, ChefHat } from "lucide-react";
 import { TYPE_IDENTITE, TYPE_ORDRE, typeCourt, type TypeArticle } from "@/lib/type-article";
 
-export { TYPE_IDENTITE, typeDeRecette, type TypeArticle } from "@/lib/type-article";
+// On ne re-exporte QUE le type. Re-exporter les valeurs depuis ce fichier
+// « use client » tendait un piege : une page serveur qui ferait
+// TYPE_IDENTITE[t].label planterait avec « Cannot access ... on the
+// server ». Les valeurs se prennent directement dans lib/type-article.
+export type { TypeArticle } from "@/lib/type-article";
 
 const ICONES: Record<TypeArticle, typeof Package> = {
   produit: Package,

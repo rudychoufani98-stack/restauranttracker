@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Plus, Trash2, X, ChevronDown, ChevronUp, RefreshCw, Copy, Search, ChefHat, Percent, Coins, Layers, ClipboardCheck } from "lucide-react";
 import clsx from "clsx";
-import { Pastille, BadgeType, typeDeRecette, LegendeTypes } from "@/components/TypeIdentite";
+import { Pastille, BadgeType, LegendeTypes } from "@/components/TypeIdentite";
+import { TYPE_IDENTITE, typeDeRecette } from "@/lib/type-article";
 import { normaliseRefCaisse, refCaisseEnDouble } from "@/lib/references";
 import { foodCostPct, estAlcool, tauxDeVente, TVA_DEFAUT, type ReglagesTva } from "@/lib/vat";
 import { useConfirm, useAlert } from "@/components/ConfirmDialog";
@@ -628,9 +629,14 @@ export default function RecipesClient({ tva = TVA_DEFAUT, restaurantId, initialR
       {/* Recipe form modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black/30 flex items-start justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-card border border-[#E5E7EB] w-full max-w-2xl shadow-xl my-8">
+          <div className={clsx("bg-white rounded-card border border-[#E5E7EB] w-full max-w-2xl shadow-xl my-8 border-l-4", TYPE_IDENTITE[isPrep ? "mep" : "recette"].bordure)}>
             <div className="flex items-center justify-between px-5 py-4 border-b border-[#E5E7EB]">
-              <h2 className="text-base font-medium text-gray-900">{editingId ? "Modifier" : "Nouveau"} {tab === "prep" ? "— mise en place" : "— fiche technique"}</h2>
+              <div className="flex items-center gap-2.5">
+                <Pastille type={isPrep ? "mep" : "recette"} taille="sm" />
+                <h2 className="text-base font-medium text-gray-900">
+                  {editingId ? "Modifier" : "Nouveau"} {isPrep ? "— mise en place" : "— fiche technique"}
+                </h2>
+              </div>
               <button onClick={() => setShowForm(false)} title="Fermer" aria-label="Fermer" className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
 

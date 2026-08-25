@@ -591,11 +591,11 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
  *   danger   rouge   — une action difficile à défaire
  */
 const TEINTES = {
-  usage:  { bord: "border-l-4 border-primary",     pastille: "bg-tertiary-fixed text-primary",   titre: "text-primary" },
-  achat:  { bord: "border-l-4 border-brand-orange", pastille: "bg-brand-orange/10 text-brand-orange-deep", titre: "text-brand-orange-deep" },
-  vente:  { bord: "border-l-4 border-green",       pastille: "bg-green-light text-green-dark",   titre: "text-green-dark" },
-  lien:   { bord: "border-l-4 border-blue",        pastille: "bg-blue-light text-blue-dark",     titre: "text-blue-dark" },
-  danger: { bord: "border-l-4 border-red",         pastille: "bg-red-light text-red",            titre: "text-red" },
+  usage:  { bord: "border-l-4 border-l-primary",     pastille: "bg-tertiary-fixed text-primary",   titre: "text-primary" },
+  achat:  { bord: "border-l-4 border-l-brand-orange", pastille: "bg-brand-orange/10 text-brand-orange-deep", titre: "text-brand-orange-deep" },
+  vente:  { bord: "border-l-4 border-l-green",       pastille: "bg-green-light text-green-dark",   titre: "text-green-dark" },
+  lien:   { bord: "border-l-4 border-l-blue",        pastille: "bg-blue-light text-blue-dark",     titre: "text-blue-dark" },
+  danger: { bord: "border-l-4 border-l-red",         pastille: "bg-red-light text-red",            titre: "text-red" },
   neutre: { bord: "",                              pastille: "bg-gray-100 text-gray-500",        titre: "text-gray-900" },
 } as const;
 
