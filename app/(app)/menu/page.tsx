@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { reglagesTva } from "@/lib/vat";
 import { getRestaurant } from "@/lib/auth";
 import MenuClient from "./MenuClient";
 
@@ -32,6 +33,7 @@ export default async function MenuPage() {
   return (
     <MenuClient
       restaurantId={restaurant!.id}
+      tva={reglagesTva(restaurant)}
       targetFoodCostPct={restaurant!.target_food_cost_pct}
       initialRecipes={recipes ?? []}
       simpleProducts={simpleProducts ?? []}

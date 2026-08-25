@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Plus, Trash2, X, ChevronDown, ChevronUp, RefreshCw, Copy, Search, ChefHat, Percent, Coins, Layers, ClipboardCheck } from "lucide-react";
 import clsx from "clsx";
 import { normaliseRefCaisse, refCaisseEnDouble } from "@/lib/references";
+import { foodCostPct, estAlcool, tauxDeVente, TVA_DEFAUT, type ReglagesTva } from "@/lib/vat";
 import { useConfirm, useAlert } from "@/components/ConfirmDialog";
 
 
@@ -122,6 +123,7 @@ function savedLineCost(line: RecipeLine, ingredients: Ingredient[], allRecipes: 
 
 interface Props {
   restaurantId: string;
+  tva?: ReglagesTva;
   initialRecipes: Recipe[];
   ingredients: Ingredient[];
   allRecipes: Recipe[];
@@ -130,7 +132,7 @@ interface Props {
   lockMode?: "recipe" | "prep"; // when set, this page only shows that type (no tab switch)
 }
 
-export default function RecipesClient({ restaurantId, initialRecipes, ingredients, allRecipes: allRecipesProp, menuCategories, prepCategories, lockMode }: Props) {
+export default function RecipesClient({ tva = TVA_DEFAUT, restaurantId, initialRecipes, ingredients, allRecipes: allRecipesProp, menuCategories, prepCategories, lockMode }: Props) {
   const notify = useAlert();
   const confirm = useConfirm();
   const supabase = createClient();
@@ -176,7 +178,11 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
   const statBase = tab === "recipe" ? menuRecipes : prepRecipes;
   const pricedRecipes = statBase.filter((r) => Number(r.menu_price ?? 0) > 0);
   const avgFoodCost = pricedRecipes.length
-    ? pricedRecipes.reduce((s, r) => s + (r.total_cost / (r.yield_portions || 1) / Number(r.menu_price)) * 100, 0) / pricedRecipes.length
+    ? pricedRecipes.reduce((s, r) => s + (foodCostPct(
+        r.total_cost / (r.yield_portions || 1),
+        Number(r.menu_price),
+        tauxDeVente("dine_in", estAlcool(r), tva),
+      ) ?? 0), 0) / pricedRecipes.length
     : null;
   const avgCostPerPortion = statBase.length
     ? statBase.reduce((s, r) => s + r.total_cost / (r.yield_portions || 1), 0) / statBase.length
@@ -863,7 +869,13 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
             const isExpanded = expandedId === recipe.id;
             const costPerPortion = recipe.total_cost / (recipe.yield_portions || 1);
             const yUnit = YIELD_UNITS.find((u) => u.value === (recipe.yield_unit || "portion"))?.label ?? recipe.yield_unit;
-            const foodCost = Number(recipe.menu_price ?? 0) > 0 ? (costPerPortion / Number(recipe.menu_price)) * 100 : null;
+            // Coût HT sur CA HT : sans retirer la TVA du prix de carte, le
+            // food cost serait systématiquement sous-estimé.
+            const foodCost = foodCostPct(
+              costPerPortion,
+              Number(recipe.menu_price ?? 0),
+              tauxDeVente("dine_in", estAlcool(recipe), tva),
+            );
             const highCost = foodCost !== null && foodCost > 35;
             return (
               <div key={recipe.id} className="glass-card rounded-2xl overflow-hidden">

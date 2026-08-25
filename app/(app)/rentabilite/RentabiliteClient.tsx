@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Plus, Check, Loader2, ChevronDown, ChevronUp, TrendingUp, TrendingDown, Minus, Trash2 } from "lucide-react";
 import clsx from "clsx";
+import { CANAUX, canalLabel, htDepuisTTC, foodCostPct, estAlcool, tauxDeVente, TVA_DEFAUT, type ReglagesTva } from "@/lib/vat";
 import { perDisplayUnit } from "@/lib/ingredient-helpers";
 import { useConfirm, useAlert } from "@/components/ConfirmDialog";
 
@@ -35,11 +36,10 @@ type Period = {
   sales_lines: SalesLine[];
 };
 
-const CHANNELS: { key: string; label: string }[] = [
-  { key: "dine_in", label: "Sur place" },
-  { key: "delivery", label: "Livraison" },
-];
-const channelLabel = (c?: string | null) => CHANNELS.find((x) => x.key === (c ?? "dine_in"))?.label ?? "Sur place";
+// Les canaux viennent de lib/vat : chacun porte son propre taux de TVA,
+// et « à emporter » n'était pas proposé jusqu'ici.
+const CHANNELS = CANAUX.map((c) => ({ key: c.key as string, label: c.label }));
+const channelLabel = canalLabel;
 
 // Commission plateforme (Deliveroo / Uber Eats…) appliquée au CA des ventes
 // en livraison. Mettre le taux réel ici quand il sera connu (ex. 0.30 = 30 %).
@@ -49,6 +49,7 @@ type DraftLine = { recipe_id: string; qty_sold: string };
 
 interface Props {
   restaurantId: string;
+  tva?: ReglagesTva;
   targetFoodCostPct: number;
   recipes: Recipe[];
   simpleProducts: SimpleProduct[];

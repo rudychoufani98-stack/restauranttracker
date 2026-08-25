@@ -2,6 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getRestaurant } from "@/lib/auth";
 import { getFournitureIds } from "@/lib/fournitures";
 import DashboardClient from "./DashboardClient";
+import { loadPurchaseHistory } from "@/lib/purchase-history-query";
+import { buildPriceAlerts, totalAContester, seuilsDe, type AlertIngredient } from "@/lib/price-alerts";
 
 export const dynamic = "force-dynamic";
 
@@ -49,8 +51,31 @@ export default async function DashboardPage() {
   const fournitureIds = await getFournitureIds(rid);
   const movementsTruncated = (movements ?? []).length >= MOVEMENT_CAP;
 
+  // Alertes de prix : le chef doit les voir en arrivant, pas seulement
+  // s'il pense à ouvrir l'écran Statistiques. En cas d'échec de lecture
+  // on n'affiche rien plutôt que de casser tout le tableau de bord.
+  let alertesPrix: { total: number; aContester: number; premiere: string | null } = {
+    total: 0, aContester: 0, premiere: null,
+  };
+  try {
+    const { byIngredient, ingById } = await loadPurchaseHistory(supabase, rid);
+    const alertes = buildPriceAlerts(
+      byIngredient,
+      new Map<string, AlertIngredient>(Array.from(ingById.entries()).map(([id, i]) => [id, i as AlertIngredient])),
+      seuilsDe(restaurant),
+    );
+    alertesPrix = {
+      total: alertes.length,
+      aContester: totalAContester(alertes),
+      premiere: alertes[0] ? `${alertes[0].name} — ${alertes[0].titre.toLowerCase()}` : null,
+    };
+  } catch {
+    // silencieux : une alerte manquante vaut mieux qu'un écran blanc
+  }
+
   return (
     <DashboardClient
+      alertesPrix={alertesPrix}
       restaurantName={restaurant.name}
       targetFoodCost={Number(restaurant.target_food_cost_pct ?? 28)}
       recipes={(recipes ?? []) as any}

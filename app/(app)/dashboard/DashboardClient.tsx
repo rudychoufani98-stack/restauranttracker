@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { eur as eurFmt } from "@/lib/format";
 import Link from "next/link";
-import { TrendingUp, TrendingDown, ShoppingCart, Trash2, Percent, Warehouse, Receipt, Utensils, ArrowRight } from "lucide-react";
+import { TrendingUp, TrendingDown, ShoppingCart, Trash2, Percent, Warehouse, Receipt, Utensils, ArrowRight , AlertTriangle } from "lucide-react";
 import { perDisplayUnit } from "@/lib/ingredient-helpers";
 
 type Recipe = { id: string; name: string; category: string; total_cost: number; menu_price: number | null; yield_portions: number };
@@ -21,6 +22,7 @@ interface Props {
   fournitureIds: string[];
   /** true si le plafond de lecture des mouvements a été atteint */
   movementsTruncated?: boolean;
+  alertesPrix?: { total: number; aContester: number; premiere: string | null };
 }
 
 const MONTHS_FR = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
@@ -33,7 +35,7 @@ const monthLabel = (key: string) => {
 // Le signe reste devant le symbole : « −€6 » se lit mieux que « €-6 ».
 const eur = (n: number) => `${n < 0 ? "−" : ""}€${Math.abs(n).toLocaleString("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 
-export default function DashboardClient({ restaurantName, targetFoodCost, recipes, ingredients, periods, movements, fournitureIds, movementsTruncated = false }: Props) {
+export default function DashboardClient({ alertesPrix, restaurantName, targetFoodCost, recipes, ingredients, periods, movements, fournitureIds, movementsTruncated = false }: Props) {
   const recipeMap = useMemo(() => new Map(recipes.map((r) => [r.id, r])), [recipes]);
   const ingMap = useMemo(() => new Map(ingredients.map((i) => [i.id, i])), [ingredients]);
   const fournitureSet = useMemo(() => new Set(fournitureIds), [fournitureIds]);
@@ -233,6 +235,24 @@ export default function DashboardClient({ restaurantName, targetFoodCost, recipe
                 touchés par cette plage. Les achats et les pertes, eux, suivent les dates exactes — ne compare donc pas
                 directement les deux sur une plage de quelques jours.
               </div>
+            )}
+            {alertesPrix && alertesPrix.total > 0 && (
+              <Link
+                href="/statistiques"
+                className="flex items-start gap-3 rounded-xl border border-amber/30 bg-amber-light px-4 py-3 hover:bg-amber-light/70 transition"
+              >
+                <AlertTriangle size={17} className="text-amber-dark shrink-0 mt-0.5" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-amber-dark">
+                    {alertesPrix.total} alerte{alertesPrix.total !== 1 ? "s" : ""} sur tes prix d&apos;achat
+                    {alertesPrix.aContester > 0 && ` · ${eurFmt(alertesPrix.aContester)} facturés en trop`}
+                  </p>
+                  {alertesPrix.premiere && (
+                    <p className="text-xs text-on-surface-variant mt-0.5 truncate">{alertesPrix.premiere}</p>
+                  )}
+                </div>
+                <span className="text-xs font-semibold text-primary shrink-0 self-center">Voir →</span>
+              </Link>
             )}
             {movementsTruncated && (
               <div className="text-xs text-on-surface-variant/70 bg-surface-container-low border border-outline-variant/30 rounded-xl px-4 py-2.5">

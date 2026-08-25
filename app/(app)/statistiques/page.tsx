@@ -4,7 +4,7 @@ import { loadPurchaseHistory } from "@/lib/purchase-history-query";
 import { summarizePurchases, packSize } from "@/lib/cost-history";
 import {
   buildPriceAlerts, costUsedByRecipes, pricePerDisplayUnit, priceSeriePoints,
-  totalAContester, type AlertIngredient,
+  totalAContester, seuilsDe, type AlertIngredient,
 } from "@/lib/price-alerts";
 import { displayUnitLabel, qtyToDisplay } from "@/lib/ingredient-helpers";
 import StatistiquesClient, { type ProduitPrix } from "./StatistiquesClient";
@@ -90,7 +90,7 @@ export default async function StatistiquesPage({
   const ingredientsPourAlertes = new Map<string, AlertIngredient>(
     Array.from(ingById.entries()).map(([id, i]) => [id, i as AlertIngredient]),
   );
-  const alertes = buildPriceAlerts(byIngredient, ingredientsPourAlertes);
+  const alertes = buildPriceAlerts(byIngredient, ingredientsPourAlertes, seuilsDe(restaurant));
 
   return (
     <StatistiquesClient

@@ -7,6 +7,7 @@ import { Card, Button, Input, Select, Alert, Badge } from "@/components/ui";
 import { logout } from "@/app/auth/actions";
 import { parseHHMM, DEFAULT_SERVICE_START, DEFAULT_SERVICE_END, detectServiceMoment, serviceMomentLabel } from "@/lib/service-moment";
 import clsx from "clsx";
+import { TVA_DEFAUT } from "@/lib/vat";
 import { useConfirm } from "@/components/ConfirmDialog";
 
 const CUISINE_TYPES = ["Française", "Italienne", "Japonaise", "Méditerranéenne", "Mexicaine", "Indienne", "Américaine", "Autre"];
@@ -28,6 +29,12 @@ type Restaurant = {
   target_food_cost_pct: number; digest_enabled?: boolean; digest_day?: string;
   address?: string; phone?: string; siret?: string; hide_po_prices?: boolean;
   service_start?: string | null; service_end?: string | null;
+  // TVA sur les ventes (supabase/tva_ventes.sql)
+  vat_dine_in?: number | null; vat_takeaway?: number | null;
+  vat_delivery?: number | null; vat_alcohol?: number | null;
+  // Seuils des alertes de prix
+  alert_hausse_pct?: number | null; alert_facture_pct?: number | null;
+  alert_cmup_pct?: number | null;
 };
 type Member = { id: string; email: string; role: string; status: string; created_at: string };
 
@@ -64,6 +71,15 @@ export default function SettingsClient({ restaurant, email, initialMembers }: Pr
     // a lieu avant, pendant ou après le service.
     service_start: (restaurant.service_start ?? DEFAULT_SERVICE_START).slice(0, 5),
     service_end: (restaurant.service_end ?? DEFAULT_SERVICE_END).slice(0, 5),
+    // TVA sur les ventes : sans elle, le food cost compare un coût HT à un
+    // prix TTC et sort toujours trop bas.
+    vat_dine_in: String(restaurant.vat_dine_in ?? TVA_DEFAUT.dine_in),
+    vat_takeaway: String(restaurant.vat_takeaway ?? TVA_DEFAUT.takeaway),
+    vat_delivery: String(restaurant.vat_delivery ?? TVA_DEFAUT.delivery),
+    vat_alcohol: String(restaurant.vat_alcohol ?? TVA_DEFAUT.alcohol),
+    alert_hausse_pct: String(restaurant.alert_hausse_pct ?? 10),
+    alert_facture_pct: String(restaurant.alert_facture_pct ?? 2),
+    alert_cmup_pct: String(restaurant.alert_cmup_pct ?? 10),
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -86,6 +102,25 @@ export default function SettingsClient({ restaurant, email, initialMembers }: Pr
     }
 
     setSaving(true); setSaved(false);
+    // Un taux vide ou aberrant fausserait TOUS les food costs : on refuse
+    // plutôt que d'enregistrer une valeur silencieusement remplacée.
+    const champsPct = [
+      ["vat_dine_in", "TVA sur place"], ["vat_takeaway", "TVA à emporter"],
+      ["vat_delivery", "TVA livraison"], ["vat_alcohol", "TVA alcool"],
+      ["alert_hausse_pct", "Seuil de hausse"], ["alert_facture_pct", "Seuil de facture"],
+      ["alert_cmup_pct", "Seuil de décrochage"],
+    ] as const;
+    const tauxValides: Record<string, number> = {};
+    for (const [cle, libelle] of champsPct) {
+      const v = parseFloat(String((form as any)[cle]).replace(",", "."));
+      if (!Number.isFinite(v) || v < 0 || v > 100) {
+        setSaving(false);
+        setSaveError(`${libelle} : indique un pourcentage entre 0 et 100.`);
+        return;
+      }
+      tauxValides[cle] = v;
+    }
+
     const { error } = await supabase.from("restaurants").update({
       name: form.name.trim(),
       cuisine_type: form.cuisine_type,
@@ -98,6 +133,7 @@ export default function SettingsClient({ restaurant, email, initialMembers }: Pr
       hide_po_prices: form.hide_po_prices,
       service_start: form.service_start,
       service_end: form.service_end,
+      ...tauxValides,
     }).eq("id", restaurant.id);
     setSaving(false);
     // Sans ce contrôle, l'écran affichait « Enregistré ✓ » même en cas d'échec.
@@ -334,6 +370,85 @@ export default function SettingsClient({ restaurant, email, initialMembers }: Pr
                 </span>
               </span>
             </button>
+          </Card>
+
+          <Card>
+            <h2 className="text-sm font-semibold text-gray-900 mb-1">TVA sur les ventes</h2>
+            <p className="text-xs text-gray-500 mb-1">
+              Tes coûts viennent des factures fournisseurs : ils sont <b>hors taxes</b>. Tes prix de carte sont ceux
+              que lit le client : ils sont <b>TTC</b>. Sans ces taux, le food cost divise l&apos;un par l&apos;autre et se
+              retrouve toujours trop bas.
+            </p>
+            <p className="text-xs text-gray-400 mb-4">
+              Exemple : un plat à 15 € avec 4 € de matière n&apos;est pas à 26,7 % mais à <b>29,3 %</b> (TVA 10 %).
+              Les valeurs par défaut sont un point de départ — fais-les confirmer par ton comptable.
+            </p>
+
+            <div className="grid grid-cols-2 gap-3">
+              {([
+                { cle: "vat_dine_in", label: "Sur place", aide: "Consommation immédiate en salle." },
+                { cle: "vat_takeaway", label: "À emporter", aide: "Le client repart avec sa commande." },
+                { cle: "vat_delivery", label: "Livraison", aide: "Plateformes ou livraison en propre." },
+                { cle: "vat_alcohol", label: "Alcool", aide: "Prime sur le mode de consommation." },
+              ] as const).map(({ cle, label, aide }) => (
+                <div key={cle}>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">{label}</label>
+                  <div className="relative">
+                    <input
+                      type="number" min="0" max="100" step="0.1"
+                      value={(form as any)[cle]}
+                      onChange={(e) => setForm({ ...form, [cle]: e.target.value })}
+                      className="w-full pr-7 pl-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary transition" />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
+                  </div>
+                  <p className="text-2xs text-gray-400 mt-1">{aide}</p>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <Card>
+            <h2 className="text-sm font-semibold text-gray-900 mb-1">Alertes de prix</h2>
+            <p className="text-xs text-gray-500 mb-4">
+              À partir de quel écart la plateforme te prévient. Trop bas, l&apos;alerte devient du bruit et tu ne la
+              regardes plus ; trop haut, elle arrive quand l&apos;argent est déjà parti. Les alertes s&apos;affichent sur
+              ton tableau de bord et dans <b>Statistiques → Évolution des prix</b>.
+            </p>
+
+            <div className="space-y-3">
+              {([
+                {
+                  cle: "alert_facture_pct",
+                  label: "Facture plus chère que la commande",
+                  aide: "Ce qui te sera facturé au-delà du prix annoncé. C'est l'alerte qui porte sur de l'argent récupérable.",
+                },
+                {
+                  cle: "alert_hausse_pct",
+                  label: "Hausse d'un prix d'achat",
+                  aide: "Écart entre le dernier prix payé et ton tout premier achat de ce produit.",
+                },
+                {
+                  cle: "alert_cmup_pct",
+                  label: "Décrochage des fiches techniques",
+                  aide: "Écart entre le prix que tu payes aujourd'hui et le coût moyen qui sert à calculer tes plats.",
+                },
+              ] as const).map(({ cle, label, aide }) => (
+                <div key={cle} className="flex items-start gap-3">
+                  <div className="relative w-24 shrink-0">
+                    <input
+                      type="number" min="0" max="100" step="0.5"
+                      value={(form as any)[cle]}
+                      onChange={(e) => setForm({ ...form, [cle]: e.target.value })}
+                      className="w-full pr-7 pl-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary transition" />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">{label}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{aide}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
           </Card>
 
           <Card>

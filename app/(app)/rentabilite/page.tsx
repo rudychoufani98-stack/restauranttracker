@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { reglagesTva } from "@/lib/vat";
 import { getRestaurant } from "@/lib/auth";
 import RentabiliteClient from "./RentabiliteClient";
 
@@ -32,6 +33,7 @@ export default async function RentabilitePage() {
   return (
     <RentabiliteClient
       restaurantId={restaurant!.id}
+      tva={reglagesTva(restaurant)}
       targetFoodCostPct={restaurant!.target_food_cost_pct}
       recipes={recipes ?? []}
       simpleProducts={(simpleProducts ?? []) as any}

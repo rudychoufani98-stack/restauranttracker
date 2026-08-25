@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Pencil, Check, X, Gauge, AlertTriangle, TrendingDown } from "lucide-react";
 import clsx from "clsx";
+import { foodCostPct as foodCostHT, htDepuisTTC, prixSuggereTTC, arrondiCommercial, estAlcool, tauxDeVente, TVA_DEFAUT, type ReglagesTva } from "@/lib/vat";
 import { perDisplayUnit } from "@/lib/ingredient-helpers";
 
 type Recipe = {
@@ -43,13 +44,14 @@ function getStatus(foodCostPct: number, target: number): "green" | "amber" | "re
 
 interface Props {
   restaurantId: string;
+  tva?: ReglagesTva;
   targetFoodCostPct: number;
   initialRecipes: Recipe[];
   simpleProducts: SimpleProduct[];
   categoryOrder: string[];
 }
 
-export default function MenuClient({ restaurantId: _restaurantId, targetFoodCostPct, initialRecipes, simpleProducts, categoryOrder }: Props) {
+export default function MenuClient({ restaurantId: _restaurantId, tva = TVA_DEFAUT, targetFoodCostPct, initialRecipes, simpleProducts, categoryOrder }: Props) {
   // Category display order (caisse-like). Unknown categories appended alphabetically.
   const CATEGORY_ORDER = categoryOrder.length
     ? categoryOrder
@@ -87,9 +89,12 @@ export default function MenuClient({ restaurantId: _restaurantId, targetFoodCost
     return [...fromRecipes, ...fromProducts];
   }, [recipes, products]);
 
+  // Le prix de carte est TTC, le coût vient des factures et il est HT.
+  // Sans retirer la TVA, le food cost affiché serait toujours trop bas.
+  const tauxDe = (it: MenuItem) => tauxDeVente("dine_in", estAlcool(it as any), tva);
+
   function foodCostPct(it: MenuItem) {
-    if (!it.price || it.price === 0) return null;
-    return (it.cost / it.price) * 100;
+    return foodCostHT(it.cost, Number(it.price ?? 0), tauxDe(it));
   }
   function marginPct(it: MenuItem) {
     const fcp = foodCostPct(it);
@@ -97,10 +102,15 @@ export default function MenuClient({ restaurantId: _restaurantId, targetFoodCost
   }
   function grossProfit(it: MenuItem) {
     if (it.price === null) return null;
-    return it.price - it.cost;
+    // Marge réelle : ce qui reste après avoir reversé la TVA.
+    return htDepuisTTC(Number(it.price), tauxDe(it)) - it.cost;
   }
   function suggestedPrice(it: MenuItem) {
-    return it.cost / (targetFoodCostPct / 100);
+    // On vise l'objectif sur la marge RÉELLE, puis on rhabille en TTC —
+    // et on arrondit au prix de carte supérieur, sinon on proposerait
+    // des prix comme 13,47 € que personne n'affiche.
+    const p = prixSuggereTTC(it.cost, targetFoodCostPct, tauxDe(it));
+    return p === null ? 0 : arrondiCommercial(p);
   }
 
   // Summary stats across all priced items

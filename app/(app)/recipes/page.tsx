@@ -1,16 +1,15 @@
 import { createClient } from "@/lib/supabase/server";
+import { reglagesTva } from "@/lib/vat";
 import RecipesClient from "./RecipesClient";
 import { selectIngredients } from "@/lib/ingredients-query";
+import { getRestaurant } from "@/lib/auth";
 
 export default async function RecipesPage() {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  const { data: restaurant } = await supabase
-    .from("restaurants")
-    .select("id")
-    .eq("owner_id", user!.id)
-    .single();
+  // getRestaurant() gere aussi le cas du super-admin qui a ouvert un client :
+  // chercher par owner_id renvoyait le restaurant de l admin, pas celui du
+  // client, et l ecran Recettes affichait les mauvaises fiches.
+  const restaurant = await getRestaurant();
 
   const [{ data: recipes }, { data: ingredients }, { data: cats }] = await Promise.all([
     supabase
@@ -33,6 +32,7 @@ export default async function RecipesPage() {
   return (
     <RecipesClient
       restaurantId={restaurant!.id}
+      tva={reglagesTva(restaurant)}
       initialRecipes={recipes ?? []}
       ingredients={ingredients ?? []}
       allRecipes={recipes ?? []}

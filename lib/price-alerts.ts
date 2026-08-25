@@ -22,12 +22,35 @@ import { eur, pct } from "./format";
 // Re-exportes : les ecrans qui affichent des alertes formatent aussi des montants.
 export { eur, pct };
 
-/** Au-delà, le prix d'achat a « vraiment » augmenté depuis le premier achat. */
+/**
+ * Seuils par défaut. Ils sont RÉGLABLES par restaurant (Paramètres →
+ * Alertes de prix) : trop bas l'alerte devient du bruit et plus personne
+ * ne la regarde, trop haut elle arrive quand l'argent est déjà parti.
+ */
 export const SEUIL_HAUSSE_PCT = 10;
-/** Au-delà, le coût utilisé par les recettes s'écarte trop du prix réel. */
 export const SEUIL_CMUP_PCT = 10;
-/** Au-delà, l'écart entre le bon de commande et la facture n'est plus un arrondi. */
 export const SEUIL_FACTURE_PCT = 2;
+
+export type Seuils = { hausse: number; cmup: number; facture: number };
+
+export const SEUILS_DEFAUT: Seuils = {
+  hausse: SEUIL_HAUSSE_PCT,
+  cmup: SEUIL_CMUP_PCT,
+  facture: SEUIL_FACTURE_PCT,
+};
+
+/** Lit les seuils d'un restaurant, en comblant ce qui manque. */
+export function seuilsDe(restaurant: any): Seuils {
+  const n = (v: unknown, defaut: number) => {
+    const x = Number(v);
+    return Number.isFinite(x) && x >= 0 && x <= 100 ? x : defaut;
+  };
+  return {
+    hausse: n(restaurant?.alert_hausse_pct, SEUIL_HAUSSE_PCT),
+    cmup: n(restaurant?.alert_cmup_pct, SEUIL_CMUP_PCT),
+    facture: n(restaurant?.alert_facture_pct, SEUIL_FACTURE_PCT),
+  };
+}
 
 export type AlertKind = "facture" | "hausse" | "cmup";
 
@@ -83,13 +106,13 @@ export function priceSeriePoints(purchases: Purchase[], tailleColis: number): { 
  * Facture plus chère que la commande. C'est la seule alerte qui porte sur de
  * l'argent immédiatement récupérable, d'où sa priorité d'affichage.
  */
-export function alerteFacture(ing: AlertIngredient, purchases: Purchase[]): PriceAlert | null {
+export function alerteFacture(ing: AlertIngredient, purchases: Purchase[], seuils: Seuils = SEUILS_DEFAUT): PriceAlert | null {
   const dernier = purchases[purchases.length - 1];
   if (!dernier || dernier.expected == null || dernier.expected <= 0) return null;
 
   const ecart = dernier.unitPrice - dernier.expected;
   const ecartPct = (ecart / dernier.expected) * 100;
-  if (ecartPct <= SEUIL_FACTURE_PCT) return null;   // facturé au prix prévu, ou moins cher
+  if (ecartPct <= seuils.facture) return null;   // facturé au prix prévu, ou moins cher
 
   return {
     ingredientId: ing.id,
@@ -111,9 +134,9 @@ export function alerteFacture(ing: AlertIngredient, purchases: Purchase[]): Pric
  * acheté cette année l'avait été au prix d'aujourd'hui, tu aurais payé X € de
  * plus » — c'est ce que la hausse te coûtera sur ton rythme habituel.
  */
-export function alerteHausse(ing: AlertIngredient, purchases: Purchase[], s: CostSummary): PriceAlert | null {
+export function alerteHausse(ing: AlertIngredient, purchases: Purchase[], s: CostSummary, seuils: Seuils = SEUILS_DEFAUT): PriceAlert | null {
   if (s.count < 2 || s.first <= 0) return null;
-  if (s.deltaPct < SEUIL_HAUSSE_PCT) return null;
+  if (s.deltaPct < seuils.hausse) return null;
 
   const surcout = Math.max(0, (s.last - s.wavg) * s.qtyTotal);
   return {
@@ -138,7 +161,7 @@ export function alerteHausse(ing: AlertIngredient, purchases: Purchase[], s: Cos
  * Vers le haut (tu payes plus cher que ce que disent tes fiches) c'est
  * défavorable : tes food costs sont sous-estimés.
  */
-export function alerteCmup(ing: AlertIngredient, s: CostSummary): PriceAlert | null {
+export function alerteCmup(ing: AlertIngredient, s: CostSummary, seuils: Seuils = SEUILS_DEFAUT): PriceAlert | null {
   const utilise = costUsedByRecipes(ing);
   if (!(utilise > 0)) return null;
 
@@ -146,7 +169,7 @@ export function alerteCmup(ing: AlertIngredient, s: CostSummary): PriceAlert | n
   if (!(paye > 0)) return null;
 
   const ecartPct = ((paye - utilise) / utilise) * 100;
-  if (Math.abs(ecartPct) < SEUIL_CMUP_PCT) return null;
+  if (Math.abs(ecartPct) < seuils.cmup) return null;
 
   const u = displayUnitLabel(ing.unit);
   const stock = qtyToDisplay(Number(ing.stock_qty ?? 0), ing.unit);
@@ -175,6 +198,7 @@ export function alerteCmup(ing: AlertIngredient, s: CostSummary): PriceAlert | n
 export function buildPriceAlerts(
   purchasesByIngredient: Map<string, Purchase[]>,
   ingredients: Map<string, AlertIngredient>,
+  seuils: Seuils = SEUILS_DEFAUT,
 ): PriceAlert[] {
   const rang: Record<AlertKind, number> = { facture: 0, hausse: 1, cmup: 2 };
   const out: PriceAlert[] = [];
@@ -184,7 +208,7 @@ export function buildPriceAlerts(
     if (!ing || purchases.length === 0) continue;
     const s = summarizePurchases(purchases);
 
-    for (const a of [alerteFacture(ing, purchases), alerteHausse(ing, purchases, s), alerteCmup(ing, s)]) {
+    for (const a of [alerteFacture(ing, purchases, seuils), alerteHausse(ing, purchases, s, seuils), alerteCmup(ing, s, seuils)]) {
       if (a) out.push(a);
     }
   }
