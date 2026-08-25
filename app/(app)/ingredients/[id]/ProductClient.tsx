@@ -358,7 +358,7 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
       </div>
 
       {/* 1. Conditionnement d'usage */}
-      <Section icon={<Package size={16} />} title="Conditionnement d'usage — recettes & inventaires" subtitle="L'unité dans laquelle tu l'utilises en recette et la comptes en inventaire (kg, L ou pièce). C'est la base de tout. Le conditionnement de commande (colis) se règle plus bas, il ne sert qu'aux commandes.">
+      <Section teinte="usage" icon={<Package size={16} />} title="Conditionnement d'usage — recettes & inventaires" subtitle="L'unité dans laquelle tu l'utilises en recette et la comptes en inventaire (kg, L ou pièce). C'est la base de tout. Le conditionnement de commande (colis) se règle plus bas, il ne sert qu'aux commandes.">
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Unité d'usage</label>
@@ -414,7 +414,7 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
       </Section>
 
       {/* 2. Articles */}
-      <Section icon={<Boxes size={16} />} title="Conditionnement de commande — articles fournisseurs"
+      <Section teinte="achat" icon={<Boxes size={16} />} title="Conditionnement de commande — articles fournisseurs"
         subtitle="Un article par fournisseur : sa référence, son conditionnement de commande (colis / caisse…) et son prix. Sert uniquement pour passer les commandes et le bon de commande — jamais pour les recettes ni l'inventaire."
         action={<button onClick={addArticle} className="flex items-center gap-1 text-xs font-medium text-emerald-600 hover:text-emerald-700"><Plus size={13} /> Ajouter un article</button>}>
         {articles.length === 0 ? (
@@ -489,7 +489,7 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
       </Section>
 
       {/* 4. Revente directe */}
-      <Section title="Revente directe (optionnel)" subtitle="Si ce produit est vendu tel quel (canette, bouteille…).">
+      <Section teinte="vente" title="Revente directe (optionnel)" subtitle="Si ce produit est vendu tel quel (canette, bouteille…).">
         <div className="grid grid-cols-2 gap-3 items-end">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Prix de vente TTC</label>
@@ -502,7 +502,7 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
       </Section>
 
       {/* Utilisé dans — recettes & mises en place */}
-      <Section icon={<Link2 size={16} />} title="Utilisé dans" subtitle={`${usedIn.length} recette(s) / mise(s) en place utilisent ce produit`}>
+      <Section teinte="lien" icon={<Link2 size={16} />} title="Utilisé dans" subtitle={`${usedIn.length} recette(s) / mise(s) en place utilisent ce produit`}>
         {usedIn.length === 0 ? (
           <p className="text-sm text-gray-400">Ce produit n&apos;est utilisé dans aucune recette ni mise en place pour l&apos;instant.</p>
         ) : (
@@ -538,7 +538,7 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
       </Section>
 
       {/* 5. Fusionner */}
-      <Section icon={<GitMerge size={16} />} title="Fusionner avec un autre produit" subtitle="Réunit deux produits identiques (même unité) en un seul. Les articles, recettes et stock sont regroupés.">
+      <Section teinte="danger" icon={<GitMerge size={16} />} title="Fusionner avec un autre produit" subtitle="Réunit deux produits identiques (même unité) en un seul. Les articles, recettes et stock sont regroupés.">
         <button onClick={() => { setShowMerge(true); setMergeTargetId(""); }} disabled={mergeTargets.length === 0}
           className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition">
           Fusionner ce produit…
@@ -580,16 +580,37 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
   );
 }
 
-function Section({ icon, title, subtitle, action, children }: {
-  icon?: React.ReactNode; title: string; subtitle?: string; action?: React.ReactNode; children: React.ReactNode;
+/**
+ * Teintes des sections d'une fiche produit. Elles ne décorent pas : chacune
+ * dit à quoi sert le bloc, et surtout d'où vient le chiffre.
+ *
+ *   usage    marine  — l'unité de tes recettes et de tes inventaires
+ *   achat    orange  — l'argent qui sort, le colisage du fournisseur
+ *   vente    vert    — l'argent qui rentre
+ *   lien     bleu    — ce qui relie ce produit à tes fiches
+ *   danger   rouge   — une action difficile à défaire
+ */
+const TEINTES = {
+  usage:  { bord: "border-l-4 border-primary",     pastille: "bg-tertiary-fixed text-primary",   titre: "text-primary" },
+  achat:  { bord: "border-l-4 border-brand-orange", pastille: "bg-brand-orange/10 text-brand-orange-deep", titre: "text-brand-orange-deep" },
+  vente:  { bord: "border-l-4 border-green",       pastille: "bg-green-light text-green-dark",   titre: "text-green-dark" },
+  lien:   { bord: "border-l-4 border-blue",        pastille: "bg-blue-light text-blue-dark",     titre: "text-blue-dark" },
+  danger: { bord: "border-l-4 border-red",         pastille: "bg-red-light text-red",            titre: "text-red" },
+  neutre: { bord: "",                              pastille: "bg-gray-100 text-gray-500",        titre: "text-gray-900" },
+} as const;
+
+function Section({ icon, title, subtitle, action, teinte = "neutre", children }: {
+  icon?: React.ReactNode; title: string; subtitle?: string; action?: React.ReactNode;
+  teinte?: keyof typeof TEINTES; children: React.ReactNode;
 }) {
+  const t = TEINTES[teinte];
   return (
-    <div className="bg-white border border-gray-100 rounded-card shadow-card p-5 mb-4">
+    <div className={clsx("bg-white border border-gray-100 rounded-card shadow-card p-5 mb-4", t.bord)}>
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-start gap-2.5">
-          {icon && <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-500 shrink-0">{icon}</div>}
+          {icon && <div className={clsx("w-8 h-8 rounded-lg flex items-center justify-center shrink-0", t.pastille)}>{icon}</div>}
           <div>
-            <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
+            <h2 className={clsx("text-sm font-semibold", t.titre)}>{title}</h2>
             {subtitle && <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>}
           </div>
         </div>

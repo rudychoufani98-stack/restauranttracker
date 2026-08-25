@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Plus, Trash2, X, ChevronDown, ChevronUp, RefreshCw, Copy, Search, ChefHat, Percent, Coins, Layers, ClipboardCheck } from "lucide-react";
 import clsx from "clsx";
+import { Pastille, BadgeType, typeDeRecette, LegendeTypes } from "@/components/TypeIdentite";
 import { normaliseRefCaisse, refCaisseEnDouble } from "@/lib/references";
 import { foodCostPct, estAlcool, tauxDeVente, TVA_DEFAUT, type ReglagesTva } from "@/lib/vat";
 import { useConfirm, useAlert } from "@/components/ConfirmDialog";
@@ -531,6 +532,10 @@ export default function RecipesClient({ tva = TVA_DEFAUT, restaurantId, initialR
               ? `${menuRecipes.length} fiche${menuRecipes.length !== 1 ? "s" : ""} technique${menuRecipes.length !== 1 ? "s" : ""}`
               : `${menuRecipes.length} fiche${menuRecipes.length !== 1 ? "s" : ""} technique${menuRecipes.length !== 1 ? "s" : ""} · ${prepRecipes.length} mise${prepRecipes.length !== 1 ? "s" : ""} en place`}
           </p>
+          {/* Sans legende, la couleur reste une devinette. */}
+          <div className="mt-2">
+            <LegendeTypes types={lockMode === "prep" ? ["mep"] : lockMode === "recipe" ? ["recette"] : ["mep", "recette"]} />
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -883,12 +888,11 @@ export default function RecipesClient({ tva = TVA_DEFAUT, restaurantId, initialR
                   className="flex items-center gap-4 p-4 cursor-pointer hover:bg-white/80 transition group"
                   onClick={() => setExpandedId(isExpanded ? null : recipe.id)}
                 >
-                  <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
-                    <ChefHat size={17} />
-                  </div>
+                  <Pastille type={typeDeRecette(recipe)} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold text-primary truncate">{recipe.name}</span>
+                      <BadgeType type={typeDeRecette(recipe)} court />
                       <span className="inline-flex px-2 py-0.5 rounded bg-surface-container-low text-on-surface-variant/70 text-[10px] font-bold uppercase tracking-wide">{recipe.category}</span>
                     </div>
                     <p className="text-xs text-on-surface-variant/60 mt-0.5">Rendement {recipe.yield_portions} {yUnit}</p>

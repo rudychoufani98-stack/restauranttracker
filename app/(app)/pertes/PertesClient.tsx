@@ -14,6 +14,7 @@ import {
   type MouvementPerte,
 } from "@/lib/loss-targets";
 import { useConfirm, useAlert } from "@/components/ConfirmDialog";
+import { Pastille, LegendeTypes } from "@/components/TypeIdentite";
 
 type Ingredient = IngredientCible & { stock_qty: number | null };
 type Recette = RecetteCible;
@@ -44,16 +45,7 @@ const REASON_BAR: Record<string, string> = {
   "Vol / inconnu": "bg-on-surface-variant/40",
 };
 
-const TYPE_ICONE: Record<CibleType, typeof Package> = {
-  produit: Package,
-  mep: Soup,
-  recette: ChefHat,
-};
-const TYPE_PASTILLE: Record<CibleType, string> = {
-  produit: "bg-tertiary-fixed text-primary",
-  mep: "bg-amber-light text-amber-dark",
-  recette: "bg-blue-light text-blue-dark",
-};
+// Le code couleur des trois natures vit dans components/TypeIdentite.
 
 interface Props {
   restaurantId: string;
@@ -517,9 +509,12 @@ export default function PertesClient({
 
       {/* Historique */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <div className="flex items-center gap-4 flex-wrap">
         <h2 className="text-2xs font-bold uppercase tracking-widest text-on-surface-variant/60 flex items-center gap-2">
           <Clock size={14} className="text-on-surface-variant/40" /> Historique des pertes
         </h2>
+          <LegendeTypes />
+        </div>
         <div className="relative max-w-xs w-full">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/40" />
           <input
@@ -587,7 +582,7 @@ export default function PertesClient({
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-2.5">
-                        <Pastille type={p.type} petite />
+                        <Pastille type={p.type} taille="sm" />
                         <div className="min-w-0">
                           <p className="font-semibold text-on-surface truncate">{p.nom}</p>
                           {p.type !== "produit" && (
@@ -633,15 +628,4 @@ export default function PertesClient({
   );
 }
 
-function Pastille({ type, petite }: { type: CibleType; petite?: boolean }) {
-  const Icone = TYPE_ICONE[type];
-  return (
-    <div className={clsx(
-      "rounded-lg flex items-center justify-center shrink-0",
-      TYPE_PASTILLE[type],
-      petite ? "w-7 h-7" : "w-9 h-9",
-    )}>
-      <Icone size={petite ? 14 : 17} />
-    </div>
-  );
-}
+
