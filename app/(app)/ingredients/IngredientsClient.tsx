@@ -4,7 +4,7 @@ import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Search, Trash2, Check, ChevronDown, Copy, Package, Layers, TrendingUp, Archive, RotateCcw } from "lucide-react";
+import { Plus, Search, Trash2, Check, ChevronDown, Copy, Package, Layers, TrendingUp, Archive, RotateCcw , Upload } from "lucide-react";
 import { Card, Button, Input, Select, Modal, Alert, EmptyState } from "@/components/ui";
 import clsx from "clsx";
 import { useConfirm, useAlert } from "@/components/ConfirmDialog";
@@ -540,6 +540,11 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Link href="/ingredients/import"
+            title="Importer une liste de produits depuis Excel ou CSV"
+            className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-on-surface-variant border border-outline-variant/40 rounded-xl hover:bg-surface-container-low transition">
+            <Upload size={15} /> Importer
+          </Link>
           <button onClick={openAdd}
             className="flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary text-sm font-semibold rounded-xl hover:bg-primary-container transition shadow-lg hover:nav-active-glow active:scale-[0.98]">
             <Plus size={15} /> Ajouter un ingrédient
