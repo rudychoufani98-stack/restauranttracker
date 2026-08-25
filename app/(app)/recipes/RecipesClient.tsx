@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Plus, Trash2, X, ChevronDown, ChevronUp, RefreshCw, Copy, Search, ChefHat, Percent, Coins, Layers, ClipboardCheck } from "lucide-react";
 import clsx from "clsx";
+import { normaliseRefCaisse, refCaisseEnDouble } from "@/lib/references";
 import { useConfirm, useAlert } from "@/components/ConfirmDialog";
 
 
@@ -27,6 +28,8 @@ type Recipe = {
   yield_unit: string;
   total_cost: number;
   menu_price: number | null;
+  /** Touche de caisse qui vend ce plat — sert à rapprocher les ventes des fiches. */
+  pos_ref?: string | null;
   is_prep: boolean;
   countable_in_inventory?: boolean;
   allergens?: string[];
@@ -155,6 +158,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
   const [category, setCategory] = useState("Plat");
   const [isPrep, setIsPrep] = useState(false);
   const [yieldPortions, setYieldPortions] = useState("1");
+  const [posRef, setPosRef] = useState("");
   const [yieldUnit, setYieldUnit] = useState("portion");
   const [lines, setLines] = useState<DraftLine[]>([{ ...EMPTY_LINE }]);
 
@@ -191,6 +195,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
     setName("");
     setCategory((prep ? prepCategories : menuCategories)[0] ?? "");
     setYieldPortions("1");
+    setPosRef("");
     setYieldUnit(prep ? "kg" : "portion");
     setLines([{ ...EMPTY_LINE }]);
     setError(null);
@@ -203,6 +208,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
     setIsPrep(recipe.is_prep);
     setCategory(recipe.category);
     setYieldPortions(String(recipe.yield_portions));
+    setPosRef(recipe.pos_ref ?? "");
     setYieldUnit(recipe.yield_unit || "portion");
     setLines(
       recipe.recipe_lines.length > 0
@@ -288,6 +294,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
       yield_portions: yp,
       yield_unit: yieldUnit,
       total_cost: totalCost,
+      pos_ref: normaliseRefCaisse(posRef) || null,
     };
 
     let recipeId = editingId;
@@ -350,6 +357,7 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
       yield_unit: yieldUnit,
       total_cost: totalCost,
       menu_price: editingId ? (recipes.find((r) => r.id === editingId)?.menu_price ?? null) : null,
+      pos_ref: normaliseRefCaisse(posRef) || null,
       allergens: editingId ? (recipes.find((r) => r.id === editingId)?.allergens ?? []) : [],
       // Conserver le drapeau inventaire, sinon le bouton « Inventaire ✓ »
       // repassait à « + Inventaire » après une modification.
@@ -631,6 +639,31 @@ export default function RecipesClient({ restaurantId, initialRecipes, ingredient
                     {Array.from(new Set([...(isPrep ? prepCategories : menuCategories), category].filter(Boolean))).map((c) => <option key={c}>{c}</option>)}
                   </select>
                 </div>
+                {!isPrep && (
+                  <div className="col-span-3">
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Référence de caisse <span className="font-normal text-gray-400">(optionnel)</span>
+                    </label>
+                    <input
+                      value={posRef}
+                      onChange={(e) => setPosRef(e.target.value)}
+                      placeholder="ex. PLT12"
+                      className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary transition" />
+                    <p className="text-xs text-gray-400 mt-1">
+                      Le code de la touche qui vend ce plat sur ta caisse. C’est lui qui permettra de rapprocher
+                      automatiquement tes ventes et tes fiches techniques.
+                    </p>
+                    {refCaisseEnDouble(
+                      allRecipes
+                        .filter((r) => r.id !== editingId)
+                        .concat([{ id: "en-cours", name: name.trim() || "cette recette", pos_ref: posRef } as any]),
+                    ).length > 0 && (
+                      <p className="text-xs text-red-600 mt-1">
+                        Cette touche est déjà utilisée par une autre recette — deux plats ne peuvent pas partager la même.
+                      </p>
+                    )}
+                  </div>
+                )}
                 <div className="col-span-3">
                   <label className="block text-xs font-medium text-gray-600 mb-1">Rendement / conditionnement</label>
                   <div className="flex gap-2">

@@ -96,3 +96,19 @@ alter table stock_movements
   add column if not exists recipe_qty numeric;
 create index if not exists idx_stock_movements_reference
   on stock_movements(restaurant_id, reference_type, reference_id);
+
+-- ---------------------------------------------------------------------
+--  References internes des produits + reference de caisse des recettes
+--  (voir aussi supabase/references.sql)
+-- ---------------------------------------------------------------------
+alter table ingredients add column if not exists internal_ref integer;
+create unique index if not exists idx_ingredients_internal_ref
+  on ingredients(restaurant_id, internal_ref)
+  where internal_ref is not null;
+
+alter table categories add column if not exists ref_start integer;
+
+alter table recipes add column if not exists pos_ref text;
+create unique index if not exists idx_recipes_pos_ref
+  on recipes(restaurant_id, lower(pos_ref))
+  where pos_ref is not null and pos_ref <> '';

@@ -4,10 +4,11 @@ import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Search, Trash2, Check, ChevronDown, Copy, Package, Layers, TrendingUp, Archive, RotateCcw , Upload } from "lucide-react";
+import { Plus, Search, Trash2, Check, ChevronDown, Copy, Package, Layers, TrendingUp, Archive, RotateCcw , Upload , Hash } from "lucide-react";
 import { Card, Button, Input, Select, Modal, Alert, EmptyState } from "@/components/ui";
 import clsx from "clsx";
 import { useConfirm, useAlert } from "@/components/ConfirmDialog";
+import { formatRef, attribueReferences, TAILLE_BLOC } from "@/lib/references";
 
 // L'interface ne parle que kg / L / pièce (g/ml restent internes).
 const UNIT_CHOICES = [
@@ -41,6 +42,8 @@ type Ingredient = {
   reorder_threshold?: number | null;
   supplier_reference?: string | null;
   allergens?: string[] | null;
+  /** Numéro interne : le premier chiffre donne la famille (1xxx viandes, 5xxx épicerie…). */
+  internal_ref?: number | null;
   /** Un produit désactivé garde tout son historique mais ne peut plus être ajouté à une recette. */
   is_active?: boolean;
   suppliers?: { name: string } | null;
@@ -141,14 +144,17 @@ interface Props {
   suppliers: Supplier[];
   allTags: TagInfo[];
   categories: string[];
+  /** Catégories d’achat avec leur bloc de numérotation (references.sql). */
+  categoriesRef?: { name: string; ref_start: number | null }[];
 }
 
-export default function IngredientsClient({ restaurantId, initialIngredients, suppliers, allTags, categories: CATEGORIES }: Props) {
+export default function IngredientsClient({ restaurantId, initialIngredients, suppliers, allTags, categories: CATEGORIES, categoriesRef = [] }: Props) {
   const notify = useAlert();
   const confirm = useConfirm();
   const supabase = createClient();
   const router = useRouter();
   const [ingredients, setIngredients] = useState<Ingredient[]>(initialIngredients);
+  const [attribuant, setAttribuant] = useState(false);
   const [search, setSearch] = useState("");
   const [filterCategory, setFilterCategory] = useState("All");
   const [filterTagId, setFilterTagId] = useState("All");
@@ -464,6 +470,79 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
     setIngredients((p) => p.map((i) => (i.id === id ? { ...i, is_active: !active } : i)));
   }
 
+  // ── Numérotation interne ──────────────────────────────────────────
+  // Attribue un numéro aux produits qui n'en ont pas encore. Les produits
+  // déjà numérotés ne sont JAMAIS touchés : leur référence est imprimée sur
+  // des étiquettes de bac et recopiée sur des bons de commande.
+  async function attribuerReferences() {
+    const cats = categoriesRef.length > 0
+      ? categoriesRef
+      : CATEGORIES.map((name) => ({ name, ref_start: null }));
+
+    const { attributions, refuses, plages } = attribueReferences(
+      ingredients.map((i) => ({ id: i.id, name: i.name, category: i.category, internal_ref: i.internal_ref })),
+      cats,
+    );
+
+    if (attributions.length === 0) {
+      notify(
+        refuses.length > 0
+          ? `Aucun numéro attribué.\n\n${refuses.map((r) => `• ${r.nom} — ${r.raison}`).join("\n")}`
+          : "Tous tes produits ont déjà un numéro interne.",
+      );
+      return;
+    }
+
+    // On montre les blocs utilisés AVANT d'écrire : c'est la seule occasion
+    // de dire non à un rangement qui ne correspondrait pas à sa cuisine.
+    const parCategorie = new Map<string, number>();
+    for (const a of attributions) parCategorie.set(a.categorie, (parCategorie.get(a.categorie) ?? 0) + 1);
+    const detail = Array.from(parCategorie.entries())
+      .sort((a, b) => (plages.get(a[0]) ?? 0) - (plages.get(b[0]) ?? 0))
+      .map(([cat, n]) => `${formatRef(plages.get(cat) ?? 0)} — ${cat} : ${n} produit${n !== 1 ? "s" : ""}`);
+
+    const ok = await confirm({
+      title: `Numéroter ${attributions.length} produit${attributions.length !== 1 ? "s" : ""} ?`,
+      message:
+        `Le premier chiffre donne la famille, ${TAILLE_BLOC} numéros par catégorie :\n\n` +
+        detail.join("\n") +
+        (refuses.length > 0 ? `\n\nNon numérotés :\n${refuses.map((r) => `• ${r.nom} — ${r.raison}`).join("\n")}` : ""),
+      consequences: [
+        "Les produits qui ont déjà un numéro ne sont pas touchés.",
+        "Un numéro attribué ne change plus, même si tu changes la catégorie du produit.",
+      ],
+      confirmLabel: "Numéroter",
+      tone: "default",
+    });
+    if (!ok) return;
+
+    setAttribuant(true);
+    const faits: string[] = [];
+    for (const a of attributions) {
+      const { error } = await supabase.from("ingredients").update({ internal_ref: a.ref }).eq("id", a.id);
+      if (error) {
+        setAttribuant(false);
+        notify(
+          `Numérotation interrompue sur « ${a.nom} » : ${error.message}\n\n` +
+          `${faits.length} produit${faits.length !== 1 ? "s ont" : " a"} été numéroté${faits.length !== 1 ? "s" : ""} avant l'arrêt — relance pour continuer.`,
+        );
+        setIngredients((prev) => prev.map((i) => {
+          const f = attributions.find((x) => x.id === i.id && faits.includes(x.id));
+          return f ? { ...i, internal_ref: f.ref } : i;
+        }));
+        return;
+      }
+      faits.push(a.id);
+    }
+
+    setIngredients((prev) => prev.map((i) => {
+      const a = attributions.find((x) => x.id === i.id);
+      return a ? { ...i, internal_ref: a.ref } : i;
+    }));
+    setAttribuant(false);
+    router.refresh();
+  }
+
   async function handleDuplicate(ing: Ingredient) {
     setDuplicatingId(ing.id);
     const payload = {
@@ -540,6 +619,13 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={attribuerReferences}
+            disabled={attribuant}
+            title="Donner un numéro interne aux produits qui n’en ont pas encore"
+            className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-on-surface-variant border border-outline-variant/40 rounded-xl hover:bg-surface-container-low transition disabled:opacity-50">
+            <Hash size={15} /> {attribuant ? "Numérotation…" : "Numéroter"}
+          </button>
           <Link href="/ingredients/import"
             title="Importer une liste de produits depuis Excel ou CSV"
             className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-on-surface-variant border border-outline-variant/40 rounded-xl hover:bg-surface-container-low transition">
@@ -977,6 +1063,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
               <table className="w-full border-collapse">
                 <thead className="bg-surface-container-low/50 border-b border-outline-variant/20">
                   <tr>
+                    <th className="px-5 py-3 text-left text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60" title="Numéro interne : le premier chiffre donne la famille">Réf.</th>
                     <th className="px-5 py-3 text-left text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Nom</th>
                     <th className="px-5 py-3 text-left text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Catégorie</th>
                     <th className="px-5 py-3 text-left text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Tags</th>
@@ -1002,6 +1089,9 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                           ing.is_active === false && "opacity-55",
                         )}
                         onClick={() => router.push(`/ingredients/${ing.id}`)}>
+                        <td className="px-5 py-4 tabular-nums text-2xs font-bold text-on-surface-variant/60 whitespace-nowrap">
+                          {formatRef(ing.internal_ref)}
+                        </td>
                         <td className="px-5 py-4">
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-lg bg-tertiary-fixed flex items-center justify-center text-primary shrink-0">

@@ -30,6 +30,7 @@ const COLONNES_MODELE = [
   ["Seuil", 10, "Alerte « à commander » sous cette quantité. Laisse vide si tu ne veux pas d'alerte."],
   ["Stock initial", 20, "Ce que tu as en stock aujourd'hui. Laisse vide pour 0."],
   ["Prix de vente", "", "Seulement pour un produit revendu tel quel (une canette, une bière)."],
+  ["Référence interne", "", "Laisse vide : le bouton « Numéroter » attribue les numéros par famille."],
 ];
 
 async function modele() {
@@ -47,7 +48,7 @@ async function modele() {
   ws.getRow(r).values = entetes;
   styleHeader(ws, r);
   ws.addRow(COLONNES_MODELE.map((c) => c[1]));
-  ws.addRow(["Coca 33 cl", "Boissons", "Metro", "", "pièce", 24, 1, 10.8, 20, 100, 24, 48, 2.5]);
+  ws.addRow(["Coca 33 cl", "Boissons", "Metro", "", "pièce", 24, 1, 10.8, 20, 100, 24, 48, 2.5, ""]);
 
   const aide = wb.addWorksheet("Mode d'emploi");
   autoWidth(aide, [22, 18, 80]);
@@ -96,7 +97,7 @@ async function tableauDepuisFichier(fichier: File): Promise<unknown[][]> {
 
 async function contexte(supabase: any, restaurantId: string): Promise<Contexte> {
   const [{ data: ings }, { data: fours }] = await Promise.all([
-    supabase.from("ingredients").select("id, name, vat_rate").eq("restaurant_id", restaurantId),
+    supabase.from("ingredients").select("id, name, vat_rate, internal_ref").eq("restaurant_id", restaurantId),
     supabase.from("suppliers").select("id, name").eq("restaurant_id", restaurantId),
   ]);
 
@@ -112,6 +113,9 @@ async function contexte(supabase: any, restaurantId: string): Promise<Contexte> 
   return {
     existants: new Map<string, string>((ings ?? []).map((i: any) => [normalise(i.name), i.id])),
     fournisseurs: new Map<string, string>((fours ?? []).map((f: any) => [normalise(f.name), f.id])),
+    refsPrises: new Set<number>(
+      (ings ?? []).map((i: any) => Number(i.internal_ref)).filter((n: number) => Number.isFinite(n)),
+    ),
     tvaDefaut: frequente ? frequente[0] : 5.5,
   };
 }
@@ -206,6 +210,7 @@ export async function PUT(req: Request) {
         reorder_threshold: p.reorder_threshold,
         selling_price: p.selling_price,
         supplier_reference: p.supplier_reference,
+        ...(p.internal_ref != null ? { internal_ref: p.internal_ref } : {}),
         supplier_id,
         updated_at: new Date().toISOString(),
       };

@@ -267,3 +267,54 @@ describe("Lecture d'un CSV", () => {
     expect(parseCsv("Nom;Prix\r\nTomate;12\r\n")).toHaveLength(2);
   });
 });
+
+describe("Référence interne dans le fichier", () => {
+  const ENT = ["Nom", "Unité", "Contenance", "Prix HT", "Référence interne", "Référence"];
+  const cols = detecteColonnes(ENT);
+
+  it("ne confond pas la référence INTERNE et celle du fournisseur", () => {
+    expect(cols.reference_interne).toBe(4);
+    expect(cols.reference).toBe(5);
+  });
+
+  it("reprend le numéro fourni", () => {
+    const r = analyseLigne({ ligne: 2, cellules: ["Tomate", "kg", 5, 12.5, 3001, "REF-9"] }, cols, ctx(), new Map());
+    expect(r.produit!.internal_ref).toBe(3001);
+    expect(r.produit!.supplier_reference).toBe("REF-9");
+  });
+
+  it("laisse le numéro à attribuer plus tard quand la colonne est vide", () => {
+    const r = analyseLigne({ ligne: 2, cellules: ["Tomate", "kg", 5, 12.5, "", ""] }, cols, ctx(), new Map());
+    expect(r.statut).toBe("creer");
+    expect(r.produit!.internal_ref).toBeNull();
+  });
+
+  it("refuse un numéro déjà utilisé par un autre produit", () => {
+    const c = ctx({ refsPrises: new Set([3001]) });
+    const r = analyseLigne({ ligne: 2, cellules: ["Tomate", "kg", 5, 12.5, 3001, ""] }, cols, c, new Map());
+    expect(r.statut).toBe("erreur");
+    expect(r.erreurs[0]).toContain("3001");
+  });
+
+  it("accepte de réécrire le numéro d'un produit qu'on met à jour", () => {
+    const c = ctx({ refsPrises: new Set([3001]), existants: new Map([["tomate", "id-1"]]) });
+    const r = analyseLigne({ ligne: 2, cellules: ["Tomate", "kg", 5, 12.5, 3001, ""] }, cols, c, new Map());
+    expect(r.statut).toBe("mettre_a_jour");
+  });
+
+  it("refuse un numéro qui n'est pas un entier", () => {
+    const r = analyseLigne({ ligne: 2, cellules: ["Tomate", "kg", 5, 12.5, "3,5", ""] }, cols, ctx(), new Map());
+    expect(r.statut).toBe("erreur");
+  });
+
+  it("refuse deux fois le même numéro dans le fichier", () => {
+    const a = analyseTableau([
+      ENT,
+      ["Tomate", "kg", 5, 12.5, 3001, ""],
+      ["Ail", "kg", 1, 8, 3001, ""],
+    ], ctx());
+    expect(a.resume.creer).toBe(1);
+    expect(a.resume.erreur).toBe(1);
+    expect(a.lignes[1].erreurs[0]).toContain("ligne 2");
+  });
+});

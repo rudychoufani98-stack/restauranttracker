@@ -19,7 +19,7 @@ export type Statut = "creer" | "mettre_a_jour" | "erreur";
 
 export type Champ =
   | "nom" | "categorie" | "fournisseur" | "reference" | "unite"
-  | "colis_nombre" | "colis_taille" | "prix_ht" | "tva"
+  | "colis_nombre" | "colis_taille" | "prix_ht" | "tva" | "reference_interne"
   | "rendement" | "seuil" | "stock" | "prix_vente";
 
 /** En-têtes acceptés pour chaque champ. La comparaison ignore accents et casse. */
@@ -27,7 +27,10 @@ export const ENTETES: Record<Champ, string[]> = {
   nom: ["nom", "produit", "designation", "libelle", "article", "ingredient"],
   categorie: ["categorie", "famille", "rayon"],
   fournisseur: ["fournisseur", "supplier"],
-  reference: ["reference", "ref", "code", "code article", "reference fournisseur"],
+  // Déclaré AVANT « reference » : sinon l'alias « reference » du fournisseur
+  // capterait la colonne « Référence interne » du fichier.
+  reference_interne: ["reference interne", "ref interne", "numero interne", "code interne", "numero"],
+  reference: ["reference fournisseur", "reference", "ref", "code", "code article"],
   unite: ["unite", "unite de mesure", "mesure"],
   colis_nombre: ["nombre par colis", "nb par colis", "unites par colis", "colisage", "quantite par colis"],
   colis_taille: ["taille unitaire", "contenance", "poids unitaire", "format", "taille"],
@@ -110,6 +113,8 @@ export type ProduitImporte = {
   stock_qty: number | null;
   selling_price: number | null;
   supplier_reference: string | null;
+  /** Numéro interne demandé dans le fichier. Null = attribué plus tard. */
+  internal_ref: number | null;
   /** Nom du fournisseur tel qu'écrit dans le fichier (résolu à l'écriture). */
   fournisseur: string | null;
 };
@@ -132,6 +137,8 @@ export type Contexte = {
   existants: Map<string, string>;
   /** Fournisseurs déjà en base : nom normalisé → id. */
   fournisseurs: Map<string, string>;
+  /** Numéros internes déjà utilisés en base, pour refuser un doublon. */
+  refsPrises?: Set<number>;
   /** TVA appliquée quand le fichier n'en donne pas. */
   tvaDefaut?: number;
 };
@@ -146,6 +153,7 @@ export function analyseLigne(
   cols: Partial<Record<Champ, number>>,
   ctx: Contexte,
   vusDansLeFichier: Map<string, number>,
+  refsVuesDansLeFichier: Map<number, number> = new Map(),
 ): LigneAnalysee {
   const lire = (c: Champ): unknown => (cols[c] === undefined ? "" : source.cellules[cols[c]!]);
   const texte = (c: Champ) => String(lire(c) ?? "").trim();
@@ -204,6 +212,22 @@ export function analyseLigne(
 
   const existantId = ctx.existants.get(cle) ?? null;
 
+  // Numéro interne : facultatif. S'il est fourni, il doit être libre —
+  // deux produits sur le même numéro rendraient toute étiquette ambiguë.
+  let internal_ref: number | null = null;
+  const refBrute = nombreFr(lire("reference_interne"));
+  if (refBrute !== null) {
+    if (!Number.isInteger(refBrute) || refBrute <= 0) {
+      erreurs.push(`Référence interne « ${texte("reference_interne")} » invalide — attendu un nombre entier.`);
+    } else if (ctx.refsPrises?.has(refBrute) && !existantId) {
+      erreurs.push(`La référence ${refBrute} est déjà utilisée par un autre produit.`);
+    } else if (refsVuesDansLeFichier.has(refBrute)) {
+      erreurs.push(`La référence ${refBrute} apparaît déjà ligne ${refsVuesDansLeFichier.get(refBrute)} du fichier.`);
+    } else {
+      internal_ref = refBrute;
+    }
+  }
+
   if (erreurs.length > 0) {
     return { ligne: source.ligne, statut: "erreur", nom, erreurs, avertissements, produit: null, existantId };
   }
@@ -224,6 +248,7 @@ export function analyseLigne(
     stock_qty: stock !== null && stock >= 0 ? qtyFromDisplay(stock, unit!) : null,
     selling_price: prixVente !== null && prixVente > 0 ? prixVente : null,
     supplier_reference: texte("reference") || null,
+    internal_ref,
     fournisseur,
   };
 
@@ -254,14 +279,16 @@ export function analyseTableau(tableau: unknown[][], ctx: Contexte): Analyse {
   const lignes: LigneAnalysee[] = [];
   if (manquantes.length === 0) {
     const vus = new Map<string, number>();
+    const refsVues = new Map<number, number>();
     for (let i = 1; i < tableau.length; i++) {
       const cellules = tableau[i] ?? [];
       // Une ligne entièrement vide est ignorée : les tableurs en produisent
       // des dizaines en fin de feuille.
       if (cellules.every((c) => c === null || c === undefined || String(c).trim() === "")) continue;
 
-      const analysee = analyseLigne({ ligne: i + 1, cellules }, colonnes, ctx, vus);
+      const analysee = analyseLigne({ ligne: i + 1, cellules }, colonnes, ctx, vus, refsVues);
       if (analysee.nom) vus.set(normalise(analysee.nom), analysee.ligne);
+      if (analysee.produit?.internal_ref != null) refsVues.set(analysee.produit.internal_ref, analysee.ligne);
       lignes.push(analysee);
     }
   }
@@ -284,6 +311,7 @@ export const CHAMP_LABEL: Record<Champ, string> = {
   nom: "Nom",
   categorie: "Catégorie",
   fournisseur: "Fournisseur",
+  reference_interne: "Référence interne",
   reference: "Référence fournisseur",
   unite: "Unité",
   colis_nombre: "Nombre par colis",
