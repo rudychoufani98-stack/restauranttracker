@@ -8,7 +8,7 @@ import { Plus, Search, Trash2, Check, ChevronDown, Copy, Package, Layers, Trendi
 import { Card, Button, Input, Select, Modal, Alert, EmptyState } from "@/components/ui";
 import clsx from "clsx";
 import { useConfirm, useAlert } from "@/components/ConfirmDialog";
-import { formatRef, attribueReferences, normaliseRefCaisse, TAILLE_BLOC } from "@/lib/references";
+import { formatRef, attribueReferences, normaliseRefCaisse, nomDeBloc, TAILLE_BLOC } from "@/lib/references";
 
 // L'interface ne parle que kg / L / pièce (g/ml restent internes).
 const UNIT_CHOICES = [
@@ -501,11 +501,26 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
 
     // On montre les blocs utilisés AVANT d'écrire : c'est la seule occasion
     // de dire non à un rangement qui ne correspondrait pas à sa cuisine.
-    const parCategorie = new Map<string, number>();
-    for (const a of attributions) parCategorie.set(a.categorie, (parCategorie.get(a.categorie) ?? 0) + 1);
-    const detail = Array.from(parCategorie.entries())
-      .sort((a, b) => (plages.get(a[0]) ?? 0) - (plages.get(b[0]) ?? 0))
-      .map(([cat, n]) => `${formatRef(plages.get(cat) ?? 0)} — ${cat} : ${n} produit${n !== 1 ? "s" : ""}`);
+    //
+    // On groupe par BLOC REELLEMENT retenu, pas par catégorie : un produit
+    // rangé dans « Autre » est classé par son nom, et l'ancien récapitulatif
+    // annonçait « Autre : 75 produits » alors qu'ils partaient en viandes,
+    // légumes et épicerie. Il faut montrer ce qui va vraiment se passer.
+    const parBloc = new Map<number, { n: number; exemples: string[] }>();
+    for (const a of attributions) {
+      const e = parBloc.get(a.bloc) ?? { n: 0, exemples: [] };
+      e.n += 1;
+      if (e.exemples.length < 2) e.exemples.push(a.nom);
+      parBloc.set(a.bloc, e);
+    }
+    const detail = Array.from(parBloc.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([bloc, { n, exemples }]) => {
+        const nom = nomDeBloc(bloc)
+          ?? Array.from(plages.entries()).find(([, b]) => b === bloc)?.[0]
+          ?? "Sans famille";
+        return `${formatRef(bloc)} — ${nom} : ${n} produit${n !== 1 ? "s" : ""} (${exemples.join(", ")}…)`;
+      });
 
     const ok = await confirm({
       title: `Numéroter ${attributions.length} produit${attributions.length !== 1 ? "s" : ""} ?`,

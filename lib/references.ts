@@ -230,11 +230,16 @@ export function suggerePlages(categories: CategorieRef[]): Map<string, number> {
     }
   }
 
+  // Plusieurs catégories PEUVENT partager le bloc de leur famille.
+  // Sur une vraie carte, « Vins rouges », « Vins blancs » et « Vins rosés »
+  // sont trois catégories : les envoyer dans trois blocs éloignés faisait
+  // perdre au premier chiffre tout son sens. Les numéros restent uniques
+  // parce que l'attribution vérifie ce qui est déjà pris, pas le bloc.
   const inconnues: string[] = [];
   for (const c of categories) {
     if (plages.has(c.name)) continue;
     const f = familleDe(c.name);
-    if (f && !pris.has(f.debut)) {
+    if (f) {
       plages.set(c.name, f.debut);
       pris.add(f.debut);
     } else {
@@ -255,6 +260,11 @@ export function suggerePlages(categories: CategorieRef[]): Map<string, number> {
   return plages;
 }
 
+/** Le nom de la famille d'un bloc, ou null pour un bloc libre. */
+export function nomDeBloc(bloc: number): string | null {
+  return FAMILLES.find((f) => f.debut === bloc)?.nom ?? null;
+}
+
 /** Prochain numéro libre dans un bloc, ou null si le bloc est plein. */
 export function prochaineRef(debut: number, prises: Set<number>): number | null {
   for (let n = debut; n < debut + TAILLE_BLOC; n++) {
@@ -270,7 +280,19 @@ export type ProduitRef = {
   internal_ref?: number | null;
 };
 
-export type Attribution = { id: string; nom: string; categorie: string; ref: number };
+export type Attribution = {
+  id: string;
+  nom: string;
+  categorie: string;
+  ref: number;
+  /**
+   * Bloc réellement retenu. Il ne suit pas toujours la catégorie : un
+   * produit rangé dans « Autre » est classé par son NOM. Sans cette
+   * information, le récapitulatif affiché avant écriture annonçait le bloc
+   * de la catégorie — donc une répartition fausse.
+   */
+  bloc: number;
+};
 
 export type ResultatAttribution = {
   attributions: Attribution[];
@@ -331,7 +353,7 @@ export function attribueReferences(
       continue;
     }
     prises.add(ref);
-    attributions.push({ id: p.id, nom: p.name, categorie, ref });
+    attributions.push({ id: p.id, nom: p.name, categorie, ref, bloc: debut });
   }
 
   return { attributions, refuses, plages };

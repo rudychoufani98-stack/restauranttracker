@@ -9,7 +9,7 @@
 import { describe, it, expect } from "vitest";
 import {
   formatRef, familleDe, suggerePlages, prochaineRef, attribueReferences,
-  normaliseRefCaisse, refCaisseEnDouble, familleDuNom, categorieGenerique,
+  normaliseRefCaisse, refCaisseEnDouble, familleDuNom, categorieGenerique, nomDeBloc,
   TAILLE_BLOC, PREMIER_BLOC_LIBRE,
 } from "@/lib/references";
 
@@ -89,13 +89,36 @@ describe("Attribution des blocs aux catégories", () => {
     expect(p.get("Divers")).toBe(PREMIER_BLOC_LIBRE);
   });
 
-  it("ne met jamais deux catégories dans le même bloc", () => {
-    // « Viande » et « Volaille » relèvent toutes deux de la famille 1000.
-    const p = suggerePlages(cat("Viande", "Volaille"));
-    const blocs = Array.from(p.values());
-    expect(new Set(blocs).size).toBe(blocs.length);
-    expect(p.get("Viande")).toBe(1000);
-    expect(p.get("Volaille")).toBe(PREMIER_BLOC_LIBRE);
+  it("laisse les sous-familles PARTAGER le bloc de leur famille", () => {
+    // Cas réel relevé sur la carte d'Amaly : « Vins rouges », « Vins blancs »
+    // et « Vins rosés » sont trois catégories distinctes. Les envoyer dans
+    // trois blocs éloignés (10000, 16000, 17000) faisait perdre au premier
+    // chiffre tout son sens. Les numéros restent uniques de toute façon,
+    // puisque l'attribution vérifie les numéros pris, pas les blocs.
+    const p = suggerePlages(cat("Vins rouges", "Vins blancs", "Vins rosés"));
+    expect(p.get("Vins rouges")).toBe(10000);
+    expect(p.get("Vins blancs")).toBe(10000);
+    expect(p.get("Vins rosés")).toBe(10000);
+  });
+
+  it("même chose pour deux façons de nommer les boissons", () => {
+    const p = suggerePlages(cat("Boissons", "Boissons fraîches"));
+    expect(p.get("Boissons")).toBe(8000);
+    expect(p.get("Boissons fraîches")).toBe(8000);
+  });
+
+  it("des catégories qui partagent un bloc ne partagent PAS un numéro", () => {
+    const r = attribueReferences(
+      [
+        { id: "a", name: "Bordeaux", category: "Vins rouges" },
+        { id: "b", name: "Chablis", category: "Vins blancs" },
+        { id: "c", name: "Tavel", category: "Vins rosés" },
+      ],
+      cat("Vins rouges", "Vins blancs", "Vins rosés"),
+    );
+    const refs = r.attributions.map((a) => a.ref);
+    expect(new Set(refs).size).toBe(3);                    // tous différents
+    expect(refs.every((n) => n >= 10000 && n < 11000)).toBe(true);  // tous dans la cave
   });
 
   it("respecte un bloc déjà choisi à la main", () => {
@@ -311,5 +334,33 @@ describe("Reconnaissance par le nom", () => {
       cat("Poissons"),
     );
     expect(Math.floor(r.attributions[0].ref / 1000)).toBe(2);
+  });
+});
+
+describe("Ce que le récapitulatif doit annoncer", () => {
+  it("dit le bloc REELLEMENT retenu, pas celui de la catégorie", () => {
+    // Le cas qui a menti en production : 75 produits rangés dans « Autre »,
+    // annoncés dans un seul bloc fourre-tout alors qu'ils partaient chacun
+    // dans la famille de leur nom.
+    const r = attribueReferences(
+      [
+        { id: "a", name: "Agneau de lait", category: "Autre" },
+        { id: "b", name: "Ail", category: "Autre" },
+        { id: "c", name: "Acide citrique", category: "Autre" },
+      ],
+      cat("Autre"),
+    );
+    const blocs = r.attributions.map((a) => a.bloc).sort((x, y) => x - y);
+    expect(blocs).toEqual([1000, 3000, 5000]);
+    // Et le bloc annoncé colle au numéro attribué, sinon l'aperçu ment.
+    for (const a of r.attributions) {
+      expect(Math.floor(a.ref / 1000) * 1000).toBe(a.bloc);
+    }
+  });
+
+  it("nomme les blocs connus, et rend null pour un bloc libre", () => {
+    expect(nomDeBloc(1000)).toBe("Viandes");
+    expect(nomDeBloc(10000)).toBe("Vins & champagnes");
+    expect(nomDeBloc(PREMIER_BLOC_LIBRE)).toBeNull();
   });
 });
