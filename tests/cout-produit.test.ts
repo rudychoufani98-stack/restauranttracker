@@ -290,3 +290,45 @@ describe("Export Coût produit (classeur complet)", () => {
     expect(coca.getCell(11).value).toBe("—");
   });
 });
+
+describe("Une commande annulée sort de l'historique des prix", () => {
+  // Relevé en production : après annulation d'une commande facturée, l'écran
+  // des prix comptait encore cet achat, gardait l'alerte « facturé plus cher
+  // que commandé » sur une commande qui n'existe plus, et en inventait une
+  // seconde parce que le CMUP était revenu à sa valeur d'avant.
+  const INV = [
+    { id: "i1", invoice_number: "F-001", invoice_date: "2026-01-05", po_id: "po1" },
+    { id: "i2", invoice_number: "F-002", invoice_date: "2026-02-05", po_id: "po-annule" },
+  ];
+  const LIGNES = [
+    { invoice_id: "i1", ingredient_id: "poulet", quantity: 2, unit_price: 46 },
+    { invoice_id: "i2", ingredient_id: "poulet", quantity: 2, unit_price: 52 },
+  ];
+  const POS = [
+    { id: "po1", order_number: "BDC-1", suppliers: { name: "Avigros" }, status: "Received" },
+    { id: "po-annule", order_number: "BDC-2", suppliers: { name: "Avigros" }, status: "Cancelled" },
+  ];
+
+  it("ignore la facture d'une commande annulée", () => {
+    const h = buildPurchaseHistory({ invoices: INV, invoiceLines: LIGNES, purchaseOrders: POS, poLines: [] });
+    const achats = h.get("poulet")!;
+    expect(achats).toHaveLength(1);
+    expect(achats[0].unitPrice).toBe(46);
+  });
+
+  it("garde les achats des commandes qui tiennent toujours", () => {
+    const vivantes = POS.map((p) => ({ ...p, status: "Received" }));
+    const h = buildPurchaseHistory({ invoices: INV, invoiceLines: LIGNES, purchaseOrders: vivantes, poLines: [] });
+    expect(h.get("poulet")).toHaveLength(2);
+  });
+
+  it("une facture sans commande rattachée reste comptée", () => {
+    const h = buildPurchaseHistory({
+      invoices: [{ id: "i3", invoice_number: "F-003", invoice_date: "2026-03-01", po_id: null }],
+      invoiceLines: [{ invoice_id: "i3", ingredient_id: "poulet", quantity: 1, unit_price: 40 }],
+      purchaseOrders: POS,
+      poLines: [],
+    });
+    expect(h.get("poulet")).toHaveLength(1);
+  });
+});

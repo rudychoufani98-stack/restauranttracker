@@ -17,7 +17,16 @@ export type InvoiceLineRow = {
   quantity: number | null;
   unit_price: number | null;
 };
-export type PoRow = { id: string; order_number?: string | null; suppliers?: { name: string } | null };
+export type PoRow = {
+  id: string;
+  order_number?: string | null;
+  suppliers?: { name: string } | null;
+  /** « Cancelled » quand la commande a été annulée après facturation. */
+  status?: string | null;
+};
+
+/** Le statut que porte une commande annulée. */
+export const STATUT_ANNULEE = "Cancelled";
 export type PoLineRow = { po_id: string; ingredient_id: string | null; expected_price: number | null };
 
 export type Purchase = {
@@ -66,6 +75,18 @@ export function buildPurchaseHistory(input: {
     const inv = invById.get(line.invoice_id);
     if (!inv) continue;
     const po = inv.po_id ? poById.get(inv.po_id) : null;
+
+    // Une commande ANNULÉE n'a pas eu lieu : son stock a été retiré, sa
+    // facture ne doit plus peser sur l'historique des prix.
+    //
+    // Relevé en production : après avoir annulé une commande facturée à
+    // 52 € le colis, l'écran des prix comptait toujours cet achat, gardait
+    // l'alerte « facturé plus cher que commandé » sur une commande qui
+    // n'existe plus, et en inventait une seconde — « recettes à recalculer »
+    // — parce que le CMUP était correctement revenu à 4,60 € pendant que
+    // l'historique croyait encore à 52 €.
+    if (po?.status === STATUT_ANNULEE) continue;
+
     const list = byIngredient.get(line.ingredient_id) ?? [];
     list.push({
       date: inv.invoice_date ?? inv.created_at ?? "",

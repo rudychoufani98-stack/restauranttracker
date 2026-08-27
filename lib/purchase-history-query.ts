@@ -44,7 +44,7 @@ export async function loadPurchaseHistory(supabase: any, restaurantId: string): 
       ? fetchIn(supabase, "invoice_lines", "invoice_id, ingredient_id, quantity, unit_price", "invoice_id", invoiceIds)
       : Promise.resolve([] as any[]),
     poIds.length
-      ? fetchIn(supabase, "purchase_orders", "id, order_number, suppliers(name)", "id", poIds)
+      ? fetchIn(supabase, "purchase_orders", "id, order_number, status, suppliers(name)", "id", poIds)
       : Promise.resolve([] as any[]),
     poIds.length
       ? fetchIn(supabase, "purchase_order_lines", "po_id, ingredient_id, expected_price", "po_id", poIds)
