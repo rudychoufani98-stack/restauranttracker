@@ -436,9 +436,12 @@ export default function RentabiliteClient({ restaurantId, tva, targetFoodCostPct
     if (periods.length < 2) return null;
     const s0 = calcPeriodStats(periods[0], recipes, simpleProducts, reglages);
     const s1 = calcPeriodStats(periods[1], recipes, simpleProducts, reglages);
+    // Comparer deux marges dont l une au moins est inconnue produirait une
+    // fleche « en hausse de 3,3 % » sur du vent.
+    if (!s0.chiffre || !s1.chiffre) return null;
     if (s1.margeB === 0) return null;
     return ((s0.margeB - s1.margeB) / Math.abs(s1.margeB)) * 100;
-  }, [periods, recipes, simpleProducts]);
+  }, [periods, recipes, simpleProducts, reglages]);
 
   const pricedRecipes = recipes.filter((r) => r.menu_price && r.menu_price > 0);
 
@@ -456,11 +459,13 @@ export default function RentabiliteClient({ restaurantId, tva, targetFoodCostPct
         const combined = list.reduce((acc, p) => {
           const s = calcPeriodStats(p, recipes, simpleProducts, reglages);
           acc.ca += s.ca; acc.marge += s.margeB; acc.couverts += s.totalCouverts;
+          acc.lignes += s.lignes; acc.sansCout += s.sansCout;
           return acc;
-        }, { ca: 0, marge: 0, couverts: 0 });
-        return { month, list, combined };
+        }, { ca: 0, marge: 0, couverts: 0, lignes: 0, sansCout: 0 });
+        const chiffre = combined.lignes > 0 && combined.sansCout < combined.lignes;
+        return { month, list, combined: { ...combined, chiffre } };
       });
-  }, [periods, recipes, simpleProducts]);
+  }, [periods, recipes, simpleProducts, reglages]);
 
   // ── Read-only KPI aggregates, derived from the existing calcPeriodStats ──
   const globals = useMemo(() => {
@@ -490,7 +495,7 @@ export default function RentabiliteClient({ restaurantId, tva, targetFoodCostPct
       }
       const chiffre = lignes > 0 && sansCout < lignes;
       return {
-        ...ch, ca, caHT, cout, marge,
+        ...ch, ca, caHT, cout, marge, chiffre,
         foodCostPct: chiffre && caHT > 0 ? (cout / caHT) * 100 : null,
         hasData: chPeriods.length > 0,
       };
@@ -598,8 +603,8 @@ export default function RentabiliteClient({ restaurantId, tva, targetFoodCostPct
                     <span className="text-sm font-semibold text-on-surface">{seg.label}</span>
                     <div className="flex items-center gap-4 text-2xs tabular-nums text-on-surface-variant/70">
                       <span>CA <b className="text-on-surface">{seg.ca.toFixed(0)} €</b></span>
-                      <span>Coût <b className="text-red">{seg.cout.toFixed(0)} €</b></span>
-                      <span>Marge <b className={seg.marge >= 0 ? "text-primary" : "text-red"}>{seg.marge.toFixed(0)} €</b></span>
+                      <span>Coût <b className="text-red">{seg.chiffre ? `${seg.cout.toFixed(0)} €` : "—"}</b></span>
+                      <span>Marge <b className={!seg.chiffre ? "text-on-surface-variant/40" : seg.marge >= 0 ? "text-primary" : "text-red"}>{seg.chiffre ? `${seg.marge.toFixed(0)} €` : "—"}</b></span>
                       <span>Food cost <b className="text-on-surface">{seg.foodCostPct !== null ? `${seg.foodCostPct.toFixed(1)}%` : "—"}</b></span>
                     </div>
                   </div>
@@ -760,12 +765,12 @@ export default function RentabiliteClient({ restaurantId, tva, targetFoodCostPct
                   </div>
                   <div>
                     <p className="text-xs text-gray-500">Coût matière</p>
-                    <p className="text-lg font-semibold text-red-500">{eur(preview.cout)}</p>
+                    <p className="text-lg font-semibold text-red-500">{preview.chiffre ? eur(preview.cout) : "—"}</p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-500">Marge brute</p>
-                    <p className={clsx("text-lg font-semibold", preview.margeB >= 0 ? "text-emerald-600" : "text-red-500")}>
-                      {eur(preview.margeB)}
+                    <p className={clsx("text-lg font-semibold", !preview.chiffre ? "text-gray-400" : preview.margeB >= 0 ? "text-emerald-600" : "text-red-500")}>
+                      {preview.chiffre ? eur(preview.margeB) : "—"}
                     </p>
                     {preview.foodCostPct !== null && (
                       <p className={clsx("text-xs mt-0.5", preview.foodCostPct <= targetFoodCostPct ? "text-emerald-500" : "text-red-500")}>
@@ -849,7 +854,7 @@ export default function RentabiliteClient({ restaurantId, tva, targetFoodCostPct
                               </div>
                               <div className="flex items-center gap-4 text-2xs tabular-nums text-on-surface-variant/70">
                                 <span>CA <b className="text-on-surface">{combined.ca.toFixed(0)} €</b></span>
-                                <span>Marge <b className={combined.marge >= 0 ? "text-primary" : "text-red"}>{combined.marge.toFixed(0)} €</b></span>
+                                <span>Marge <b className={!combined.chiffre ? "text-on-surface-variant/40" : combined.marge >= 0 ? "text-primary" : "text-red"}>{combined.chiffre ? `${combined.marge.toFixed(0)} €` : "—"}</b></span>
                                 <span className="text-on-surface-variant/50">{combined.couverts} couv.</span>
                               </div>
                             </div>
@@ -878,8 +883,8 @@ export default function RentabiliteClient({ restaurantId, tva, targetFoodCostPct
                                   </div>
                                 </td>
                                 <td className="px-5 py-4 text-right text-sm font-bold text-on-surface tabular-nums whitespace-nowrap">{stats.ca.toFixed(0)} €</td>
-                                <td className="px-5 py-4 text-right text-sm font-semibold text-red tabular-nums whitespace-nowrap">{stats.coutMatiere.toFixed(0)} €</td>
-                                <td className={clsx("px-5 py-4 text-right text-sm font-bold tabular-nums whitespace-nowrap", stats.margeB >= 0 ? "text-primary" : "text-red")}>{stats.margeB.toFixed(0)} €</td>
+                                <td className="px-5 py-4 text-right text-sm font-semibold text-red tabular-nums whitespace-nowrap">{stats.chiffre ? `${stats.coutMatiere.toFixed(0)} €` : "—"}</td>
+                                <td className={clsx("px-5 py-4 text-right text-sm font-bold tabular-nums whitespace-nowrap", !stats.chiffre ? "text-on-surface-variant/40" : stats.margeB >= 0 ? "text-primary" : "text-red")}>{stats.chiffre ? `${stats.margeB.toFixed(0)} €` : "—"}</td>
                                 <td className="px-5 py-4 text-right">
                                   {stats.foodCostPct !== null ? (
                                     <span className={clsx("inline-flex px-2.5 py-1 rounded-full text-2xs font-bold tabular-nums",
@@ -911,8 +916,8 @@ export default function RentabiliteClient({ restaurantId, tva, targetFoodCostPct
                                       {[
                                         { label: "Couverts", value: stats.totalCouverts.toString(), color: "text-on-surface" },
                                         { label: "Chiffre d'affaires", value: `${eur(stats.ca)}`, color: "text-on-surface" },
-                                        { label: "Coût matière", value: `${eur(stats.coutMatiere)}`, color: "text-red" },
-                                        { label: "Marge brute", value: `${eur(stats.margeB)}`, color: stats.margeB >= 0 ? "text-primary" : "text-red" },
+                                        { label: "Coût matière", value: stats.chiffre ? `${eur(stats.coutMatiere)}` : "—", color: "text-red" },
+                                        { label: "Marge brute", value: stats.chiffre ? `${eur(stats.margeB)}` : "—", color: !stats.chiffre ? "text-on-surface-variant/40" : stats.margeB >= 0 ? "text-primary" : "text-red" },
                                       ].map((s) => (
                                         <div key={s.label} className="bg-surface-container-low/60 rounded-xl p-3">
                                           <p className="text-2xs font-bold uppercase tracking-widest text-on-surface-variant/60 mb-1">{s.label}</p>
@@ -954,38 +959,50 @@ export default function RentabiliteClient({ restaurantId, tva, targetFoodCostPct
                                             // Plat (recette) OU produit revendu tel quel — les deux
                                             // comptent dans le total, donc les deux doivent s'afficher.
                                             let itemName = "", itemPrice = 0, itemCost = 0;
+                                            let article: any = null;
                                             if (line.recipe_id) {
                                               const recipe = recipes.find((r) => r.id === line.recipe_id);
                                               if (!recipe || !recipe.menu_price) return null;
                                               itemName = recipe.name;
                                               itemPrice = Number(recipe.menu_price);
                                               itemCost = recipe.total_cost / (recipe.yield_portions || 1);
+                                              article = recipe;
                                             } else if (line.ingredient_id) {
                                               const prod = simpleProducts.find((p) => p.id === line.ingredient_id);
                                               if (!prod) return null;
                                               itemName = prod.name;
                                               itemPrice = Number(prod.selling_price);
                                               itemCost = resaleUnitCost(prod);
+                                              article = prod;
                                             } else return null;
                                             const lineCA = line.qty_sold * itemPrice;
+                                            // Même règle que partout ailleurs sur cet écran : marge et
+                                            // food cost se calculent sur le CA HT, et un article sans
+                                            // coût matière n'affiche pas 0 % mais un tiret.
+                                            const lineCAHT = revenuHT(lineCA, period.channel ?? "dine_in", article, reglages);
                                             const lineCout = line.qty_sold * itemCost;
-                                            const lineMarge = lineCA - lineCout;
-                                            const lineFCP = lineCA > 0 ? (lineCout / lineCA) * 100 : 0;
+                                            const lineChiffre = itemCost > 0;
+                                            const lineMarge = lineCAHT - lineCout;
+                                            const lineFCP = lineChiffre && lineCAHT > 0 ? (lineCout / lineCAHT) * 100 : null;
                                             return (
                                               <tr key={line.recipe_id ?? line.ingredient_id}>
                                                 <td className="py-1.5 text-on-surface-variant font-medium">{itemName}</td>
                                                 <td className="text-right text-on-surface-variant/70 tabular-nums">{line.qty_sold}</td>
                                                 <td className="text-right text-on-surface-variant/70 tabular-nums">{eur(itemPrice)}</td>
                                                 <td className="text-right text-on-surface tabular-nums">{eur(lineCA)}</td>
-                                                <td className="text-right text-red tabular-nums">{eur(lineCout)}</td>
-                                                <td className="text-right font-medium text-primary tabular-nums">{eur(lineMarge)}</td>
+                                                <td className="text-right text-red tabular-nums">{lineChiffre ? eur(lineCout) : "—"}</td>
+                                                <td className={clsx("text-right font-medium tabular-nums", lineChiffre ? "text-primary" : "text-on-surface-variant/40")}>{lineChiffre ? eur(lineMarge) : "—"}</td>
                                                 <td className="text-right">
-                                                  <span className={clsx("text-2xs font-medium tabular-nums",
-                                                    lineFCP <= targetFoodCostPct ? "text-primary" :
-                                                    lineFCP <= targetFoodCostPct * 1.2 ? "text-amber-dark" : "text-red"
-                                                  )}>
-                                                    {lineFCP.toFixed(1)}%
-                                                  </span>
+                                                  {lineFCP === null ? (
+                                                    <span className="text-2xs text-on-surface-variant/40">—</span>
+                                                  ) : (
+                                                    <span className={clsx("text-2xs font-medium tabular-nums",
+                                                      lineFCP <= targetFoodCostPct ? "text-primary" :
+                                                      lineFCP <= targetFoodCostPct * 1.2 ? "text-amber-dark" : "text-red"
+                                                    )}>
+                                                      {lineFCP.toFixed(1)}%
+                                                    </span>
+                                                  )}
                                                 </td>
                                               </tr>
                                             );
@@ -997,8 +1014,8 @@ export default function RentabiliteClient({ restaurantId, tva, targetFoodCostPct
                                           <td className="text-right pt-2 text-on-surface-variant tabular-nums">{stats.totalCouverts}</td>
                                           <td />
                                           <td className="text-right pt-2 text-on-surface tabular-nums">{eur(stats.ca)}</td>
-                                          <td className="text-right pt-2 text-red tabular-nums">{eur(stats.coutMatiere)}</td>
-                                          <td className="text-right pt-2 text-primary tabular-nums">{eur(stats.margeB)}</td>
+                                          <td className="text-right pt-2 text-red tabular-nums">{stats.chiffre ? eur(stats.coutMatiere) : "—"}</td>
+                                          <td className="text-right pt-2 text-primary tabular-nums">{stats.chiffre ? eur(stats.margeB) : "—"}</td>
                                           <td className="text-right pt-2">
                                             {stats.foodCostPct !== null && (
                                               <span className={clsx("text-sm tabular-nums",
