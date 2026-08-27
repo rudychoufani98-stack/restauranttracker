@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getRestaurant } from "@/lib/auth";
 import { getFournitureIds } from "@/lib/fournitures";
 import DashboardClient from "./DashboardClient";
+import { reglagesTva } from "@/lib/vat";
 import { loadPurchaseHistory } from "@/lib/purchase-history-query";
 import { buildPriceAlerts, totalAContester, seuilsDe, type AlertIngredient } from "@/lib/price-alerts";
 
@@ -32,7 +33,8 @@ export default async function DashboardPage() {
       .select("id, name, category, stock_qty, cmup, cost_per_base_unit, pack_price, selling_price, unit")
       .eq("restaurant_id", rid),
     supabase.from("sales_periods")
-      .select("id, month, sales_lines(recipe_id, ingredient_id, qty_sold)")
+      // channel : le taux de TVA depend du mode de consommation.
+      .select("id, month, channel, sales_lines(recipe_id, ingredient_id, qty_sold)")
       .eq("restaurant_id", rid)
       .order("month", { ascending: false }),
     supabase.from("stock_movements")
@@ -78,6 +80,7 @@ export default async function DashboardPage() {
       alertesPrix={alertesPrix}
       restaurantName={restaurant.name}
       targetFoodCost={Number(restaurant.target_food_cost_pct ?? 28)}
+      tva={reglagesTva(restaurant)}
       recipes={(recipes ?? []) as any}
       ingredients={(ingredients ?? []) as any}
       periods={(periods ?? []) as any}

@@ -5,16 +5,18 @@ import { eur as eurFmt } from "@/lib/format";
 import Link from "next/link";
 import { TrendingUp, TrendingDown, ShoppingCart, Trash2, Percent, Warehouse, Receipt, Utensils, ArrowRight , AlertTriangle } from "lucide-react";
 import { perDisplayUnit } from "@/lib/ingredient-helpers";
+import { revenuHT, TVA_DEFAUT, type ReglagesTva } from "@/lib/vat";
 
 type Recipe = { id: string; name: string; category: string; total_cost: number; menu_price: number | null; yield_portions: number };
 type Ingredient = { id: string; name: string; category: string; stock_qty: number | null; cmup: number | null; cost_per_base_unit: number | null; pack_price: number | null; selling_price: number | null; unit?: string };
 type SalesLine = { recipe_id: string | null; ingredient_id: string | null; qty_sold: number };
-type Period = { id: string; month: string; sales_lines: SalesLine[] };
+type Period = { id: string; month: string; channel?: string | null; sales_lines: SalesLine[] };
 type Movement = { movement_type: string; reference_type?: string | null; qty: number; unit_cost: number | null; created_at: string; ingredient_id: string | null };
 
 interface Props {
   restaurantName: string;
   targetFoodCost: number;
+  tva?: ReglagesTva;
   recipes: Recipe[];
   ingredients: Ingredient[];
   periods: Period[];
@@ -44,16 +46,24 @@ const monthLabel = (key: string) => {
 const eur = (n: number) =>
   `${n < 0 ? "−" : ""}${Math.abs(n).toLocaleString("fr-FR", { maximumFractionDigits: 0 })} €`;
 
-export default function DashboardClient({ alertesPrix, restaurantName, targetFoodCost, recipes, ingredients, periods, movements, fournitureIds, movementsTruncated = false }: Props) {
+export default function DashboardClient({ alertesPrix, restaurantName, targetFoodCost, tva, recipes, ingredients, periods, movements, fournitureIds, movementsTruncated = false }: Props) {
+  const reglages = tva ?? TVA_DEFAUT;
   const recipeMap = useMemo(() => new Map(recipes.map((r) => [r.id, r])), [recipes]);
   const ingMap = useMemo(() => new Map(ingredients.map((i) => [i.id, i])), [ingredients]);
   const fournitureSet = useMemo(() => new Set(fournitureIds), [fournitureIds]);
 
   // Flatten sales into events
   const saleEvents = useMemo(() => {
-    const out: { month: string; category: string; name: string; revenue: number; cost: number; qty: number }[] = [];
+    // revenueHT : le prix de carte est TTC, le coût matière est HT. Le food
+    // cost se calcule sur du HT des deux côtés — même règle que l'écran
+    // Ventes & marges, sinon les deux écrans se contredisent.
+    // chiffre : un plat sans coût matière n'est pas à 0 % de food cost, il
+    // n'est pas chiffré. Sans ce drapeau, l'accueil annonce « sous
+    // l'objectif » à un patron qui n'a encore rien saisi.
+    const out: { month: string; category: string; name: string; revenue: number; revenueHT: number; cost: number; qty: number; chiffre: boolean }[] = [];
     for (const p of periods) {
       const mk = monthKey(p.month);
+      const canal = p.channel ?? "dine_in";
       for (const l of p.sales_lines ?? []) {
         const qty = Number(l.qty_sold) || 0;
         if (!qty) continue;
@@ -61,17 +71,21 @@ export default function DashboardClient({ alertesPrix, restaurantName, targetFoo
           const r = recipeMap.get(l.recipe_id);
           // Même règle que l'écran Ventes & marges : un plat sans prix est ignoré
           if (!r || !Number(r.menu_price)) continue;
-          out.push({ month: mk, category: r.category || "Autre", name: r.name, revenue: qty * Number(r.menu_price || 0), cost: qty * (Number(r.total_cost || 0) / (r.yield_portions || 1)), qty });
+          const revenue = qty * Number(r.menu_price || 0);
+          const cout = Number(r.total_cost || 0) / (r.yield_portions || 1);
+          out.push({ month: mk, category: r.category || "Autre", name: r.name, revenue, revenueHT: revenuHT(revenue, canal, r, reglages), cost: qty * cout, qty, chiffre: cout > 0 });
         } else if (l.ingredient_id) {
           const i = ingMap.get(l.ingredient_id);
           if (!i || !Number(i.selling_price)) continue;
           // CMUP ramené à l'unité de vente (pièce, ou kg/L pour un produit au poids)
-          out.push({ month: mk, category: i.category || "Autre", name: i.name, revenue: qty * Number(i.selling_price || 0), cost: qty * perDisplayUnit(Number(i.cmup ?? i.cost_per_base_unit ?? 0), i.unit ?? "unit"), qty });
+          const revenue = qty * Number(i.selling_price || 0);
+          const cout = perDisplayUnit(Number(i.cmup ?? i.cost_per_base_unit ?? 0), i.unit ?? "unit");
+          out.push({ month: mk, category: i.category || "Autre", name: i.name, revenue, revenueHT: revenuHT(revenue, canal, i, reglages), cost: qty * cout, qty, chiffre: cout > 0 });
         }
       }
     }
     return out;
-  }, [periods, recipeMap, ingMap]);
+  }, [periods, recipeMap, ingMap, reglages]);
 
   // Flatten purchases + losses
   const moveEvents = useMemo(() => movements.map((m) => {
@@ -115,9 +129,13 @@ export default function DashboardClient({ alertesPrix, restaurantName, targetFoo
   // KPIs
   const sales = saleEvents.filter((e) => matchM(e.month) && matchC(e.category));
   const ca = sales.reduce((s, e) => s + e.revenue, 0);
+  const caHT = sales.reduce((s, e) => s + e.revenueHT, 0);
   const coutMatiere = sales.reduce((s, e) => s + e.cost, 0);
-  const marge = ca - coutMatiere;
-  const foodCost = ca > 0 ? (coutMatiere / ca) * 100 : 0;
+  // Au moins une vente chiffrée, sinon la marge vaudrait tout le CA.
+  const chiffre = sales.some((e) => e.chiffre);
+  const sansCout = sales.filter((e) => !e.chiffre).length;
+  const marge = caHT - coutMatiere;
+  const foodCost = chiffre && caHT > 0 ? (coutMatiere / caHT) * 100 : null;
   const platsVendus = sales.reduce((s, e) => s + e.qty, 0);
 
   // Achats séparés : nourriture (food) vs fournitures (couverts, emballages…).
@@ -197,7 +215,7 @@ export default function DashboardClient({ alertesPrix, restaurantName, targetFoo
   const partFood = achatsTotal > 0 ? (achatsFood / achatsTotal) * 100 : 0;
 
   const hasSales = saleEvents.length > 0;
-  const fcColor = foodCost === 0 ? "text-gray-400" : foodCost <= targetFoodCost ? "text-emerald-600" : foodCost <= targetFoodCost * 1.2 ? "text-amber-600" : "text-red-600";
+  const fcColor = foodCost === null ? "text-gray-400" : foodCost <= targetFoodCost ? "text-emerald-600" : foodCost <= targetFoodCost * 1.2 ? "text-amber-600" : "text-red-600";
 
   return (
     <div className="min-h-screen bg-surface">
@@ -340,21 +358,28 @@ export default function DashboardClient({ alertesPrix, restaurantName, targetFoo
                 <Percent size={16} />
               </span>
             </div>
-            <Gauge value={hasSales && ca > 0 ? foodCost : null} target={targetFoodCost} />
+            <Gauge value={hasSales ? foodCost : null} target={targetFoodCost} />
             <p className="text-xs text-center text-on-surface-variant/70">
-              {ca > 0 ? (
-                foodCost <= targetFoodCost
-                  ? <>Sous l&apos;objectif de <b>{targetFoodCost}%</b> — {eur(marge)} de marge</>
-                  : <>Au-dessus de l&apos;objectif — <b>{eur(coutMatiere - ca * (targetFoodCost / 100))}</b> de coût matière en trop</>
-              ) : <>Objectif <b>{targetFoodCost}%</b> — saisis tes ventes pour le mesurer</>}
+              {foodCost === null ? (
+                ca > 0
+                  ? <>Objectif <b>{targetFoodCost}%</b> — chiffre tes fiches pour le mesurer</>
+                  : <>Objectif <b>{targetFoodCost}%</b> — saisis tes ventes pour le mesurer</>
+              ) : foodCost <= targetFoodCost
+                ? <>Sous l&apos;objectif de <b>{targetFoodCost}%</b> — {eur(marge)} de marge</>
+                : <>Au-dessus de l&apos;objectif — <b>{eur(coutMatiere - caHT * (targetFoodCost / 100))}</b> de coût matière en trop</>}
             </p>
+            {sansCout > 0 && foodCost !== null && (
+              <p className="text-2xs text-center text-amber-dark">
+                {sansCout} vente{sansCout !== 1 ? "s" : ""} sans coût matière : le food cost réel est plus élevé
+              </p>
+            )}
           </div>
         </section>
 
         {/* ── SECONDAIRE ── */}
         <section className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-          <Kpi label="Coût matière" value={eur(coutMatiere)} icon={<Utensils size={15} />}
-            sub={ca > 0 ? `${foodCost.toFixed(0)}% du CA` : "des plats vendus"} />
+          <Kpi label="Coût matière" value={chiffre ? eur(coutMatiere) : "—"} icon={<Utensils size={15} />}
+            sub={foodCost !== null ? `${foodCost.toFixed(0)}% du CA HT` : "des plats vendus"} />
           <Kpi label="Achats" value={eur(achatsTotal)} icon={<ShoppingCart size={15} />} accent="blue"
             sub={achatsTotal > 0 ? `${partFood.toFixed(0)}% food · ${(100 - partFood).toFixed(0)}% fournitures` : "food + fournitures"}
             bar={achatsTotal > 0 ? partFood : undefined} />
@@ -365,8 +390,8 @@ export default function DashboardClient({ alertesPrix, restaurantName, targetFoo
 
         {/* ── BANDE COMPACTE : chiffres de contexte ── */}
         <section className="glass-card rounded-2xl px-5 py-4 mb-6 grid grid-cols-2 md:grid-cols-4 gap-y-3 md:divide-x divide-outline-variant/30">
-          <Mini label="Marge brute" value={eur(marge)} hint={ca > 0 ? `${(100 - foodCost).toFixed(0)}% du CA` : "—"} />
-          <Mini label="Marge nette est." value={eur(marge - pertes)} hint="marge − pertes" />
+          <Mini label="Marge brute" value={chiffre ? eur(marge) : "—"} hint={foodCost !== null ? `${(100 - foodCost).toFixed(0)}% du CA HT` : "—"} />
+          <Mini label="Marge nette est." value={chiffre ? eur(marge - pertes) : "—"} hint="marge − pertes" />
           <Mini label="Achats food" value={eur(achatsFood)} hint="hors fournitures" />
           <Mini label="Fournitures" value={eur(achatsFournitures)} hint="couverts, emballages…" />
         </section>

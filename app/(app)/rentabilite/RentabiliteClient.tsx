@@ -709,7 +709,14 @@ export default function RentabiliteClient({ restaurantId, tva, targetFoodCostPct
                         {items.map((it) => {
                           const qty = qtyOf(it.key);
                           const active = qty > 0;
-                          const marginPct = it.price > 0 ? ((it.price - it.cost) / it.price) * 100 : 0;
+                          // Sans coût matière, (prix − 0) / prix donne 100 % :
+                          // chaque plat de la grille s'affichait « 100% marge »,
+                          // ce qui est le contraire de l'information utile. Et
+                          // le prix est TTC : la marge se calcule sur le HT.
+                          const itHT = revenuHT(it.price, saleChannel, it, reglages);
+                          const marginPct = it.cost > 0 && itHT > 0
+                            ? ((itHT - it.cost) / itHT) * 100
+                            : null;
                           return (
                             <div
                               key={it.key}
@@ -729,9 +736,15 @@ export default function RentabiliteClient({ restaurantId, tva, targetFoodCostPct
                               <p className="text-sm font-medium text-gray-900 leading-snug line-clamp-2">{it.name}</p>
                               <div className="mt-1.5 flex items-center justify-between">
                                 <span className="text-sm font-semibold text-gray-800">{eur(it.price)}</span>
-                                <span className={clsx("text-2xs font-medium", marginPct >= 60 ? "text-emerald-600" : marginPct >= 30 ? "text-amber-600" : "text-red-500")}>
-                                  {marginPct.toFixed(0)}% marge
-                                </span>
+                                {marginPct === null ? (
+                                  <span className="text-2xs font-medium text-gray-400" title="Ajoute les ingrédients et leurs prix pour connaître la marge.">
+                                    à chiffrer
+                                  </span>
+                                ) : (
+                                  <span className={clsx("text-2xs font-medium", marginPct >= 60 ? "text-emerald-600" : marginPct >= 30 ? "text-amber-600" : "text-red-500")}>
+                                    {marginPct.toFixed(0)}% marge
+                                  </span>
+                                )}
                               </div>
                               {/* Steppers */}
                               <div className="mt-2 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
