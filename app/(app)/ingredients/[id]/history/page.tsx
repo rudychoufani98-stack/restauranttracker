@@ -68,6 +68,13 @@ export default async function IngredientHistoryPage({ params }: { params: { id: 
   const totalIn = moves.filter((m) => m.movement_type === "in").reduce((s, m) => s + Number(m.qty), 0);
   const totalOut = moves.filter((m) => m.movement_type === "out").reduce((s, m) => s + Number(m.qty), 0);
   const totalLoss = moves.filter((m) => m.movement_type === "loss").reduce((s, m) => s + Number(m.qty), 0);
+  // Les ajustements (ecart d inventaire, annulation de commande) sont
+  // enregistres sans signe : leur sens ne se lit que dans le libelle. On ne
+  // peut donc pas les additionner aux trois compteurs — et sans le dire,
+  // ceux-ci ne retombent pas sur le stock affiche juste a cote. Vu en test :
+  // « TOTAL ENTRE 40 kg » pour un stock de 20 kg, apres l annulation d une
+  // commande de 20 kg.
+  const nbAjust = moves.filter((m) => m.movement_type === "adjustment").length;
 
   // Group by month
   const byMonth = new Map<string, typeof moves>();
@@ -113,6 +120,14 @@ export default async function IngredientHistoryPage({ params }: { params: { id: 
           <p className="text-lg font-bold text-red-500">{formatQty(totalLoss, unit)}</p>
         </div>
       </div>
+
+      {nbAjust > 0 && (
+        <p className="-mt-4 mb-6 text-2xs text-gray-500">
+          {nbAjust} ajustement{nbAjust !== 1 ? "s" : ""} (écart d&apos;inventaire, annulation de commande)
+          {" "}ne {nbAjust !== 1 ? "sont" : "est"} pas compté{nbAjust !== 1 ? "s" : ""} ci-dessus :
+          les trois totaux ne retombent donc pas sur le stock actuel. Le détail est dans le journal.
+        </p>
+      )}
 
       {/* Timeline */}
       {moves.length === 0 ? (
