@@ -131,8 +131,8 @@ export default async function AdminPage({ searchParams }: { searchParams?: { ok?
                   {r.lastActivity && <> · dernière commande le {new Date(r.lastActivity).toLocaleDateString("fr-FR")}</>}
                 </p>
                 <div className="flex items-center gap-4 mt-2 text-sm text-on-surface-variant/80 flex-wrap">
-                  <span className="font-semibold text-primary tabular-nums" title="Valeur du stock">Stock : €{r.stockValue.toFixed(0)}</span>
-                  <span className="tabular-nums" title="Dépenses du mois (commandes)">Achats ce mois : €{r.monthSpend.toFixed(0)}</span>
+                  <span className="font-semibold text-primary tabular-nums" title="Valeur du stock">Stock : {r.stockValue.toFixed(0)} €</span>
+                  <span className="tabular-nums" title="Dépenses du mois (commandes)">Achats ce mois : {r.monthSpend.toFixed(0)} €</span>
                   <span className="flex items-center gap-1.5" title="Ingrédients"><Package size={14} className="text-on-surface-variant/50" /> {r.nIngredients}</span>
                   <span className="flex items-center gap-1.5" title="Recettes"><ChefHat size={14} className="text-on-surface-variant/50" /> {r.nRecipes}</span>
                   <span className="flex items-center gap-1.5" title="Commandes"><ShoppingCart size={14} className="text-on-surface-variant/50" /> {r.nOrders}</span>

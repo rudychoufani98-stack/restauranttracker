@@ -11,8 +11,8 @@ import {
   type StatMovement, type StatIngredient, type StatSession,
 } from "@/lib/stock-stats";
 
-const eur = (n: number) => `€${n.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const eur0 = (n: number) => `€${Math.round(n).toLocaleString("fr-FR")}`;
+const eur = (n: number) => `${n.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+const eur0 = (n: number) => `${Math.round(n).toLocaleString("fr-FR")} €`;
 const pct = (n: number) => `${n.toFixed(1)} %`;
 
 const PERIODS: { key: string; label: string; months: number | null }[] = [

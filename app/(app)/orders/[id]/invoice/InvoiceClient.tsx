@@ -130,7 +130,7 @@ export default function InvoiceClient({ po, deliveryNote, deliveryNotes, restaur
     // L'action réajuste stock, coût moyen ET prix produits : on l'annonce.
     if (!(await confirm(
       `${isEdit ? "Enregistrer les corrections" : "Valider la facture"} ?\n\n` +
-      `Total HT €${total.toFixed(2)}\n\n` +
+      `Total HT ${total.toFixed(2)} €\n\n` +
       "Le stock sera réajusté par différence, et les prix d'achat + coût moyen (CMUP) des produits seront mis à jour au prix facturé."
     ))) return;
 
@@ -447,7 +447,7 @@ export default function InvoiceClient({ po, deliveryNote, deliveryNotes, restaur
                   <div className="flex-1">
                     <label className="block text-xs text-gray-500 mb-1">
                       Prix (€/{type})
-                      {priceChanged && <span className="text-amber-500 ml-1">— prévu €{line.expected_price.toFixed(2)}</span>}
+                      {priceChanged && <span className="text-amber-500 ml-1">— prévu {line.expected_price.toFixed(2)} €</span>}
                     </label>
                     <input type="number" min="0" step="0.01" value={line.invoice_price}
                       onChange={(e) => updatePrice(i, e.target.value)}
@@ -457,7 +457,7 @@ export default function InvoiceClient({ po, deliveryNote, deliveryNotes, restaur
                   </div>
                   <div className="text-right text-xs text-gray-500 pb-2">
                     Sous-total<br />
-                    <span className={`font-semibold text-sm ${priceChanged ? "text-amber-600" : "text-gray-900"}`}>€{lineTotal.toFixed(2)}</span>
+                    <span className={`font-semibold text-sm ${priceChanged ? "text-amber-600" : "text-gray-900"}`}>{lineTotal.toFixed(2)} €</span>
                   </div>
                 </div>
               </div>
@@ -483,17 +483,17 @@ export default function InvoiceClient({ po, deliveryNote, deliveryNotes, restaur
         <div className="px-5 py-4 border-t border-[#E5E7EB] bg-gray-50 space-y-1">
           <div className="flex justify-between items-center text-sm text-gray-500">
             <span>Sous-total produits</span>
-            <span>€{linesTotal.toFixed(2)}</span>
+            <span>{linesTotal.toFixed(2)} €</span>
           </div>
           {misc > 0 && (
             <div className="flex justify-between items-center text-sm text-gray-500">
               <span>{miscLabel.trim() || "Frais divers"}</span>
-              <span>€{misc.toFixed(2)}</span>
+              <span>{misc.toFixed(2)} €</span>
             </div>
           )}
           <div className="flex justify-between items-center pt-1">
             <span className="text-sm font-medium text-gray-700">Total HT</span>
-            <span className="text-lg font-semibold text-gray-900">€{total.toFixed(2)}</span>
+            <span className="text-lg font-semibold text-gray-900">{total.toFixed(2)} €</span>
           </div>
         </div>
       </div>

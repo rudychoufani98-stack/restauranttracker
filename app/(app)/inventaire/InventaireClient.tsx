@@ -445,8 +445,8 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
         (avis.level === "attention" ? `⚠️ ${avis.message}
 
 ` : "") +
-        `Finaliser l'inventaire ?\n\n${countSummary.counted} produit(s) compté(s) · écart net €${countSummary.net.toFixed(2)} ` +
-        `(manquant €${countSummary.manque.toFixed(2)} / surplus €${countSummary.surplus.toFixed(2)})\n\n` +
+        `Finaliser l'inventaire ?\n\n${countSummary.counted} produit(s) compté(s) · écart net ${countSummary.net.toFixed(2)} € ` +
+        `(manquant ${countSummary.manque.toFixed(2)} € / surplus ${countSummary.surplus.toFixed(2)} €)\n\n` +
         "Le stock théorique sera REMPLACÉ par les quantités comptées et les écarts seront enregistrés en pertes/ajustements. Cette action ne peut pas être annulée."
       ));
       if (!ok) return;
@@ -602,7 +602,7 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
       setCounts({});
       setMepCounts({});
       setActiveSessionId(null);
-      setCountDone(`Inventaire finalisé : ${updates.length} ajustement(s) appliqué(s), écart net €${countSummary.net.toFixed(2)}.`);
+      setCountDone(`Inventaire finalisé : ${updates.length} ajustement(s) appliqué(s), écart net ${countSummary.net.toFixed(2)} €.`);
       setTab(sessionKind === "fournitures" ? "sessions-f" : "sessions");
     } else {
       setCountDone("Brouillon enregistré ✓");
@@ -868,16 +868,16 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
             <div className="glass-card rounded-2xl p-5 flex flex-col gap-2 border-l-4 border-red">
               <p className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Manquant (écart inexpliqué)</p>
-              <p className="text-2xl font-extrabold text-red tabular-nums">-€{countSummary.manque.toFixed(2)}</p>
+              <p className="text-2xl font-extrabold text-red tabular-nums">-{countSummary.manque.toFixed(2)} €</p>
             </div>
             <div className="glass-card rounded-2xl p-5 flex flex-col gap-2 border-l-4 border-primary">
               <p className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Surplus trouvé</p>
-              <p className="text-2xl font-extrabold text-primary tabular-nums">+€{countSummary.surplus.toFixed(2)}</p>
+              <p className="text-2xl font-extrabold text-primary tabular-nums">+{countSummary.surplus.toFixed(2)} €</p>
             </div>
             <div className={clsx("glass-card rounded-2xl p-5 flex flex-col gap-2 border-l-4", countSummary.net < 0 ? "border-red" : "border-primary")}>
               <p className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Écart net · {countSummary.counted} comptés</p>
               <p className={clsx("text-2xl font-extrabold tabular-nums", countSummary.net < 0 ? "text-red" : "text-primary")}>
-                {countSummary.net < 0 ? "-" : "+"}€{Math.abs(countSummary.net).toFixed(2)}
+                {countSummary.net < 0 ? "-" : "+"}{Math.abs(countSummary.net).toFixed(2)} €
               </p>
             </div>
           </div>
@@ -1033,7 +1033,7 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
                       <td className="px-5 py-4 text-right">
                         {valueGap === null ? <span className="text-on-surface-variant/30">—</span> : (
                           <span className={clsx("font-semibold tabular-nums", valueGap < 0 ? "text-red" : valueGap > 0 ? "text-primary" : "text-on-surface-variant/40")}>
-                            {valueGap < 0 ? "-" : "+"}€{Math.abs(valueGap).toFixed(2)}
+                            {valueGap < 0 ? "-" : "+"}{Math.abs(valueGap).toFixed(2)} €
                           </span>
                         )}
                       </td>
@@ -1106,16 +1106,16 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
                     <div className="flex items-center gap-4 text-sm">
                       <div className="text-right">
                         <p className="text-2xs text-on-surface-variant/50 uppercase tracking-wide">Manquant</p>
-                        <p className="font-semibold text-red tabular-nums">-€{Number(s.manquant_value).toFixed(2)}</p>
+                        <p className="font-semibold text-red tabular-nums">-{Number(s.manquant_value).toFixed(2)} €</p>
                       </div>
                       <div className="text-right">
                         <p className="text-2xs text-on-surface-variant/50 uppercase tracking-wide">Surplus</p>
-                        <p className="font-semibold text-primary tabular-nums">+€{Number(s.surplus_value).toFixed(2)}</p>
+                        <p className="font-semibold text-primary tabular-nums">+{Number(s.surplus_value).toFixed(2)} €</p>
                       </div>
                       <div className="text-right">
                         <p className="text-2xs text-on-surface-variant/50 uppercase tracking-wide">Écart net</p>
                         <p className={clsx("font-bold tabular-nums", Number(s.net_value) < 0 ? "text-red" : "text-primary")}>
-                          {Number(s.net_value) < 0 ? "-" : "+"}€{Math.abs(Number(s.net_value)).toFixed(2)}
+                          {Number(s.net_value) < 0 ? "-" : "+"}{Math.abs(Number(s.net_value)).toFixed(2)} €
                         </p>
                       </div>
                       {draft ? (
@@ -1158,7 +1158,7 @@ export default function InventaireClient({ restaurantId, ingredients, recentMove
                                   {isRecipeLine || ec === 0 ? "—" : `${ec > 0 ? "+" : "-"}${formatQty(Math.abs(ec), u)}`}
                                 </td>
                                 <td className={clsx("py-1.5 text-right tabular-nums", ev < 0 ? "text-red" : ev > 0 ? "text-primary" : "text-on-surface-variant/40")}>
-                                  {isRecipeLine || ev === 0 ? "—" : `${ev < 0 ? "-" : "+"}€${Math.abs(ev).toFixed(2)}`}
+                                  {isRecipeLine || ev === 0 ? "—" : `${ev < 0 ? "-" : "+"}${Math.abs(ev).toFixed(2)} €`}
                                 </td>
                               </tr>
                             );

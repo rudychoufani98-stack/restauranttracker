@@ -597,7 +597,7 @@ export default function RecipesClient({ tva = TVA_DEFAUT, restaurantId, initialR
               <span className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">{tab === "prep" ? "Coût moyen / unité de rendement" : "Coût moyen / portion"}</span>
               <div className="w-10 h-10 rounded-full bg-primary-container/20 flex items-center justify-center text-primary-container"><Coins size={18} /></div>
             </div>
-            <h3 className="text-2xl font-extrabold text-on-surface tabular-nums">€{avgCostPerPortion.toFixed(2)}</h3>
+            <h3 className="text-2xl font-extrabold text-on-surface tabular-nums">{avgCostPerPortion.toFixed(2)} €</h3>
           </div>
         </section>
       )}
@@ -793,7 +793,7 @@ export default function RecipesClient({ tva = TVA_DEFAUT, restaurantId, initialR
                       })()}
 
                       <div className="w-16 text-right text-xs text-gray-500 pt-2.5">
-                        €{calcLineCost(line, ingredients, allRecipes).toFixed(3)}
+                        {calcLineCost(line, ingredients, allRecipes).toFixed(3)} €
                       </div>
 
                       <button onClick={() => removeLine(idx)} title="Retirer cette ligne" aria-label="Retirer cette ligne" className="pt-2 text-gray-300 hover:text-red-400 transition">
@@ -808,14 +808,14 @@ export default function RecipesClient({ tva = TVA_DEFAUT, restaurantId, initialR
               <div className="bg-gray-50 border border-[#E5E7EB] rounded-lg px-4 py-3 flex justify-between items-center">
                 <div>
                   <p className="text-xs text-gray-500">Coût total de la recette</p>
-                  <p className="text-lg font-medium text-gray-900">€{totalCost.toFixed(2)}</p>
+                  <p className="text-lg font-medium text-gray-900">{totalCost.toFixed(2)} €</p>
                 </div>
                 <div className="text-right">
                   <p className="text-xs text-gray-500">
                     Coût par {YIELD_UNITS.find((u) => u.value === yieldUnit)?.label ?? yieldUnit}
                     {" "}(rendement {yieldPortions || 1})
                   </p>
-                  <p className="text-lg font-medium text-emerald-700">€{costPerPortion.toFixed(2)}</p>
+                  <p className="text-lg font-medium text-emerald-700">{costPerPortion.toFixed(2)} €</p>
                 </div>
               </div>
             </div>
@@ -919,8 +919,8 @@ export default function RecipesClient({ tva = TVA_DEFAUT, restaurantId, initialR
                     </span>
                   )}
                   <div className="text-right shrink-0">
-                    <p className="text-sm font-semibold text-on-surface tabular-nums">€{recipe.total_cost.toFixed(2)}</p>
-                    <p className="text-xs text-primary tabular-nums">€{costPerPortion.toFixed(2)} / {yUnit}</p>
+                    <p className="text-sm font-semibold text-on-surface tabular-nums">{recipe.total_cost.toFixed(2)} €</p>
+                    <p className="text-xs text-primary tabular-nums">{costPerPortion.toFixed(2)} € / {yUnit}</p>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <Link href={`${recipe.is_prep ? "/mises-en-place" : "/recipes"}/${recipe.id}`} onClick={(e) => e.stopPropagation()}
@@ -987,7 +987,7 @@ export default function RecipesClient({ tva = TVA_DEFAUT, restaurantId, initialR
                                 {label}
                               </td>
                               <td className="text-right text-on-surface-variant/70">{line.quantity} {line.unit}</td>
-                              <td className="text-right text-on-surface tabular-nums">€{lineCost.toFixed(3)}</td>
+                              <td className="text-right text-on-surface tabular-nums">{lineCost.toFixed(3)} €</td>
                             </tr>
                           );
                         })}
@@ -996,7 +996,7 @@ export default function RecipesClient({ tva = TVA_DEFAUT, restaurantId, initialR
                         <tr className="border-t border-outline-variant/20">
                           <td className="pt-2 text-2xs font-bold text-on-surface-variant/50 uppercase tracking-wide">Total recette</td>
                           <td />
-                          <td className="pt-2 text-right font-semibold text-on-surface tabular-nums">€{recipe.total_cost.toFixed(2)}</td>
+                          <td className="pt-2 text-right font-semibold text-on-surface tabular-nums">{recipe.total_cost.toFixed(2)} €</td>
                         </tr>
                       </tfoot>
                     </table>

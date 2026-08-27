@@ -33,7 +33,16 @@ const monthLabel = (key: string) => {
   return mi >= 0 && mi < 12 ? `${MONTHS_FR[mi]} ${y}` : key;
 };
 // Le signe reste devant le symbole : « −€6 » se lit mieux que « €-6 ».
-const eur = (n: number) => `${n < 0 ? "−" : ""}€${Math.abs(n).toLocaleString("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+/**
+ * Le tableau de bord affiche des ordres de grandeur, pas des centimes :
+ * « 1 206 € » se lit mieux que « 1 206,00 € » sur une tuile.
+ *
+ * Mais le symbole reste APRÈS le nombre, comme partout ailleurs dans l'app.
+ * Relevé en production : le tableau de bord écrivait « €1 206 » quand Stock,
+ * Statistiques et Pertes écrivaient « 1 252,30 € ».
+ */
+const eur = (n: number) =>
+  `${n < 0 ? "−" : ""}${Math.abs(n).toLocaleString("fr-FR", { maximumFractionDigits: 0 })} €`;
 
 export default function DashboardClient({ alertesPrix, restaurantName, targetFoodCost, recipes, ingredients, periods, movements, fournitureIds, movementsTruncated = false }: Props) {
   const recipeMap = useMemo(() => new Map(recipes.map((r) => [r.id, r])), [recipes]);

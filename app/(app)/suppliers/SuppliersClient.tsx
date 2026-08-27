@@ -226,7 +226,7 @@ export default function SuppliersClient({ restaurantId, initialSuppliers }: Prop
                       <span className="inline-flex px-2.5 py-1 rounded-full bg-surface-container text-on-surface-variant text-2xs font-bold uppercase tracking-wide">{s.category ?? "—"}</span>
                     </td>
                     <td className="px-5 py-4 text-sm text-on-surface-variant/70">{s.email ?? "—"}</td>
-                    <td className="px-5 py-4 text-right text-sm font-semibold text-on-surface tabular-nums">{s.min_order_amount ? `€${Number(s.min_order_amount).toFixed(0)}` : "—"}</td>
+                    <td className="px-5 py-4 text-right text-sm font-semibold text-on-surface tabular-nums">{s.min_order_amount ? `${Number(s.min_order_amount).toFixed(0)} €` : "—"}</td>
                     <td className="px-5 py-4 text-sm text-on-surface-variant/70">{s.customer_reference ?? "—"}</td>
                     <td className="px-5 py-4">
                       {/* Toujours visibles sur écran tactile (pas de survol) et

@@ -309,7 +309,7 @@ export default function MenuClient({ restaurantId: _restaurantId, tva = TVA_DEFA
                               {it.name}
                               {it.type === "product" && <span className="ml-2 px-1.5 py-0.5 text-2xs rounded bg-blue-light text-blue uppercase tracking-wide">revente</span>}
                             </td>
-                            <td className="px-5 py-4 text-right tabular-nums text-on-surface-variant/80">€{it.cost.toFixed(2)}</td>
+                            <td className="px-5 py-4 text-right tabular-nums text-on-surface-variant/80">{it.cost.toFixed(2)} €</td>
                             <td className="px-5 py-4 text-right">
                               {editingKey === it.key ? (
                                 <div className="flex flex-col items-end gap-1">
@@ -328,7 +328,7 @@ export default function MenuClient({ restaurantId: _restaurantId, tva = TVA_DEFA
                                 </div>
                               ) : (
                                 <button onClick={() => startEdit(it)} className="flex items-center gap-1 group text-on-surface hover:text-primary ml-auto tabular-nums">
-                                  {it.price ? `€${Number(it.price).toFixed(2)}` : <span className="text-on-surface-variant/50 italic text-xs">Saisir le prix…</span>}
+                                  {it.price ? `${Number(it.price).toFixed(2)} €` : <span className="text-on-surface-variant/50 italic text-xs">Saisir le prix…</span>}
                                   <Pencil size={11} className="text-on-surface-variant/30 group-hover:text-primary transition" />
                                 </button>
                               )}
@@ -345,11 +345,11 @@ export default function MenuClient({ restaurantId: _restaurantId, tva = TVA_DEFA
                             </td>
                             <td className="px-5 py-4 text-right">
                               {gp !== null ? (
-                                <span className={clsx("font-semibold tabular-nums", gp > 0 ? "text-primary" : "text-red")}>€{gp.toFixed(2)}</span>
+                                <span className={clsx("font-semibold tabular-nums", gp > 0 ? "text-primary" : "text-red")}>{gp.toFixed(2)} €</span>
                               ) : <span className="text-on-surface-variant/30">—</span>}
                             </td>
                             <td className="px-5 py-4 text-right">
-                              <span className="text-blue font-semibold tabular-nums">€{sp.toFixed(2)}</span>
+                              <span className="text-blue font-semibold tabular-nums">{sp.toFixed(2)} €</span>
                             </td>
                           </tr>
                         );

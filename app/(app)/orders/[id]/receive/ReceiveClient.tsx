@@ -564,7 +564,7 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
                           : "border-[#E5E7EB] focus:border-primary focus:ring-primary")} />
                   </div>
                   {Math.abs(actualOf(line) - line.expected_price) > 0.001 && (
-                    <span className="text-2xs text-amber-600">prévu €{line.expected_price.toFixed(2)}</span>
+                    <span className="text-2xs text-amber-600">prévu {line.expected_price.toFixed(2)} €</span>
                   )}
                 </div>
               </div>

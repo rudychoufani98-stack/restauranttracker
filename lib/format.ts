@@ -29,3 +29,12 @@ export function nombre(n: number, maxDecimales = 2): string {
   const milliers = ent.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
   return `${arrondi < 0 ? "−" : ""}${milliers}${dec ? `,${dec}` : ""}`;
 }
+
+/**
+ * « 1 206 € » — sans centimes, pour les tuiles de synthèse où l'ordre de
+ * grandeur compte plus que le détail. Le symbole reste APRÈS le nombre.
+ */
+export function eur0(n: number): string {
+  const v = Math.round(Number(n) || 0);
+  return `${v < 0 ? "−" : ""}${Math.abs(v).toLocaleString("fr-FR", { maximumFractionDigits: 0 })} €`;
+}

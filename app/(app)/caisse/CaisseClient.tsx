@@ -171,7 +171,7 @@ export default function CaisseClient({ recipes, products, categoryOrder }: Props
                     <p className="text-sm font-semibold text-on-surface leading-snug pr-14 line-clamp-2 mb-2">{item.name}</p>
 
                     {hasPrice ? (
-                      <p className="text-lg font-bold text-primary tabular-nums">€{Number(item.price).toFixed(2)}</p>
+                      <p className="text-lg font-bold text-primary tabular-nums">{Number(item.price).toFixed(2)} €</p>
                     ) : (
                       <p className="text-2xs font-bold text-amber-dark flex items-center gap-1"><AlertTriangle size={11} /> Prix manquant</p>
                     )}
@@ -211,17 +211,17 @@ export default function CaisseClient({ recipes, products, categoryOrder }: Props
               <div className="space-y-3">
                 <div className="flex justify-between text-sm">
                   <span className="text-on-surface-variant/60">Prix de vente</span>
-                  <span className="font-semibold text-on-surface tabular-nums">{selected.price ? `€${Number(selected.price).toFixed(2)}` : <span className="text-amber-dark">Non défini</span>}</span>
+                  <span className="font-semibold text-on-surface tabular-nums">{selected.price ? `${Number(selected.price).toFixed(2)} €` : <span className="text-amber-dark">Non défini</span>}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-on-surface-variant/60">Coût matière</span>
-                  <span className="font-semibold text-on-surface tabular-nums">€{selected.cost.toFixed(2)}</span>
+                  <span className="font-semibold text-on-surface tabular-nums">{selected.cost.toFixed(2)} €</span>
                 </div>
                 {selected.price && selected.price > 0 && (
                   <>
                     <div className="flex justify-between text-sm">
                       <span className="text-on-surface-variant/60">Marge €</span>
-                      <span className="font-semibold text-primary tabular-nums">€{(Number(selected.price) - selected.cost).toFixed(2)}</span>
+                      <span className="font-semibold text-primary tabular-nums">{(Number(selected.price) - selected.cost).toFixed(2)} €</span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-on-surface-variant/60">Food cost</span>

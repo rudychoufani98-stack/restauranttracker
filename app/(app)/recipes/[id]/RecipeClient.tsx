@@ -401,7 +401,7 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
                 <select value={line.unit} onChange={(e) => updateLine(idx, "unit", e.target.value)} className="w-16 px-2 py-2 text-xs border border-gray-200 rounded-lg bg-white outline-none focus:border-primary">
                   {subUnits.map((u) => <option key={u} value={u}>{u === "portion" ? "port." : u}</option>)}
                 </select>
-                <div className="w-16 text-right text-xs text-gray-500 pt-2.5">€{calcLineCost(line, ingredients, allRecipes).toFixed(3)}</div>
+                <div className="w-16 text-right text-xs text-gray-500 pt-2.5">{calcLineCost(line, ingredients, allRecipes).toFixed(3)} €</div>
                 <button onClick={() => removeLine(idx)} title="Retirer cette ligne" aria-label="Retirer cette ligne" className="pt-2 text-gray-300 hover:text-red-400 transition"><Trash2 size={14} /></button>
               </div>
             );

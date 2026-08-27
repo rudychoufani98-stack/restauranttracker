@@ -76,7 +76,7 @@ export async function GET(req: NextRequest) {
       .slice(0, 3);
 
     const changesText = biggestChanges.length > 0
-      ? biggestChanges.map((c: any) => `  • ${(c.ingredients as any)?.name ?? "?"}: €${Number(c.old_price).toFixed(2)} → €${Number(c.new_price).toFixed(2)}`).join("\n")
+      ? biggestChanges.map((c: any) => `  • ${(c.ingredients as any)?.name ?? "?"}: ${Number(c.old_price).toFixed(2)} € → ${Number(c.new_price).toFixed(2)} €`).join("\n")
       : "  No price changes this week.";
 
     const body = `Hi,
