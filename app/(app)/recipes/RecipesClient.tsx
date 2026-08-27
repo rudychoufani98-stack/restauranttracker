@@ -12,6 +12,7 @@ import { normaliseRefCaisse, refCaisseEnDouble } from "@/lib/references";
 import { foodCostPct, estAlcool, tauxDeVente, TVA_DEFAUT, type ReglagesTva } from "@/lib/vat";
 import { useConfirm, useAlert } from "@/components/ConfirmDialog";
 import { eur } from "@/lib/format";
+import { estChiffree, aUnPrix, moyenneSur } from "@/lib/chiffrage";
 
 
 type Ingredient = { id: string; name: string; cost_per_base_unit: number; cmup?: number | null; unit: string; yield_pct?: number | null; is_active?: boolean };
@@ -179,17 +180,23 @@ export default function RecipesClient({ tva = TVA_DEFAUT, restaurantId, initialR
 
   // ── Read-only stat cards, all derived from the live recipes (no placeholders) ──
   const statBase = tab === "recipe" ? menuRecipes : prepRecipes;
-  const pricedRecipes = statBase.filter((r) => Number(r.menu_price ?? 0) > 0);
-  const avgFoodCost = pricedRecipes.length
-    ? pricedRecipes.reduce((s, r) => s + (foodCostPct(
-        r.total_cost / (r.yield_portions || 1),
-        Number(r.menu_price),
-        tauxDeVente("dine_in", estAlcool(r), tva),
-      ) ?? 0), 0) / pricedRecipes.length
-    : null;
-  const avgCostPerPortion = statBase.length
-    ? statBase.reduce((s, r) => s + r.total_cost / (r.yield_portions || 1), 0) / statBase.length
-    : 0;
+  // Une fiche sans cout matiere n est pas a 0 % de food cost : elle n est
+  // pas chiffree. La moyenner tire l indicateur vers le bas et annonce une
+  // marge parfaite a un patron qui n a encore rien saisi.
+  const { moyenne: avgFoodCost, retenues: nbFoodCost, ecartees: sansFoodCost } = moyenneSur(
+    statBase,
+    (r) => aUnPrix(r) && estChiffree(r),
+    (r) => foodCostPct(
+      r.total_cost / (r.yield_portions || 1),
+      Number(r.menu_price),
+      tauxDeVente("dine_in", estAlcool(r), tva),
+    ),
+  );
+  const { moyenne: avgCostPerPortion, ecartees: sansChiffrage } = moyenneSur(
+    statBase,
+    estChiffree,
+    (r) => r.total_cost / (r.yield_portions || 1),
+  );
 
   const totalCost = useMemo(() =>
     lines.reduce((sum, l) => sum + calcLineCost(l, ingredients, allRecipes), 0),
@@ -588,7 +595,9 @@ export default function RecipesClient({ tva = TVA_DEFAUT, restaurantId, initialR
                 {avgFoodCost === null ? "—" : `${avgFoodCost.toFixed(1)}%`}
               </h3>
               <p className="text-2xs text-on-surface-variant/60 mt-1">
-                {avgFoodCost === null ? "Aucun prix de vente renseigné" : `Sur ${pricedRecipes.length} recette${pricedRecipes.length !== 1 ? "s" : ""} avec prix`}
+                {avgFoodCost === null
+                  ? "Aucune fiche n'a à la fois un coût et un prix"
+                  : `Sur ${nbFoodCost} fiche${nbFoodCost !== 1 ? "s" : ""} chiffrée${nbFoodCost !== 1 ? "s" : ""}${sansFoodCost > 0 ? ` · ${sansFoodCost} incomplète${sansFoodCost !== 1 ? "s" : ""}` : ""}`}
               </p>
             </div>
           </div>
@@ -598,7 +607,18 @@ export default function RecipesClient({ tva = TVA_DEFAUT, restaurantId, initialR
               <span className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">{tab === "prep" ? "Coût moyen / unité de rendement" : "Coût moyen / portion"}</span>
               <div className="w-10 h-10 rounded-full bg-primary-container/20 flex items-center justify-center text-primary-container"><Coins size={18} /></div>
             </div>
-            <h3 className="text-2xl font-extrabold text-on-surface tabular-nums">{eur(avgCostPerPortion)}</h3>
+            <div>
+              <h3 className="text-2xl font-extrabold text-on-surface tabular-nums">
+                {avgCostPerPortion === null ? "—" : eur(avgCostPerPortion)}
+              </h3>
+              <p className="text-2xs text-on-surface-variant/60 mt-1">
+                {avgCostPerPortion === null
+                  ? "Aucune fiche chiffrée pour l'instant"
+                  : sansChiffrage > 0
+                    ? `${sansChiffrage} fiche${sansChiffrage !== 1 ? "s" : ""} restent à chiffrer`
+                    : "Toutes les fiches sont chiffrées"}
+              </p>
+            </div>
           </div>
         </section>
       )}
@@ -889,6 +909,8 @@ export default function RecipesClient({ tva = TVA_DEFAUT, restaurantId, initialR
               tauxDeVente("dine_in", estAlcool(recipe), tva),
             );
             const highCost = foodCost !== null && foodCost > 35;
+            // Zero cout ne veut pas dire gratuit : la fiche n est pas chiffree.
+            const chiffree = estChiffree(recipe);
             return (
               <div key={recipe.id} className="glass-card rounded-2xl overflow-hidden">
                 <div
@@ -911,7 +933,14 @@ export default function RecipesClient({ tva = TVA_DEFAUT, restaurantId, initialR
                       </div>
                     )}
                   </div>
-                  {foodCost !== null && (
+                  {!chiffree ? (
+                    <span
+                      title="Ajoute les ingrédients et leurs prix pour connaître le coût de cette fiche."
+                      className="px-2.5 py-1 text-2xs font-bold rounded-full whitespace-nowrap bg-amber-light text-amber-dark border border-amber-dark/15"
+                    >
+                      À chiffrer
+                    </span>
+                  ) : foodCost !== null && (
                     <span className={clsx(
                       "text-2xs font-bold rounded-full whitespace-nowrap",
                       highCost ? "px-2.5 py-1 bg-error-container text-red" : "px-2.5 py-1 bg-emerald-50 text-primary border border-primary/10"
@@ -920,8 +949,14 @@ export default function RecipesClient({ tva = TVA_DEFAUT, restaurantId, initialR
                     </span>
                   )}
                   <div className="text-right shrink-0">
-                    <p className="text-sm font-semibold text-on-surface tabular-nums">{eur(recipe.total_cost)}</p>
-                    <p className="text-xs text-primary tabular-nums">{eur(costPerPortion)} / {yUnit}</p>
+                    {chiffree ? (
+                      <>
+                        <p className="text-sm font-semibold text-on-surface tabular-nums">{eur(recipe.total_cost)}</p>
+                        <p className="text-xs text-primary tabular-nums">{eur(costPerPortion)} / {yUnit}</p>
+                      </>
+                    ) : (
+                      <p className="text-sm font-semibold text-on-surface-variant/40 tabular-nums">—</p>
+                    )}
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <Link href={`${recipe.is_prep ? "/mises-en-place" : "/recipes"}/${recipe.id}`} onClick={(e) => e.stopPropagation()}

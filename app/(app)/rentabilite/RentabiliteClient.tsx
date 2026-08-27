@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Plus, Check, Loader2, ChevronDown, ChevronUp, TrendingUp, TrendingDown, Minus, Trash2 } from "lucide-react";
 import clsx from "clsx";
-import { CANAUX, canalLabel, htDepuisTTC, foodCostPct, estAlcool, tauxDeVente, TVA_DEFAUT, type ReglagesTva } from "@/lib/vat";
+import { CANAUX, canalLabel, revenuHT, TVA_DEFAUT, type ReglagesTva } from "@/lib/vat";
 import { perDisplayUnit } from "@/lib/ingredient-helpers";
 import { useConfirm, useAlert } from "@/components/ConfirmDialog";
 import { eur } from "@/lib/format";
@@ -70,31 +70,55 @@ function resaleUnitCost(p: SimpleProduct): number {
   return perDisplayUnit(Number(p.cmup ?? p.cost_per_base_unit ?? 0), p.unit ?? "unit");
 }
 
-function calcPeriodStats(period: Period, recipes: Recipe[], simpleProducts: SimpleProduct[]) {
-  let ca = 0, coutMatiere = 0;
+// Le food cost se calcule sur du HT des deux cotes. Le prix de carte est
+// TTC, le cout matiere vient des factures fournisseurs et il est HT : les
+// diviser tels quels sous-estime le food cost d environ 2,6 points a 10 %
+// de TVA. lib/vat existait deja pour cela — cet ecran importait meme ses
+// fonctions, sans jamais les appeler.
+//
+// « sansCout » compte les lignes vendues dont l article n est pas chiffre.
+// Sans ce compte, un mois ou rien n est chiffre afficherait « food cost
+// 0,0 % » et « marge 100 % » : le meilleur resultat possible, alors que la
+// verite est qu on ne sait pas.
+function calcPeriodStats(period: Period, recipes: Recipe[], simpleProducts: SimpleProduct[], tva: ReglagesTva) {
+  let ca = 0, caHT = 0, coutMatiere = 0, sansCout = 0, lignes = 0;
+  const canal = period.channel ?? "dine_in";
   for (const line of period.sales_lines) {
     if (line.recipe_id) {
       const recipe = recipes.find((r) => r.id === line.recipe_id);
       if (!recipe || !recipe.menu_price) continue;
       const cpp = recipe.total_cost / (recipe.yield_portions || 1);
-      ca += line.qty_sold * recipe.menu_price;
+      const revenu = line.qty_sold * recipe.menu_price;
+      ca += revenu;
+      caHT += revenuHT(revenu, canal, recipe, tva);
       coutMatiere += line.qty_sold * cpp;
+      lignes++;
+      if (!(cpp > 0)) sansCout++;
     } else if (line.ingredient_id) {
       const prod = simpleProducts.find((p) => p.id === line.ingredient_id);
       if (!prod) continue;
-      ca += line.qty_sold * prod.selling_price;
-      coutMatiere += line.qty_sold * resaleUnitCost(prod);
+      const cout = resaleUnitCost(prod);
+      const revenu = line.qty_sold * prod.selling_price;
+      ca += revenu;
+      caHT += revenuHT(revenu, canal, prod, tva);
+      coutMatiere += line.qty_sold * cout;
+      lignes++;
+      if (!(cout > 0)) sansCout++;
     }
   }
   // Commission plateforme sur le CA des ventes en livraison.
-  const commission = (period.channel === "delivery") ? ca * DELIVERY_COMMISSION_PCT : 0;
-  const margeB = ca - commission - coutMatiere;
-  const foodCostPct = ca > 0 ? (coutMatiere / ca) * 100 : null;
+  const commission = (period.channel === "delivery") ? caHT * DELIVERY_COMMISSION_PCT : 0;
+  const margeB = caHT - commission - coutMatiere;
+  const chiffre = lignes > 0 && sansCout < lignes;
+  const foodCostPct = chiffre && caHT > 0 ? (coutMatiere / caHT) * 100 : null;
   const totalCouverts = period.sales_lines.reduce((s, l) => s + l.qty_sold, 0);
-  return { ca, coutMatiere, commission, margeB, foodCostPct, totalCouverts };
+  return { ca, caHT, coutMatiere, commission, margeB, foodCostPct, totalCouverts, sansCout, lignes, chiffre };
 }
 
-export default function RentabiliteClient({ restaurantId, targetFoodCostPct, recipes, simpleProducts, initialPeriods }: Props) {
+export default function RentabiliteClient({ restaurantId, tva, targetFoodCostPct, recipes, simpleProducts, initialPeriods }: Props) {
+  // Les taux du restaurant, ou les taux français par défaut si le client
+  // n'a pas encore ouvert ses paramètres.
+  const reglages = tva ?? TVA_DEFAUT;
   const confirm = useConfirm();
   const notify = useAlert();
   const supabase = createClient();
@@ -153,7 +177,7 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
 
   // Live preview of totals while filling the form
   const preview = useMemo(() => {
-    let ca = 0, cout = 0, couverts = 0;
+    let ca = 0, caHT = 0, cout = 0, couverts = 0, sansCout = 0, lignes = 0;
     for (const dl of draftLines) {
       const qty = parseFloat(dl.qty_sold) || 0;
       if (qty === 0) continue;
@@ -161,22 +185,36 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
         const prodId = dl.recipe_id.replace("__sp__", "");
         const prod = simpleProducts.find((p) => p.id === prodId);
         if (!prod) continue;
-        ca += qty * prod.selling_price;
-        cout += qty * resaleUnitCost(prod);
+        const c = resaleUnitCost(prod);
+        const revenu = qty * prod.selling_price;
+        ca += revenu;
+        caHT += revenuHT(revenu, saleChannel, prod, reglages);
+        cout += qty * c;
         couverts += qty;
+        lignes++;
+        if (!(c > 0)) sansCout++;
       } else {
         const recipe = recipes.find((r) => r.id === dl.recipe_id);
         if (!recipe || !recipe.menu_price) continue;
         const cpp = recipe.total_cost / (recipe.yield_portions || 1);
-        ca += qty * recipe.menu_price;
+        const revenu = qty * recipe.menu_price;
+        ca += revenu;
+        caHT += revenuHT(revenu, saleChannel, recipe, reglages);
         cout += qty * cpp;
         couverts += qty;
+        lignes++;
+        if (!(cpp > 0)) sansCout++;
       }
     }
     // Même règle que calcPeriodStats : commission plateforme déduite en livraison.
-    const commission = saleChannel === "delivery" ? ca * DELIVERY_COMMISSION_PCT : 0;
-    return { ca, cout, margeB: ca - commission - cout, foodCostPct: ca > 0 ? (cout / ca) * 100 : null, couverts };
-  }, [draftLines, recipes, simpleProducts, saleChannel]);
+    const commission = saleChannel === "delivery" ? caHT * DELIVERY_COMMISSION_PCT : 0;
+    const chiffre = lignes > 0 && sansCout < lignes;
+    return {
+      ca, caHT, cout, margeB: caHT - commission - cout,
+      foodCostPct: chiffre && caHT > 0 ? (cout / caHT) * 100 : null,
+      couverts, sansCout, chiffre,
+    };
+  }, [draftLines, recipes, simpleProducts, saleChannel, reglages]);
 
   // Build the draft quantities for a given month + channel, pre-filled from the
   // existing saved period if any (so each channel keeps its own numbers).
@@ -344,7 +382,7 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
   // ce qui avait été déstocké — en rappelant la route de déstockage avec ZÉRO
   // vente, qui réconcilie par différence — puis on efface la période.
   async function handleDeletePeriod(period: Period) {
-    const stats = calcPeriodStats(period, recipes, simpleProducts);
+    const stats = calcPeriodStats(period, recipes, simpleProducts, reglages);
     const ok = (await confirm(
       `Supprimer la saisie de ${monthLabel(period.month)} (${channelLabel(period.channel)}) ?\n\n` +
       `CA ${eur(stats.ca)} · ${stats.totalCouverts} article(s) vendu(s)\n\n` +
@@ -396,8 +434,8 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
   // Trend arrow between last two periods
   const trend = useMemo(() => {
     if (periods.length < 2) return null;
-    const s0 = calcPeriodStats(periods[0], recipes, simpleProducts);
-    const s1 = calcPeriodStats(periods[1], recipes, simpleProducts);
+    const s0 = calcPeriodStats(periods[0], recipes, simpleProducts, reglages);
+    const s1 = calcPeriodStats(periods[1], recipes, simpleProducts, reglages);
     if (s1.margeB === 0) return null;
     return ((s0.margeB - s1.margeB) / Math.abs(s1.margeB)) * 100;
   }, [periods, recipes, simpleProducts]);
@@ -416,7 +454,7 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
       .map(([month, list]) => {
         list.sort((a, b) => (a.channel === "delivery" ? 1 : 0) - (b.channel === "delivery" ? 1 : 0));
         const combined = list.reduce((acc, p) => {
-          const s = calcPeriodStats(p, recipes, simpleProducts);
+          const s = calcPeriodStats(p, recipes, simpleProducts, reglages);
           acc.ca += s.ca; acc.marge += s.margeB; acc.couverts += s.totalCouverts;
           return acc;
         }, { ca: 0, marge: 0, couverts: 0 });
@@ -426,30 +464,38 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
 
   // ── Read-only KPI aggregates, derived from the existing calcPeriodStats ──
   const globals = useMemo(() => {
-    let ca = 0, cout = 0, marge = 0;
+    let ca = 0, caHT = 0, cout = 0, marge = 0, sansCout = 0, lignes = 0;
     for (const p of periods) {
-      const s = calcPeriodStats(p, recipes, simpleProducts);
-      ca += s.ca; cout += s.coutMatiere; marge += s.margeB;
+      const s = calcPeriodStats(p, recipes, simpleProducts, reglages);
+      ca += s.ca; caHT += s.caHT; cout += s.coutMatiere; marge += s.margeB;
+      sansCout += s.sansCout; lignes += s.lignes;
     }
+    const chiffre = lignes > 0 && sansCout < lignes;
     return {
-      ca, cout, marge,
-      foodCostPct: ca > 0 ? (cout / ca) * 100 : null,
-      margePct: ca > 0 ? (marge / ca) * 100 : null,
+      ca, caHT, cout, marge, sansCout, lignes, chiffre,
+      foodCostPct: chiffre && caHT > 0 ? (cout / caHT) * 100 : null,
+      margePct: chiffre && caHT > 0 ? (marge / caHT) * 100 : null,
     };
-  }, [periods, recipes, simpleProducts]);
+  }, [periods, recipes, simpleProducts, reglages]);
 
   // ── Revenue segmentation per real distribution channel (only those with data) ──
   const segments = useMemo(() => {
     return CHANNELS.map((ch) => {
       const chPeriods = periods.filter((p) => (p.channel ?? "dine_in") === ch.key);
-      let ca = 0, cout = 0, marge = 0;
+      let ca = 0, caHT = 0, cout = 0, marge = 0, sansCout = 0, lignes = 0;
       for (const p of chPeriods) {
-        const s = calcPeriodStats(p, recipes, simpleProducts);
-        ca += s.ca; cout += s.coutMatiere; marge += s.margeB;
+        const s = calcPeriodStats(p, recipes, simpleProducts, reglages);
+        ca += s.ca; caHT += s.caHT; cout += s.coutMatiere; marge += s.margeB;
+        sansCout += s.sansCout; lignes += s.lignes;
       }
-      return { ...ch, ca, cout, marge, foodCostPct: ca > 0 ? (cout / ca) * 100 : null, hasData: chPeriods.length > 0 };
+      const chiffre = lignes > 0 && sansCout < lignes;
+      return {
+        ...ch, ca, caHT, cout, marge,
+        foodCostPct: chiffre && caHT > 0 ? (cout / caHT) * 100 : null,
+        hasData: chPeriods.length > 0,
+      };
     }).filter((s) => s.hasData);
-  }, [periods, recipes, simpleProducts]);
+  }, [periods, recipes, simpleProducts, reglages]);
   const segTotalCA = segments.reduce((s, x) => s + x.ca, 0);
 
   const fcGlobalStatus = globals.foodCostPct === null ? null :
@@ -483,37 +529,58 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
         <section className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div className="glass-card rounded-2xl p-5 flex flex-col gap-3 border-l-4 border-primary">
             <span className="text-2xs font-bold uppercase tracking-widest text-on-surface-variant/60">Marge brute globale</span>
-            <span className={clsx("text-2xl font-extrabold tabular-nums", globals.marge >= 0 ? "text-primary" : "text-red")}>{eur(globals.marge)}</span>
-            {globals.margePct !== null && (
+            {/* Sans coût matière, la marge afficherait tout le CA : autant dire
+                que tout est bénéfice. On préfère ne rien affirmer. */}
+            <span className={clsx("text-2xl font-extrabold tabular-nums",
+              !globals.chiffre ? "text-on-surface-variant/40" : globals.marge >= 0 ? "text-primary" : "text-red")}>
+              {globals.chiffre ? eur(globals.marge) : "—"}
+            </span>
+            {globals.chiffre && globals.margePct !== null ? (
               <>
                 <div className="w-full bg-surface-container-highest rounded-full h-2">
                   <div className="bg-primary h-full rounded-full transition-all" style={{ width: `${Math.min(100, Math.max(0, globals.margePct))}%` }} />
                 </div>
-                <p className="text-2xs text-on-surface-variant/60">{globals.margePct.toFixed(1)}% du chiffre d&apos;affaires</p>
+                <p className="text-2xs text-on-surface-variant/60">{globals.margePct.toFixed(1)}% du chiffre d&apos;affaires HT</p>
+              </>
+            ) : (
+              <p className="text-2xs text-on-surface-variant/60">Chiffre les fiches vendues pour connaître la marge</p>
+            )}
+          </div>
+
+          <div className="glass-card rounded-2xl p-5 flex flex-col gap-3">
+            <span className="text-2xs font-bold uppercase tracking-widest text-on-surface-variant/60">Food cost</span>
+            {globals.foodCostPct !== null ? (
+              <>
+                <span className={clsx("text-2xl font-extrabold tabular-nums",
+                  fcGlobalStatus === "green" ? "text-primary" : fcGlobalStatus === "amber" ? "text-amber-dark" : "text-red")}>
+                  {globals.foodCostPct.toFixed(1)}%
+                </span>
+                <div className="w-full bg-surface-container-highest rounded-full h-2">
+                  <div className={clsx("h-full rounded-full transition-all",
+                    fcGlobalStatus === "green" ? "bg-primary" : fcGlobalStatus === "amber" ? "bg-amber" : "bg-red")}
+                    style={{ width: `${Math.min(100, globals.foodCostPct)}%` }} />
+                </div>
+                <p className="text-2xs text-on-surface-variant/60">
+                  Objectif {targetFoodCostPct}%
+                  {globals.sansCout > 0 && ` · ${globals.sansCout} vente${globals.sansCout !== 1 ? "s" : ""} non chiffrée${globals.sansCout !== 1 ? "s" : ""}, food cost sous-estimé`}
+                </p>
+              </>
+            ) : (
+              <>
+                <span className="text-2xl font-extrabold tabular-nums text-on-surface-variant/40">—</span>
+                <p className="text-2xs text-on-surface-variant/60">
+                  Aucune fiche vendue n&apos;a de coût matière. Ajoute les ingrédients et leurs prix.
+                </p>
               </>
             )}
           </div>
 
-          {globals.foodCostPct !== null && (
-            <div className="glass-card rounded-2xl p-5 flex flex-col gap-3">
-              <span className="text-2xs font-bold uppercase tracking-widest text-on-surface-variant/60">Food cost</span>
-              <span className={clsx("text-2xl font-extrabold tabular-nums",
-                fcGlobalStatus === "green" ? "text-primary" : fcGlobalStatus === "amber" ? "text-amber-dark" : "text-red")}>
-                {globals.foodCostPct.toFixed(1)}%
-              </span>
-              <div className="w-full bg-surface-container-highest rounded-full h-2">
-                <div className={clsx("h-full rounded-full transition-all",
-                  fcGlobalStatus === "green" ? "bg-primary" : fcGlobalStatus === "amber" ? "bg-amber" : "bg-red")}
-                  style={{ width: `${Math.min(100, globals.foodCostPct)}%` }} />
-              </div>
-              <p className="text-2xs text-on-surface-variant/60">Objectif {targetFoodCostPct}%</p>
-            </div>
-          )}
-
           <div className="glass-card rounded-2xl p-5 flex flex-col gap-3">
             <span className="text-2xs font-bold uppercase tracking-widest text-on-surface-variant/60">CA réalisé</span>
             <span className="text-2xl font-extrabold text-primary tabular-nums">{eur(globals.ca)}</span>
-            <p className="text-2xs text-on-surface-variant/60">Coût matière {eur(globals.cout)}</p>
+            <p className="text-2xs text-on-surface-variant/60">
+              TTC · {eur(globals.caHT)} HT · Coût matière {globals.chiffre ? eur(globals.cout) : "—"}
+            </p>
           </div>
         </section>
       )}
@@ -533,7 +600,7 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
                       <span>CA <b className="text-on-surface">{seg.ca.toFixed(0)} €</b></span>
                       <span>Coût <b className="text-red">{seg.cout.toFixed(0)} €</b></span>
                       <span>Marge <b className={seg.marge >= 0 ? "text-primary" : "text-red"}>{seg.marge.toFixed(0)} €</b></span>
-                      {seg.foodCostPct !== null && <span>Food cost <b className="text-on-surface">{seg.foodCostPct.toFixed(1)}%</b></span>}
+                      <span>Food cost <b className="text-on-surface">{seg.foodCostPct !== null ? `${seg.foodCostPct.toFixed(1)}%` : "—"}</b></span>
                     </div>
                   </div>
                   <div className="w-full bg-surface-container-highest rounded-full h-2">
@@ -790,7 +857,7 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
                         </tr>
 
                         {list.map((period) => {
-                          const stats = calcPeriodStats(period, recipes, simpleProducts);
+                          const stats = calcPeriodStats(period, recipes, simpleProducts, reglages);
                           const isExpanded = expandedId === period.id;
                           const fcStatus = stats.foodCostPct === null ? null :
                             stats.foodCostPct <= targetFoodCostPct ? "green" :

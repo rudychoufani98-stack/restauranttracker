@@ -130,6 +130,23 @@ export function foodCostPct(coutHT: number, prixTTC: number, taux: number): numb
   return (Number(coutHT) / ht) * 100;
 }
 
+/**
+ * Chiffre d'affaires HT d'une ligne vendue, au taux qui lui revient.
+ *
+ * Le taux dépend de DEUX choses à la fois : le canal (sur place, à
+ * emporter, livraison) et la nature de l'article — un verre de vin reste
+ * à 20 % même à emporter. D'où l'article passé en entier plutôt qu'un
+ * taux déjà calculé par l'appelant, qui oublierait l'alcool.
+ */
+export function revenuHT(
+  revenuTTC: number,
+  canal: string | null | undefined,
+  article: any,
+  tva: ReglagesTva,
+): number {
+  return htDepuisTTC(revenuTTC, tauxDeVente(canal, estAlcool(article), tva));
+}
+
 /** Marge brute d'un article, en euros HT. */
 export function margeHT(prixTTC: number, coutHT: number, taux: number): number {
   return htDepuisTTC(prixTTC, taux) - Number(coutHT || 0);

@@ -94,7 +94,14 @@ export default function MenuClient({ restaurantId: _restaurantId, tva = TVA_DEFA
   // Sans retirer la TVA, le food cost affiché serait toujours trop bas.
   const tauxDe = (it: MenuItem) => tauxDeVente("dine_in", estAlcool(it as any), tva);
 
+  // Un plat dont le coût matière vaut zéro n'est pas à 0 % de food cost :
+  // il n'est pas chiffré. En renvoyant null ici, tout l'affichage en aval
+  // (tableau, filtres, moyennes) le traite comme inconnu — un seul endroit
+  // à corriger plutôt que sept.
+  const chiffre = (it: MenuItem) => Number(it.cost) > 0;
+
   function foodCostPct(it: MenuItem) {
+    if (!chiffre(it)) return null;
     return foodCostHT(it.cost, Number(it.price ?? 0), tauxDe(it));
   }
   function marginPct(it: MenuItem) {
@@ -102,11 +109,12 @@ export default function MenuClient({ restaurantId: _restaurantId, tva = TVA_DEFA
     return fcp === null ? null : 100 - fcp;
   }
   function grossProfit(it: MenuItem) {
-    if (it.price === null) return null;
+    if (it.price === null || !chiffre(it)) return null;
     // Marge réelle : ce qui reste après avoir reversé la TVA.
     return htDepuisTTC(Number(it.price), tauxDe(it)) - it.cost;
   }
   function suggestedPrice(it: MenuItem) {
+    if (!chiffre(it)) return 0;
     // On vise l'objectif sur la marge RÉELLE, puis on rhabille en TTC —
     // et on arrondit au prix de carte supérieur, sinon on proposerait
     // des prix comme 13,47 € que personne n'affiche.
@@ -116,12 +124,16 @@ export default function MenuClient({ restaurantId: _restaurantId, tva = TVA_DEFA
 
   // Summary stats across all priced items
   const stats = useMemo(() => {
-    const priced = items.filter((it) => it.price && it.price > 0);
+    // Seuls les articles qui ont À LA FOIS un prix et un coût comptent dans
+    // la moyenne : sinon chaque plat non chiffré la tire vers zéro et la
+    // carte a l'air deux fois plus rentable qu'elle ne l'est.
+    const priced = items.filter((it) => it.price && it.price > 0 && chiffre(it));
+    const aChiffrer = items.filter((it) => it.price && it.price > 0 && !chiffre(it)).length;
     if (priced.length === 0) return null;
     const avgFoodCost = priced.reduce((s, it) => s + (foodCostPct(it) ?? 0), 0) / priced.length;
     const offTarget = priced.filter((it) => (foodCostPct(it) ?? 0) > targetFoodCostPct).length;
     const worst = priced.reduce((w, it) => ((foodCostPct(it) ?? 0) > (foodCostPct(w) ?? 0) ? it : w), priced[0]);
-    return { avgFoodCost, offTarget, worst, pricedCount: priced.length };
+    return { avgFoodCost, offTarget, worst, pricedCount: priced.length, aChiffrer };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, targetFoodCostPct]);
 
@@ -218,6 +230,11 @@ export default function MenuClient({ restaurantId: _restaurantId, tva = TVA_DEFA
                   </div>
                   <span className="text-2xs text-on-surface-variant/60 whitespace-nowrap">obj. {targetFoodCostPct}%</span>
                 </div>
+                {stats.aChiffrer > 0 && (
+                  <p className="text-2xs text-amber-dark">
+                    {stats.aChiffrer} article{stats.aChiffrer !== 1 ? "s" : ""} tarifé{stats.aChiffrer !== 1 ? "s" : ""} sans coût matière, exclu{stats.aChiffrer !== 1 ? "s" : ""} de la moyenne
+                  </p>
+                )}
               </div>
             );
           })()}
@@ -310,7 +327,9 @@ export default function MenuClient({ restaurantId: _restaurantId, tva = TVA_DEFA
                               {it.name}
                               {it.type === "product" && <span className="ml-2 px-1.5 py-0.5 text-2xs rounded bg-blue-light text-blue uppercase tracking-wide">revente</span>}
                             </td>
-                            <td className="px-5 py-4 text-right tabular-nums text-on-surface-variant/80">{eur(it.cost)}</td>
+                            <td className="px-5 py-4 text-right tabular-nums text-on-surface-variant/80">
+                              {chiffre(it) ? eur(it.cost) : <span className="text-on-surface-variant/30">à chiffrer</span>}
+                            </td>
                             <td className="px-5 py-4 text-right">
                               {editingKey === it.key ? (
                                 <div className="flex flex-col items-end gap-1">
