@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getRestaurant } from "@/lib/auth";
 import { notFound } from "next/navigation";
 import { getRecipeUsage } from "@/lib/usage";
 import RecipeClient from "./RecipeClient";
@@ -6,13 +7,7 @@ import { selectIngredients } from "@/lib/ingredients-query";
 
 export default async function RecipePage({ params }: { params: { id: string } }) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  const { data: restaurant } = await supabase
-    .from("restaurants")
-    .select("id")
-    .eq("owner_id", user!.id)
-    .single();
+  const restaurant = await getRestaurant();
 
   const [{ data: recipe }, { data: ingredients }, { data: allRecipes }, { data: cats }] = await Promise.all([
     supabase

@@ -1,17 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
+import { getRestaurant } from "@/lib/auth";
 import { notFound } from "next/navigation";
 import ReceiveClient from "./ReceiveClient";
 import { unitShort } from "@/lib/ingredient-helpers";
 
 export default async function ReceivePage({ params }: { params: { id: string } }) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  const { data: restaurant } = await supabase
-    .from("restaurants")
-    .select("id, service_start, service_end")
-    .eq("owner_id", user!.id)
-    .single();
+  const restaurant = await getRestaurant();
 
   const { data: po } = await supabase
     .from("purchase_orders")

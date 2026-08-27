@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getRestaurant } from "@/lib/auth";
 import NewOrderClient from "./NewOrderClient";
 import { selectIngredients } from "@/lib/ingredients-query";
 
@@ -6,13 +7,7 @@ export const dynamic = "force-dynamic";
 
 export default async function NewOrderPage() {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  const { data: restaurant } = await supabase
-    .from("restaurants")
-    .select("id, name, hide_po_prices")
-    .eq("owner_id", user!.id)
-    .single();
+  const restaurant = await getRestaurant();
 
   const [{ data: suppliers }, { data: ingredients }] = await Promise.all([
     supabase.from("suppliers").select("*").eq("restaurant_id", restaurant!.id).order("name"),

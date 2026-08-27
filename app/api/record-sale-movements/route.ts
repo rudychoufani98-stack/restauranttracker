@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getRestaurant } from "@/lib/auth";
 import { ingredientsPerYieldBase, RecipeRow } from "@/lib/costing";
 
 export async function POST(req: NextRequest) {
@@ -17,14 +18,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Requête invalide" }, { status: 400 });
     }
 
-    // Ownership check
-    const { data: restaurant } = await supabase
-      .from("restaurants")
-      .select("id")
-      .eq("id", restaurantId)
-      .eq("owner_id", user.id)
-      .single();
-    if (!restaurant) return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
+    // Le restaurant vise doit etre celui que la session pilote : le sien,
+    // ou celui qu un super-admin a ouvert depuis « Mes clients ». Un filtre
+    // owner_id brut ignore ce cas et renvoyait 403 en pleine impersonation.
+    const restaurant = await getRestaurant();
+    if (!restaurant || restaurant.id !== restaurantId) {
+      return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
+    }
 
     // Load ALL recipes of the restaurant (needed to flatten sub-recipes recursively)
     const { data: allRecipes } = await supabase

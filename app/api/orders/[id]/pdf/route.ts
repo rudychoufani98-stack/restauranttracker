@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getRestaurant } from "@/lib/auth";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { PurchaseOrderPDF } from "@/lib/pdf/PurchaseOrderPDF";
 import { resolveHidePrices } from "@/lib/order-email";
@@ -16,12 +17,10 @@ export async function GET(
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    // select("*") so a not-yet-migrated column (e.g. hide_po_prices) never breaks the PDF.
-    const { data: restaurant } = await supabase
-      .from("restaurants")
-      .select("*")
-      .eq("owner_id", user.id)
-      .single();
+    // getRestaurant() fait un select("*") : une colonne pas encore migree
+    // (hide_po_prices) ne casse donc pas le PDF. Il respecte aussi le client
+    // ouvert par le super-admin, sinon l en-tete porterait le mauvais nom.
+    const restaurant = await getRestaurant();
 
     if (!restaurant) return NextResponse.json({ error: "Not found" }, { status: 404 });
 

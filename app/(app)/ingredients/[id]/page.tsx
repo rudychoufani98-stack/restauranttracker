@@ -1,17 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
+import { getRestaurant } from "@/lib/auth";
 import { notFound } from "next/navigation";
 import { getIngredientUsage } from "@/lib/usage";
 import ProductClient from "./ProductClient";
 
 export default async function ProductPage({ params }: { params: { id: string } }) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  const { data: restaurant } = await supabase
-    .from("restaurants")
-    .select("id")
-    .eq("owner_id", user!.id)
-    .single();
+  const restaurant = await getRestaurant();
 
   const [{ data: ingredient }, { data: suppliers }, { data: cats }, { data: allIngredients }] = await Promise.all([
     supabase
