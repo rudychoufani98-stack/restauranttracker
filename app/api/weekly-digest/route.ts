@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { eur } from "@/lib/format";
+import { foodCostPct, estAlcool, tauxDeVente, reglagesTva } from "@/lib/vat";
 
 // Called by Vercel Cron every day — filters by digest_day
 export async function GET(req: NextRequest) {
@@ -19,7 +20,9 @@ export async function GET(req: NextRequest) {
   // Get all restaurants with digest enabled and today's day
   const { data: restaurants } = await supabase
     .from("restaurants")
-    .select("id, name, target_food_cost_pct, digest_day, owner_id")
+    // select("*") : reglagesTva a besoin des colonnes vat_*, et une colonne
+    // pas encore migree ne doit pas faire echouer l envoi de tous les mails.
+    .select("*")
     .eq("digest_enabled", true)
     .eq("digest_day", today);
 
@@ -44,30 +47,44 @@ export async function GET(req: NextRequest) {
       .select("name, total_cost, menu_price, yield_portions")
       .eq("restaurant_id", restaurant.id);
 
-    const priced = (recipes ?? []).filter((r) => r.menu_price && r.menu_price > 0);
-    if (priced.length === 0) continue;
+    // Une fiche sans cout matiere n est pas a 0 % de food cost : elle n est
+    // pas chiffree. L inclure ferait envoyer par mail un food cost moyen
+    // flatteur et faux — la meme erreur que celle corrigee sur les ecrans.
+    const chiffrees = (recipes ?? []).filter(
+      (r) => r.menu_price && r.menu_price > 0 && Number(r.total_cost) > 0,
+    );
+    const aChiffrer = (recipes ?? []).filter(
+      (r) => r.menu_price && r.menu_price > 0 && !(Number(r.total_cost) > 0),
+    ).length;
+    // Rien de chiffre : un mail annoncant « 0,0 % » serait pire que pas de mail.
+    if (chiffrees.length === 0) continue;
 
-    const avgFoodCost = priced.reduce((sum, r) => {
-      const cpp = r.total_cost / (r.yield_portions || 1);
-      return sum + (cpp / r.menu_price) * 100;
-    }, 0) / priced.length;
+    const tva = reglagesTva(restaurant);
+    // Cout HT sur prix HT. Diviser par le prix de carte (TTC) sous-estime le
+    // food cost d environ 2,6 points a 10 % de TVA.
+    const fc = (r: any) =>
+      foodCostPct(
+        Number(r.total_cost) / (r.yield_portions || 1),
+        Number(r.menu_price),
+        tauxDeVente("dine_in", estAlcool(r), tva),
+      ) ?? 0;
 
-    const overTarget = priced.filter((r) => {
-      const cpp = r.total_cost / (r.yield_portions || 1);
-      return (cpp / r.menu_price) * 100 > restaurant.target_food_cost_pct;
-    });
-
-    const worst = priced.reduce((w, r) => {
-      const cpp = r.total_cost / (r.yield_portions || 1);
-      const wCpp = w.total_cost / (w.yield_portions || 1);
-      return (cpp / r.menu_price) > (wCpp / w.menu_price) ? r : w;
-    }, priced[0]);
+    const avgFoodCost = chiffrees.reduce((sum, r) => sum + fc(r), 0) / chiffrees.length;
+    const overTarget = chiffrees.filter((r) => fc(r) > restaurant.target_food_cost_pct);
+    const worst = chiffrees.reduce((w, r) => (fc(r) > fc(w) ? r : w), chiffrees[0]);
 
     // Get this week's price changes
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    // Cette route tourne en service_role : la RLS ne s applique PAS. Sans le
+    // filtre sur le restaurant, chaque client recevait par mail les
+    // variations de prix de TOUS les autres — noms de produits et prix
+    // fournisseurs compris. ingredient_price_history ne porte pas de
+    // restaurant_id : l appartenance passe par l ingredient, d ou la
+    // jointure !inner.
     const { data: priceChanges } = await supabase
       .from("ingredient_price_history")
-      .select("ingredient_id, old_price, new_price, ingredients(name)")
+      .select("ingredient_id, old_price, new_price, ingredients!inner(name, restaurant_id)")
+      .eq("ingredients.restaurant_id", restaurant.id)
       .gte("changed_at", weekAgo)
       .eq("source", "delivery_note");
 
@@ -77,27 +94,28 @@ export async function GET(req: NextRequest) {
       .slice(0, 3);
 
     const changesText = biggestChanges.length > 0
-      ? biggestChanges.map((c: any) => `  • ${(c.ingredients as any)?.name ?? "?"}: ${eur(Number(c.old_price))} → ${eur(Number(c.new_price))}`).join("\n")
-      : "  No price changes this week.";
+      ? biggestChanges.map((c: any) => `  • ${(c.ingredients as any)?.name ?? "?"} : ${eur(Number(c.old_price))} → ${eur(Number(c.new_price))}`).join("\n")
+      : "  Aucun changement de prix cette semaine.";
 
-    const body = `Hi,
+    const body = `Bonjour,
 
-Here is your weekly digest for ${restaurant.name}.
+Voici le résumé de la semaine pour ${restaurant.name}.
 
-AVERAGE FOOD COST: ${avgFoodCost.toFixed(1)}% (target: ${restaurant.target_food_cost_pct}%)
+FOOD COST MOYEN : ${avgFoodCost.toFixed(1)} % (objectif ${restaurant.target_food_cost_pct} %)
+  Calculé sur ${chiffrees.length} fiche(s) chiffrée(s)${aChiffrer > 0 ? `, ${aChiffrer} encore sans coût matière` : ""}.
 
-DISHES OVER TARGET: ${overTarget.length}
-${overTarget.map((r) => `  • ${r.name}`).join("\n") || "  None — great work!"}
+PLATS AU-DESSUS DE L'OBJECTIF : ${overTarget.length}
+${overTarget.map((r) => `  • ${r.name}`).join("\n") || "  Aucun — tout est dans les clous."}
 
-BIGGEST PRICE INCREASES THIS WEEK:
+PLUS FORTES VARIATIONS DE PRIX CETTE SEMAINE :
 ${changesText}
 
-WORST-PERFORMING DISH: ${worst.name}
-  Food cost: ${((worst.total_cost / (worst.yield_portions || 1)) / worst.menu_price * 100).toFixed(1)}%
+PLAT LE MOINS RENTABLE : ${worst.name}
+  Food cost ${fc(worst).toFixed(1)} %
 
-Log in to review your menu margins: ${process.env.NEXT_PUBLIC_APP_URL ?? "https://your-app.vercel.app"}
+Ouvre ta carte pour revoir tes marges : ${process.env.NEXT_PUBLIC_APP_URL ?? "https://restauranttracker-nu.vercel.app"}
 
-—Restaurant Intelligence`;
+—Restointelligence`;
 
     await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -105,7 +123,7 @@ Log in to review your menu margins: ${process.env.NEXT_PUBLIC_APP_URL ?? "https:
       body: JSON.stringify({
         from: "digest@resend.dev",
         to: email,
-        subject: `Weekly digest — ${restaurant.name}`,
+        subject: `Résumé de la semaine — ${restaurant.name}`,
         text: body,
       }),
     });
