@@ -311,7 +311,7 @@ export default function DashboardClient({ alertesPrix, restaurantName, targetFoo
                   </div>
                   <p className="text-xs text-on-primary/70 mt-2">
                     {platsVendus > 0
-                      ? `${platsVendus} article${platsVendus !== 1 ? "s" : ""} vendu${platsVendus !== 1 ? "s" : ""} · marge brute ${eur(marge)}`
+                      ? `${platsVendus} article${platsVendus !== 1 ? "s" : ""} vendu${platsVendus !== 1 ? "s" : ""}${chiffre ? ` · marge brute ${eur(marge)}` : " · marge inconnue, fiches non chiffrées"}`
                       : "Aucune vente saisie sur cette période"}
                     {trendPct !== null && <span className="opacity-80"> · vs mois précédent</span>}
                   </p>
