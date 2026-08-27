@@ -110,14 +110,27 @@ export async function POST(req: NextRequest) {
       const currentStock = Number(ing.stock_qty ?? 0);
       const unitCost = Number(ing.cmup ?? ing.cost_per_base_unit ?? 0);
       if (delta > currentStock + 0.0001) insuffisants.push((ing as any).name ?? ingredientId);
-      patches.push({ id: ingredientId, newStock: Math.max(0, currentStock - delta), prevStock: ing.stock_qty });
 
-      if (gross > 0) {
+      // Le stock ne descend pas sous zero : on ne peut pas sortir plus que
+      // ce qui est la. Le MOUVEMENT est borne de la meme facon, et c est le
+      // point important — un mouvement plus gros que la sortie reelle casse
+      // deux choses a la fois :
+      //   - l identite comptable (le grand livre dirait « sorti 10 » quand
+      //     le stock n a baisse que de 5) ;
+      //   - le retour en arriere : supprimer le mois rendait les 10, donc
+      //     5 de stock inventes a chaque aller-retour.
+      // La quantite manquante n est pas perdue pour autant : elle est
+      // signalee (stockInsuffisant) et l inventaire la rattrapera.
+      const applique = delta > currentStock ? currentStock : delta;
+      const cumulApplique = prev + applique;
+      patches.push({ id: ingredientId, newStock: Math.max(0, currentStock - applique), prevStock: ing.stock_qty });
+
+      if (cumulApplique > 0) {
         movements.push({
           restaurant_id: restaurantId,
           ingredient_id: ingredientId,
           movement_type: "out",
-          qty: gross,
+          qty: cumulApplique,
           unit_cost: unitCost,
           reference_type: "sale",
           reference_id: periodId,
