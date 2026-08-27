@@ -313,7 +313,8 @@ describe("Reconnaissance par le nom", () => {
     expect(familleDuNom("Tahina Tiba 18kg")).toBe(5000);
     expect(familleDuNom("Labneh")).toBe(4000);
     expect(familleDuNom("Pain pita")).toBe(6000);
-    expect(familleDuNom("Arak")).toBe(10000);
+    // L'arak titre 50° : c'est un distillat, il va avec les spiritueux.
+    expect(familleDuNom("Arak")).toBe(11000);
   });
 
   it("reconnaît les boissons par leur marque", () => {
@@ -362,5 +363,60 @@ describe("Ce que le récapitulatif doit annoncer", () => {
     expect(nomDeBloc(1000)).toBe("Viandes");
     expect(nomDeBloc(10000)).toBe("Vins & champagnes");
     expect(nomDeBloc(PREMIER_BLOC_LIBRE)).toBeNull();
+  });
+});
+
+describe("Cas réels relevés sur la carte d'Amaly", () => {
+  // Ces noms ont tous été mal classés en production avant correction.
+  // Ils sont ici pour qu'aucune évolution du vocabulaire ne les reperde.
+  const attendu: [string, number][] = [
+    // L'arak titre 50° : un distillat, pas un vin.
+    ["Arak Brun 70 cl", 11000],
+    ["Arak Nakad", 11000],
+    // Des arômes, pas des boissons — le mot « eau » ne doit pas décider seul.
+    ["Eau de rose", 5000],
+    ["Eau de rose ou fleur d'oranger", 5000],
+    ["Fleur d'oranger", 5000],
+    // Mais une vraie eau reste une boisson.
+    ["Eau minérale (50 cl)", 8000],
+    ["Eau pétillante (50 cl)", 8000],
+    // Du vinaigre, pas du vin.
+    ["Vin de vinaigre", 5000],
+    ["Vin rouge ou blanc", 10000],
+    // Épices et aromates d'une carte libanaise.
+    ["Cardamon", 5000],
+    ["Cloux girofle", 5000],
+    ["piment de Jamaïque", 5000],
+    ["Piment fort", 5000],
+    ["Colorant rouge", 5000],
+    ["Cheveux d'ange", 5000],
+    ["Feuille de vigne en pot", 5000],
+    ["pignons", 5000],
+    // Une plante moulue est une épice, fraîche c'est une herbe.
+    ["Coriandre moulue", 5000],
+    ["Menthe", 3000],
+    // Orthographes et produits libanais.
+    ["Fetta", 4000],
+    ["Samneh", 4000],
+    ["Dates", 3000],
+    ["Fèves", 3000],
+    // Et les évidences, qui doivent le rester.
+    ["Agneau de lait", 1000],
+    ["Almaza 33 cl", 9000],
+    ["Château Kefraya 2021", 10000],
+  ];
+
+  it.each(attendu)("« %s » va dans le bloc %i", (nom, bloc) => {
+    expect(familleDuNom(nom)).toBe(bloc);
+  });
+
+  it("aucun produit de la carte ne finit dans le bloc fourre-tout", () => {
+    const noms = attendu.map(([n]) => n);
+    const r = attribueReferences(
+      noms.map((name, i) => ({ id: String(i), name, category: "Autre" })),
+      cat("Autre"),
+    );
+    expect(r.attributions).toHaveLength(noms.length);
+    expect(r.attributions.every((a) => a.bloc < PREMIER_BLOC_LIBRE)).toBe(true);
   });
 });

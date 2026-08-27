@@ -44,7 +44,7 @@ export const FAMILLES: Famille[] = [
   { debut: 8000, nom: "Boissons sans alcool", motsCles: ["boisson", "boissons", "soft", "softs", "soda", "sodas", "eau", "eaux", "jus", "cafe", "the", "infusion", "sirop", "sirops"] },
   { debut: 9000, nom: "Bières & cidres", motsCles: ["biere", "bieres", "cidre", "cidres", "pression"] },
   { debut: 10000, nom: "Vins & champagnes", motsCles: ["vin", "vins", "champagne", "champagnes", "cave", "rouge", "blanc", "rose", "petillant"] },
-  { debut: 11000, nom: "Spiritueux & apéritifs", motsCles: ["spiritueux", "alcool", "alcools", "aperitif", "aperitifs", "digestif", "digestifs", "whisky", "vodka", "rhum", "gin", "liqueur", "liqueurs", "cocktail", "cocktails"] },
+  { debut: 11000, nom: "Spiritueux & apéritifs", motsCles: ["spiritueux", "alcool", "alcools", "aperitif", "aperitifs", "digestif", "digestifs", "whisky", "vodka", "rhum", "gin", "arak", "ouzo", "raki", "liqueur", "liqueurs", "cocktail", "cocktails"] },
   { debut: 12000, nom: "Fournitures & emballages", motsCles: ["fourniture", "fournitures", "emballage", "emballages", "entretien", "hygiene", "consommable", "consommables", "gobelet", "gobelets", "barquette", "serviette", "produit menager"] },
 ];
 
@@ -86,12 +86,14 @@ export const MOTS_PRODUITS: Record<number, string[]> = {
     "champignon", "champignons", "epinard", "epinards", "haricot", "haricots", "petit pois",
     "citron", "citrons", "orange", "oranges", "banane", "bananes", "fraise", "fraises", "raisin",
     "melon", "pasteque", "avocat", "avocats", "persil", "coriandre", "menthe", "basilic", "aneth",
-    "radis", "betterave", "courge", "potiron", "gingembre", "grenade", "figue", "figues", "datte", "dattes",
+    "radis", "betterave", "courge", "potiron", "gingembre", "grenade", "figue", "figues",
+    "datte", "dattes", "date", "dates", "feve", "feves", "artichaut", "artichauts",
   ],
   4000: [
     "lait", "beurre", "creme", "yaourt", "yaourts", "fromage", "mozzarella", "feta", "halloumi",
     "labneh", "labne", "akkawi", "kachkaval", "gruyere", "emmental", "parmesan", "comte", "chevre",
     "ricotta", "mascarpone", "oeuf", "oeufs", "cheddar", "raclette",
+    "fetta", "samneh", "smen", "ghee", "kachta", "ashta",
   ],
   5000: [
     "huile", "vinaigre", "sel", "poivre", "sucre", "farine", "riz", "boulgour", "semoule",
@@ -102,6 +104,18 @@ export const MOTS_PRODUITS: Record<number, string[]> = {
     "olive", "olives", "cornichon", "cornichons", "miel", "confiture", "levure", "bicarbonate",
     "acide", "citrique", "amidon", "gelatine", "agar", "sesame", "noix", "amande", "amandes",
     "pistache", "pistaches", "noisette", "cacahuete", "chocolat", "cacao", "vanille", "pate", "pates",
+    // Épices et aromates d'une carte libanaise.
+    "cardamome", "cardamon", "girofle", "clou de girofle", "cloux girofle", "piment", "piments",
+    "anis", "fenouil", "fenugrec", "carvi", "nigelle", "mahleb", "colorant", "colorants", "arome",
+    "cheveux d ange", "vermicelle", "vermicelles", "feuille de vigne", "feuilles de vigne",
+    "pignon", "pignons", "cajou", "graine", "graines",
+    // « Eau de rose » et « Fleur d'oranger » sont des ARÔMES, pas des boissons :
+    // sans ces expressions, le mot « eau » les envoyait au rayon soft.
+    "eau de rose", "eau de fleur d oranger", "fleur d oranger", "eau de fleur",
+    // « Vin de vinaigre » est du vinaigre, pas du vin.
+    "vin de vinaigre", "vinaigre de vin",
+    // Une plante moulue est une épice, même si fraîche c'est une herbe.
+    "coriandre moulue", "menthe sechee", "persil seche",
   ],
   6000: ["pain", "pita", "baguette", "brioche", "croissant", "biscuit", "biscuits", "gateau", "tarte", "feuille de brick", "filo", "kunafa", "baklava"],
   7000: ["surgele", "surgelee", "congele", "congelee", "glace", "glaces", "sorbet", "frite", "frites"],
@@ -111,8 +125,12 @@ export const MOTS_PRODUITS: Record<number, string[]> = {
     "evian", "vittel", "badoit", "san pellegrino", "ice tea", "red bull", "ayran", "jallab",
   ],
   9000: ["biere", "bieres", "cidre", "almaza", "heineken", "kronenbourg", "corona", "desperados", "leffe", "1664", "beirut beer", "961"],
-  10000: ["vin", "vins", "champagne", "prosecco", "arak", "chardonnay", "merlot", "cabernet", "rose", "bordeaux", "ksara"],
-  11000: ["whisky", "vodka", "rhum", "gin", "tequila", "liqueur", "cognac", "armagnac", "porto", "martini", "aperol", "campari", "triple sec", "curacao"],
+  10000: ["vin", "vins", "champagne", "prosecco", "chardonnay", "merlot", "cabernet", "rose",
+          "bordeaux", "ksara", "kefraya", "ixsir"],
+  // L'arak titre 50° : c'est un distillat, pas un vin. Relevé sur la carte
+  // d'Amaly, où « Arak Brun 70 cl » partait dans la cave à vins.
+  11000: ["whisky", "vodka", "rhum", "gin", "tequila", "arak", "ouzo", "raki", "liqueur",
+          "cognac", "armagnac", "porto", "martini", "aperol", "campari", "triple sec", "curacao"],
   12000: [
     "gobelet", "gobelets", "serviette", "serviettes", "barquette", "barquettes", "sac", "sacs",
     "papier", "aluminium", "film", "essuie", "detergent", "javel", "liquide vaisselle", "gant",
