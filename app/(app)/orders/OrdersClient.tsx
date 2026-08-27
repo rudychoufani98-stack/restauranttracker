@@ -11,6 +11,7 @@ import { reverseReception } from "@/lib/costing";
 import { Plus, Trash2, X, Send, Download, ChevronDown, ChevronUp, Zap, Check, Pencil, Truck, Search, TrendingUp, Hourglass, Star, ArrowRight, Ban, Loader2, Eye, EyeOff } from "lucide-react";
 import clsx from "clsx";
 import { useConfirm, useAlert } from "@/components/ConfirmDialog";
+import { eur } from "@/lib/format";
 
 const toBase = (qty: number, unit: string) => (unit === "kg" || unit === "l" ? qty * 1000 : qty);
 function needsReorder(i: { stock_qty?: number | null; reorder_threshold?: number | null }) {
@@ -633,7 +634,7 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
                                   {ing.supplier_reference && <span className="text-2xs text-gray-400 ml-1.5">réf. {ing.supplier_reference}</span>}
                                 </td>
                                 <td className="px-4 py-2 text-right text-gray-500">{colis} {type}</td>
-                                <td className="px-4 py-2 text-right font-medium text-gray-900">{(colis * packPrice).toFixed(2)} €</td>
+                                <td className="px-4 py-2 text-right font-medium text-gray-900">{eur((colis * packPrice))}</td>
                               </tr>
                             );
                           })}
@@ -669,7 +670,7 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
               <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary"><TrendingUp size={18} /></div>
             </div>
             <div>
-              <h3 className="text-2xl font-extrabold text-primary tabular-nums">{spendThis.toFixed(2)} €</h3>
+              <h3 className="text-2xl font-extrabold text-primary tabular-nums">{eur(spendThis)}</h3>
               <p className="text-2xs text-on-surface-variant/60 mt-1">
                 {spendDelta === null ? "Pas d'historique le mois dernier" : `${spendDelta >= 0 ? "+" : ""}${spendDelta}% par rapport au mois dernier`}
               </p>
@@ -829,7 +830,7 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
                                 </td>
                                 <td className="px-5 py-4 text-sm text-on-surface-variant/80 whitespace-nowrap">{new Date(order.created_at).toLocaleDateString("fr-FR")}</td>
                                 <td className="px-5 py-4 text-center text-sm text-on-surface-variant/80">{order.purchase_order_lines.length}</td>
-                                <td className="px-5 py-4 text-right text-sm font-bold text-on-surface tabular-nums whitespace-nowrap">{Number(order.expected_total ?? 0).toFixed(2)} €</td>
+                                <td className="px-5 py-4 text-right text-sm font-bold text-on-surface tabular-nums whitespace-nowrap">{eur(Number(order.expected_total ?? 0))}</td>
                                 <td className="px-5 py-4">
                                   <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                                     {/* Prix visibles ou masqués pour ce bon (PDF + email) */}
@@ -956,8 +957,8 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
                                               {lineArt && <span className="text-2xs text-on-surface-variant/50 ml-1.5">(1 {lineType} = {condLabel(lineArt)})</span>}
                                             </td>
                                             <td className="text-right text-on-surface-variant/70">{line.quantity} {lineType}</td>
-                                            <td className="text-right text-on-surface-variant/70">{Number(line.expected_price ?? 0).toFixed(2)} €</td>
-                                            <td className="text-right font-semibold text-on-surface tabular-nums">{(line.quantity * Number(line.expected_price ?? 0)).toFixed(2)} €</td>
+                                            <td className="text-right text-on-surface-variant/70">{eur(Number(line.expected_price ?? 0))}</td>
+                                            <td className="text-right font-semibold text-on-surface tabular-nums">{eur((line.quantity * Number(line.expected_price ?? 0)))}</td>
                                           </tr>
                                           );
                                         })}

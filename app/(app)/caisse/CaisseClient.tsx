@@ -5,6 +5,7 @@ import { ChefHat, Package, AlertTriangle, ArrowRight } from "lucide-react";
 import clsx from "clsx";
 import Link from "next/link";
 import { perDisplayUnit } from "@/lib/ingredient-helpers";
+import { eur } from "@/lib/format";
 
 type Recipe  = { id: string; name: string; category: string; total_cost: number; menu_price: number | null; yield_portions: number; allergens: string[] | null };
 type Product = { id: string; name: string; category: string; pack_price: number; cmup?: number | null; cost_per_base_unit?: number | null; selling_price: number | null; unit?: string; allergens: string[] | null };
@@ -171,7 +172,7 @@ export default function CaisseClient({ recipes, products, categoryOrder }: Props
                     <p className="text-sm font-semibold text-on-surface leading-snug pr-14 line-clamp-2 mb-2">{item.name}</p>
 
                     {hasPrice ? (
-                      <p className="text-lg font-bold text-primary tabular-nums">{Number(item.price).toFixed(2)} €</p>
+                      <p className="text-lg font-bold text-primary tabular-nums">{eur(Number(item.price))}</p>
                     ) : (
                       <p className="text-2xs font-bold text-amber-dark flex items-center gap-1"><AlertTriangle size={11} /> Prix manquant</p>
                     )}
@@ -211,17 +212,17 @@ export default function CaisseClient({ recipes, products, categoryOrder }: Props
               <div className="space-y-3">
                 <div className="flex justify-between text-sm">
                   <span className="text-on-surface-variant/60">Prix de vente</span>
-                  <span className="font-semibold text-on-surface tabular-nums">{selected.price ? `${Number(selected.price).toFixed(2)} €` : <span className="text-amber-dark">Non défini</span>}</span>
+                  <span className="font-semibold text-on-surface tabular-nums">{selected.price ? `${eur(Number(selected.price))}` : <span className="text-amber-dark">Non défini</span>}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-on-surface-variant/60">Coût matière</span>
-                  <span className="font-semibold text-on-surface tabular-nums">{selected.cost.toFixed(2)} €</span>
+                  <span className="font-semibold text-on-surface tabular-nums">{eur(selected.cost)}</span>
                 </div>
                 {selected.price && selected.price > 0 && (
                   <>
                     <div className="flex justify-between text-sm">
                       <span className="text-on-surface-variant/60">Marge €</span>
-                      <span className="font-semibold text-primary tabular-nums">{(Number(selected.price) - selected.cost).toFixed(2)} €</span>
+                      <span className="font-semibold text-primary tabular-nums">{eur((Number(selected.price) - selected.cost))}</span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-on-surface-variant/60">Food cost</span>

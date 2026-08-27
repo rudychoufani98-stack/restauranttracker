@@ -9,6 +9,7 @@ import { unitShort } from "@/lib/ingredient-helpers";
 import { ArrowLeft, Plus, Minus, Trash2, Loader2, Check, Search, ShoppingCart, Package, Send } from "lucide-react";
 import clsx from "clsx";
 import { useConfirm, useAlert } from "@/components/ConfirmDialog";
+import { eur } from "@/lib/format";
 
 type Article = {
   supplier_id: string | null; supplier_reference: string | null;
@@ -201,7 +202,7 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
     if (isEdit) {
       supabase.from("order_events").insert({
         restaurant_id: restaurantId, po_id: poId, type: "edited",
-        detail: `${valid.length} produit(s) · ${total.toFixed(2)} €`,
+        detail: `${valid.length} produit(s) · ${eur(total)}`,
       }).then(() => {}, () => {});
     }
 
@@ -339,7 +340,7 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
                       {art ? <>1 {packTypeOf(art)} = <b className="text-gray-500">{condLabel(art)}</b></> : (p.category || "Autre")}
                     </p>
                     <div className="mt-1.5 flex items-center justify-between">
-                      <span className="text-sm font-semibold text-gray-800">{Number(price).toFixed(2)} €</span>
+                      <span className="text-sm font-semibold text-gray-800">{eur(Number(price))}</span>
                       <span className="text-2xs text-emerald-600 font-medium flex items-center gap-0.5"><Plus size={11} /> Ajouter</span>
                     </div>
                   </button>
@@ -395,7 +396,7 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
                             className="w-full pl-5 pr-1.5 py-1 text-sm border border-gray-200 rounded-lg outline-none focus:border-primary" />
                         </div>
                       </div>
-                      <p className="text-right text-xs font-semibold text-gray-900 mt-1.5">{sub.toFixed(2)} €</p>
+                      <p className="text-right text-xs font-semibold text-gray-900 mt-1.5">{eur(sub)}</p>
                     </div>
                   );
                 })}
@@ -406,7 +407,7 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
             <div className="mt-4 pt-4 border-t border-gray-100 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-600">Total prévisionnel</span>
-                <span className="text-lg font-bold text-gray-900">{total.toFixed(2)} €</span>
+                <span className="text-lg font-bold text-gray-900">{eur(total)}</span>
               </div>
               {franco > 0 && (() => {
                 const reached = total >= franco;
@@ -416,7 +417,7 @@ export default function NewOrderClient({ restaurantId, restaurantName, suppliers
                       <div className={clsx("h-full rounded-full transition-all", reached ? "bg-emerald-500" : "bg-amber-400")} style={{ width: `${Math.min(100, franco ? (total / franco) * 100 : 0)}%` }} />
                     </div>
                     <p className={clsx("text-xs", reached ? "text-emerald-600" : "text-amber-600")}>
-                      {reached ? `✓ Franco atteint (${franco.toFixed(0)} €)` : `Franco à ${franco.toFixed(0)} € — il manque ${(franco - total).toFixed(2)} €`}
+                      {reached ? `✓ Franco atteint (${franco.toFixed(0)} €)` : `Franco à ${franco.toFixed(0)} € — il manque ${eur((franco - total))}`}
                     </p>
                   </>
                 );

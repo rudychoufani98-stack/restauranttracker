@@ -13,6 +13,7 @@ import {
   detectServiceMoment, toDatetimeLocal, SERVICE_MOMENTS, serviceMomentLabel,
   type ServiceMoment,
 } from "@/lib/service-moment";
+import { eur } from "@/lib/format";
 
 type IngredientInfo = { id: string; name: string; unit: string; pack_price: number; cost_per_base_unit: number; pack_quantity: number | null };
 type POLine = { id: string; ingredient_id: string | null; quantity: number; expected_price: number | null; ingredients?: IngredientInfo | null };
@@ -564,7 +565,7 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
                           : "border-[#E5E7EB] focus:border-primary focus:ring-primary")} />
                   </div>
                   {Math.abs(actualOf(line) - line.expected_price) > 0.001 && (
-                    <span className="text-2xs text-amber-600">prévu {line.expected_price.toFixed(2)} €</span>
+                    <span className="text-2xs text-amber-600">prévu {eur(line.expected_price)}</span>
                   )}
                 </div>
               </div>

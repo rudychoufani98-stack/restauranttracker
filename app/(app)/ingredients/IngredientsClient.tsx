@@ -9,6 +9,7 @@ import { Card, Button, Input, Select, Modal, Alert, EmptyState } from "@/compone
 import clsx from "clsx";
 import { useConfirm, useAlert } from "@/components/ConfirmDialog";
 import { formatRef, attribueReferences, normaliseRefCaisse, nomDeBloc, TAILLE_BLOC } from "@/lib/references";
+import { eur } from "@/lib/format";
 
 // L'interface ne parle que kg / L / pièce (g/ml restent internes).
 const UNIT_CHOICES = [
@@ -838,7 +839,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1.5">Prix TTC</label>
                   <div className="px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg text-gray-700 font-medium">
-                    {priceTTCVal.toFixed(2)} €
+                    {eur(priceTTCVal)}
                   </div>
                   <p className="text-2xs text-gray-400 mt-1">calculé tout seul</p>
                 </div>
@@ -850,7 +851,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                   <Check size={15} className="text-emerald-600 shrink-0 mt-0.5" />
                   <p className="text-sm text-emerald-800 leading-snug">
                     1 colis = <b>{Number((packQty || 0).toFixed(3)).toLocaleString("fr-FR", { maximumFractionDigits: 3 })} {form.unit === "unit" ? "pièce" : form.unit === "l" ? "L" : form.unit}</b> · ça te revient à{" "}
-                    <b>{perDisplayUnit(previewNetCost ?? 0, form.unit).toFixed(2)} €/{displayUnitLabel(form.unit)}</b>
+                    <b>{eur(perDisplayUnit(previewNetCost ?? 0, form.unit))}/{displayUnitLabel(form.unit)}</b>
                     {yieldPct < 100 && <span className="text-emerald-600"> (perte incluse)</span>}
                   </p>
                 </div>
@@ -942,7 +943,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                         <span className="font-medium text-gray-600">{UNIT_CHOICES.find((u) => u.value === form.unit)?.label ?? form.unit}</span>
                         {parseFloat(line.pack_price) > 0 && parseFloat(line.unit_size) > 0 && (
                           <span className="ml-auto text-green font-medium">
-                            {perDisplayUnit(calcCostPerBase(parseFloat(line.pack_price), parseFloat(line.pack_units) || 1, parseFloat(line.unit_size), form.unit), form.unit).toFixed(2)} €/{displayUnitLabel(form.unit)}
+                            {eur(perDisplayUnit(calcCostPerBase(parseFloat(line.pack_price), parseFloat(line.pack_units) || 1, parseFloat(line.unit_size), form.unit), form.unit))}/{displayUnitLabel(form.unit)}
                           </span>
                         )}
                       </div>
@@ -990,7 +991,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                     <p className="text-xs text-gray-400">Marge unitaire</p>
                     <p className="text-sm font-semibold text-emerald-600">
                       {/* prix de vente à la pièce − coût unitaire (jamais le prix du colis entier) */}
-                      {(parseFloat(form.selling_price) - (previewNetCost !== null ? perDisplayUnit(previewNetCost, form.unit) : 0)).toFixed(2)} €
+                      {eur((parseFloat(form.selling_price) - (previewNetCost !== null ? perDisplayUnit(previewNetCost, form.unit) : 0)))}
                       <span className="text-xs text-gray-400 font-normal ml-1">
                         ({parseFloat(form.selling_price) > 0 ? (((parseFloat(form.selling_price) - (previewNetCost !== null ? perDisplayUnit(previewNetCost, form.unit) : 0)) / parseFloat(form.selling_price)) * 100).toFixed(0) : 0}%)
                       </span>
@@ -1178,9 +1179,9 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                             <span className="ml-1.5 px-1.5 py-0.5 rounded bg-amber-light text-amber-dark text-2xs font-medium">rdt {ing.yield_pct}%</span>
                           )}
                         </td>
-                        <td className="px-5 py-4 text-right text-sm text-on-surface-variant/80 tabular-nums">{Number(ing.pack_price).toFixed(2)} €</td>
+                        <td className="px-5 py-4 text-right text-sm text-on-surface-variant/80 tabular-nums">{eur(Number(ing.pack_price))}</td>
                         <td className="px-5 py-4 text-right text-sm text-on-surface-variant/60 tabular-nums">{ing.vat_rate ?? 0}%</td>
-                        <td className="px-5 py-4 text-right text-sm text-on-surface-variant/80 tabular-nums">{ttc.toFixed(2)} €</td>
+                        <td className="px-5 py-4 text-right text-sm text-on-surface-variant/80 tabular-nums">{eur(ttc)}</td>
                         <td className="px-5 py-4 text-right tabular-nums">
                           {(() => {
                             const y = Number(ing.yield_pct ?? 100);
@@ -1189,15 +1190,15 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                             const gross = perDisplayUnit(Number(ing.cost_per_base_unit), ing.unit);
                             return (
                               <span className="font-semibold text-primary">
-                                {net.toFixed(2)} €/{displayUnitLabel(ing.unit)}
-                                {y < 100 && <span className="block text-2xs text-on-surface-variant/40 font-normal">brut {gross.toFixed(2)} €</span>}
+                                {eur(net)}/{displayUnitLabel(ing.unit)}
+                                {y < 100 && <span className="block text-2xs text-on-surface-variant/40 font-normal">brut {eur(gross)}</span>}
                               </span>
                             );
                           })()}
                         </td>
                         <td className="px-5 py-4 text-right text-sm tabular-nums">
                           {ing.selling_price != null
-                            ? <span className="text-on-surface-variant/80">{Number(ing.selling_price).toFixed(2)} €</span>
+                            ? <span className="text-on-surface-variant/80">{eur(Number(ing.selling_price))}</span>
                             : <span className="text-on-surface-variant/30 text-xs">—</span>}
                         </td>
                         <td className="px-5 py-4 text-right text-sm tabular-nums">
@@ -1210,7 +1211,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                                 const pct = ing.selling_price > 0 ? (marge / ing.selling_price) * 100 : 0;
                                 return (
                                   <span className={marge >= 0 ? "font-semibold text-emerald-600" : "font-semibold text-red"}>
-                                    {marge.toFixed(2)} € <span className="text-xs text-on-surface-variant/40">({pct.toFixed(0)}%)</span>
+                                    {eur(marge)} <span className="text-xs text-on-surface-variant/40">({pct.toFixed(0)}%)</span>
                                   </span>
                                 );
                               })()

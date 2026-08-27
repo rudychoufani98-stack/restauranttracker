@@ -3,6 +3,7 @@ import { getRestaurant } from "@/lib/auth";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, TrendingUp, TrendingDown, RotateCcw, AlertTriangle, ShoppingCart, FileText, Utensils } from "lucide-react";
+import { eur } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -97,7 +98,7 @@ export default async function IngredientHistoryPage({ params }: { params: { id: 
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <p className="text-2xs text-gray-500 uppercase tracking-wide">Stock actuel</p>
           <p className="text-lg font-bold text-gray-900">{formatQty(stock, unit)}</p>
-          <p className="text-2xs text-gray-400">valeur {(stock * cmup).toFixed(2)} €</p>
+          <p className="text-2xs text-gray-400">valeur {eur((stock * cmup))}</p>
         </div>
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <p className="text-2xs text-gray-500 uppercase tracking-wide">Total entré</p>
@@ -144,7 +145,7 @@ export default async function IngredientHistoryPage({ params }: { params: { id: 
                       </div>
                       <div className="text-right shrink-0">
                         <p className={`text-sm font-semibold ${meta.color}`}>{meta.sign}{formatQty(Math.abs(qty), unit)}</p>
-                        {val > 0 && <p className="text-2xs text-gray-400">{val.toFixed(2)} €</p>}
+                        {val > 0 && <p className="text-2xs text-gray-400">{eur(val)}</p>}
                       </div>
                     </div>
                   );

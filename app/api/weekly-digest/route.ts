@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { eur } from "@/lib/format";
 
 // Called by Vercel Cron every day — filters by digest_day
 export async function GET(req: NextRequest) {
@@ -76,7 +77,7 @@ export async function GET(req: NextRequest) {
       .slice(0, 3);
 
     const changesText = biggestChanges.length > 0
-      ? biggestChanges.map((c: any) => `  • ${(c.ingredients as any)?.name ?? "?"}: ${Number(c.old_price).toFixed(2)} € → ${Number(c.new_price).toFixed(2)} €`).join("\n")
+      ? biggestChanges.map((c: any) => `  • ${(c.ingredients as any)?.name ?? "?"}: ${eur(Number(c.old_price))} → ${eur(Number(c.new_price))}`).join("\n")
       : "  No price changes this week.";
 
     const body = `Hi,

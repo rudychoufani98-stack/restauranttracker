@@ -30,7 +30,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="flex min-h-screen bg-[#F9FAFB]">
       <Sidebar restaurantName={restaurant.name} isAdmin={admin} />
-      <main className="flex-1 overflow-auto">
+      {/* pt-16 sous lg : laisse la place au bouton de menu, qui est fixe en
+          haut a gauche et recouvrirait sinon le titre de la page. */}
+      <main className="flex-1 overflow-auto pt-16 lg:pt-0">
         {impersonating && (
           <div className="sticky top-0 z-50 bg-primary text-on-primary px-6 py-2.5 flex items-center justify-between gap-3 shadow-lg">
             <p className="text-sm font-semibold flex items-center gap-2">

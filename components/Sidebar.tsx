@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
@@ -24,6 +24,7 @@ import {
   Crown,
   FileSpreadsheet,
   LineChart,
+  Menu,
 } from "lucide-react";
 import clsx from "clsx";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -81,9 +82,16 @@ export default function Sidebar({ restaurantName, isAdmin = false }: { restauran
   const confirm = useConfirm();
   // Laisse passer la seconde soumission, celle qu'on déclenche après accord.
   const deconnexionOk = useRef(false);
+  // Sur téléphone, la barre latérale se replie : mesuré à 375 px, elle
+  // occupait 224 px et ne laissait que 151 px de contenu — l'app était
+  // inutilisable. Elle s'ouvre par-dessus la page, et se referme dès qu'on
+  // navigue, sinon on reste bloqué derrière le voile.
+  const [ouvert, setOuvert] = useState(false);
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const vue = searchParams.get("vue");
+
+  useEffect(() => { setOuvert(false); }, [pathname, vue]);
 
   // Certaines entrées partagent une même route et ne se distinguent que par
   // ?vue= (Stock/Inventaire, Évolution des prix/Exports). Sans ce traitement,
@@ -98,7 +106,37 @@ export default function Sidebar({ restaurantName, isAdmin = false }: { restauran
   }
 
   return (
-    <aside className="w-64 shrink-0 flex flex-col h-screen sticky top-0 bg-surface-container-lowest border-r border-outline-variant">
+    <>
+      {/* Bouton d'ouverture : seulement sous lg, là où la barre est cachée. */}
+      <button
+        type="button"
+        onClick={() => setOuvert(true)}
+        aria-label="Ouvrir le menu"
+        className="lg:hidden fixed top-3 left-3 z-[70] w-11 h-11 rounded-xl bg-surface-container-lowest border border-outline-variant shadow-lg flex items-center justify-center text-primary"
+      >
+        <Menu size={20} />
+      </button>
+
+      {/* Voile : ferme la barre quand on tape à côté. */}
+      {ouvert && (
+        <button
+          type="button"
+          aria-label="Fermer le menu"
+          onClick={() => setOuvert(false)}
+          className="lg:hidden fixed inset-0 z-[75] bg-black/40"
+        />
+      )}
+
+    <aside
+      className={clsx(
+        "w-64 shrink-0 flex flex-col h-screen bg-surface-container-lowest border-r border-outline-variant",
+        // Grand écran : la barre fait partie de la page, comme avant.
+        "lg:sticky lg:top-0 lg:translate-x-0",
+        // Petit écran : elle glisse par-dessus, et disparaît sinon.
+        "fixed inset-y-0 left-0 z-[80] transition-transform duration-200",
+        ouvert ? "translate-x-0 shadow-2xl" : "-translate-x-full",
+      )}
+    >
       {/* Brand — logo plateforme + nom du restaurant du client (clic → accueil) */}
       <div className="px-5 pt-6 pb-5">
         <Link href="/dashboard" aria-label="Accueil" className="flex items-center gap-2.5 hover:opacity-80 transition">
@@ -199,5 +237,6 @@ export default function Sidebar({ restaurantName, isAdmin = false }: { restauran
         </form>
       </div>
     </aside>
+    </>
   );
 }

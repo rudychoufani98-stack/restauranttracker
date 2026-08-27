@@ -8,6 +8,7 @@ import clsx from "clsx";
 import { CANAUX, canalLabel, htDepuisTTC, foodCostPct, estAlcool, tauxDeVente, TVA_DEFAUT, type ReglagesTva } from "@/lib/vat";
 import { perDisplayUnit } from "@/lib/ingredient-helpers";
 import { useConfirm, useAlert } from "@/components/ConfirmDialog";
+import { eur } from "@/lib/format";
 
 type Recipe = {
   id: string;
@@ -229,7 +230,7 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
     const nbLignes = draftLines.filter((l) => parseFloat(l.qty_sold) > 0).length;
     const confirmMsg =
       `Enregistrer les ventes de ${monthLabel(selectedMonth)} (${channelLabel(saleChannel)}) ?\n\n` +
-      `${nbLignes} article(s) · CA ${preview.ca.toFixed(2)} €\n\n` +
+      `${nbLignes} article(s) · CA ${eur(preview.ca)}\n\n` +
       "Les ingrédients des plats vendus (y compris ceux des mises en place) seront DÉSTOCKÉS." +
       (existing ? "\n\n⚠️ Une saisie existe déjà pour ce mois et ce canal : elle sera REMPLACÉE (le stock est réajusté par différence)." : "");
     if (!(await confirm(confirmMsg))) return;
@@ -346,7 +347,7 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
     const stats = calcPeriodStats(period, recipes, simpleProducts);
     const ok = (await confirm(
       `Supprimer la saisie de ${monthLabel(period.month)} (${channelLabel(period.channel)}) ?\n\n` +
-      `CA ${stats.ca.toFixed(2)} € · ${stats.totalCouverts} article(s) vendu(s)\n\n` +
+      `CA ${eur(stats.ca)} · ${stats.totalCouverts} article(s) vendu(s)\n\n` +
       "Les ingrédients déstockés pour ces ventes seront REMIS en stock. Cette action est irréversible."
     ));
     if (!ok) return;
@@ -482,7 +483,7 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
         <section className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div className="glass-card rounded-2xl p-5 flex flex-col gap-3 border-l-4 border-primary">
             <span className="text-2xs font-bold uppercase tracking-widest text-on-surface-variant/60">Marge brute globale</span>
-            <span className={clsx("text-2xl font-extrabold tabular-nums", globals.marge >= 0 ? "text-primary" : "text-red")}>{globals.marge.toFixed(2)} €</span>
+            <span className={clsx("text-2xl font-extrabold tabular-nums", globals.marge >= 0 ? "text-primary" : "text-red")}>{eur(globals.marge)}</span>
             {globals.margePct !== null && (
               <>
                 <div className="w-full bg-surface-container-highest rounded-full h-2">
@@ -511,8 +512,8 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
 
           <div className="glass-card rounded-2xl p-5 flex flex-col gap-3">
             <span className="text-2xs font-bold uppercase tracking-widest text-on-surface-variant/60">CA réalisé</span>
-            <span className="text-2xl font-extrabold text-primary tabular-nums">{globals.ca.toFixed(2)} €</span>
-            <p className="text-2xs text-on-surface-variant/60">Coût matière {globals.cout.toFixed(2)} €</p>
+            <span className="text-2xl font-extrabold text-primary tabular-nums">{eur(globals.ca)}</span>
+            <p className="text-2xs text-on-surface-variant/60">Coût matière {eur(globals.cout)}</p>
           </div>
         </section>
       )}
@@ -655,7 +656,7 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
                               )}
                               <p className="text-sm font-medium text-gray-900 leading-snug line-clamp-2">{it.name}</p>
                               <div className="mt-1.5 flex items-center justify-between">
-                                <span className="text-sm font-semibold text-gray-800">{it.price.toFixed(2)} €</span>
+                                <span className="text-sm font-semibold text-gray-800">{eur(it.price)}</span>
                                 <span className={clsx("text-2xs font-medium", marginPct >= 60 ? "text-emerald-600" : marginPct >= 30 ? "text-amber-600" : "text-red-500")}>
                                   {marginPct.toFixed(0)}% marge
                                 </span>
@@ -688,16 +689,16 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
                   </div>
                   <div>
                     <p className="text-xs text-gray-500">CA total</p>
-                    <p className="text-lg font-semibold text-gray-900">{preview.ca.toFixed(2)} €</p>
+                    <p className="text-lg font-semibold text-gray-900">{eur(preview.ca)}</p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-500">Coût matière</p>
-                    <p className="text-lg font-semibold text-red-500">{preview.cout.toFixed(2)} €</p>
+                    <p className="text-lg font-semibold text-red-500">{eur(preview.cout)}</p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-500">Marge brute</p>
                     <p className={clsx("text-lg font-semibold", preview.margeB >= 0 ? "text-emerald-600" : "text-red-500")}>
-                      {preview.margeB.toFixed(2)} €
+                      {eur(preview.margeB)}
                     </p>
                     {preview.foodCostPct !== null && (
                       <p className={clsx("text-xs mt-0.5", preview.foodCostPct <= targetFoodCostPct ? "text-emerald-500" : "text-red-500")}>
@@ -842,9 +843,9 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
                                       {[
                                         { label: "Couverts", value: stats.totalCouverts.toString(), color: "text-on-surface" },
-                                        { label: "Chiffre d'affaires", value: `${stats.ca.toFixed(2)} €`, color: "text-on-surface" },
-                                        { label: "Coût matière", value: `${stats.coutMatiere.toFixed(2)} €`, color: "text-red" },
-                                        { label: "Marge brute", value: `${stats.margeB.toFixed(2)} €`, color: stats.margeB >= 0 ? "text-primary" : "text-red" },
+                                        { label: "Chiffre d'affaires", value: `${eur(stats.ca)}`, color: "text-on-surface" },
+                                        { label: "Coût matière", value: `${eur(stats.coutMatiere)}`, color: "text-red" },
+                                        { label: "Marge brute", value: `${eur(stats.margeB)}`, color: stats.margeB >= 0 ? "text-primary" : "text-red" },
                                       ].map((s) => (
                                         <div key={s.label} className="bg-surface-container-low/60 rounded-xl p-3">
                                           <p className="text-2xs font-bold uppercase tracking-widest text-on-surface-variant/60 mb-1">{s.label}</p>
@@ -907,10 +908,10 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
                                               <tr key={line.recipe_id ?? line.ingredient_id}>
                                                 <td className="py-1.5 text-on-surface-variant font-medium">{itemName}</td>
                                                 <td className="text-right text-on-surface-variant/70 tabular-nums">{line.qty_sold}</td>
-                                                <td className="text-right text-on-surface-variant/70 tabular-nums">{itemPrice.toFixed(2)} €</td>
-                                                <td className="text-right text-on-surface tabular-nums">{lineCA.toFixed(2)} €</td>
-                                                <td className="text-right text-red tabular-nums">{lineCout.toFixed(2)} €</td>
-                                                <td className="text-right font-medium text-primary tabular-nums">{lineMarge.toFixed(2)} €</td>
+                                                <td className="text-right text-on-surface-variant/70 tabular-nums">{eur(itemPrice)}</td>
+                                                <td className="text-right text-on-surface tabular-nums">{eur(lineCA)}</td>
+                                                <td className="text-right text-red tabular-nums">{eur(lineCout)}</td>
+                                                <td className="text-right font-medium text-primary tabular-nums">{eur(lineMarge)}</td>
                                                 <td className="text-right">
                                                   <span className={clsx("text-2xs font-medium tabular-nums",
                                                     lineFCP <= targetFoodCostPct ? "text-primary" :
@@ -928,9 +929,9 @@ export default function RentabiliteClient({ restaurantId, targetFoodCostPct, rec
                                           <td className="pt-2 text-on-surface">Total</td>
                                           <td className="text-right pt-2 text-on-surface-variant tabular-nums">{stats.totalCouverts}</td>
                                           <td />
-                                          <td className="text-right pt-2 text-on-surface tabular-nums">{stats.ca.toFixed(2)} €</td>
-                                          <td className="text-right pt-2 text-red tabular-nums">{stats.coutMatiere.toFixed(2)} €</td>
-                                          <td className="text-right pt-2 text-primary tabular-nums">{stats.margeB.toFixed(2)} €</td>
+                                          <td className="text-right pt-2 text-on-surface tabular-nums">{eur(stats.ca)}</td>
+                                          <td className="text-right pt-2 text-red tabular-nums">{eur(stats.coutMatiere)}</td>
+                                          <td className="text-right pt-2 text-primary tabular-nums">{eur(stats.margeB)}</td>
                                           <td className="text-right pt-2">
                                             {stats.foodCostPct !== null && (
                                               <span className={clsx("text-sm tabular-nums",

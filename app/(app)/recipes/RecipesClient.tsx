@@ -11,6 +11,7 @@ import { TYPE_IDENTITE, typeDeRecette } from "@/lib/type-article";
 import { normaliseRefCaisse, refCaisseEnDouble } from "@/lib/references";
 import { foodCostPct, estAlcool, tauxDeVente, TVA_DEFAUT, type ReglagesTva } from "@/lib/vat";
 import { useConfirm, useAlert } from "@/components/ConfirmDialog";
+import { eur } from "@/lib/format";
 
 
 type Ingredient = { id: string; name: string; cost_per_base_unit: number; cmup?: number | null; unit: string; yield_pct?: number | null; is_active?: boolean };
@@ -597,7 +598,7 @@ export default function RecipesClient({ tva = TVA_DEFAUT, restaurantId, initialR
               <span className="text-2xs font-bold text-on-surface-variant/60 uppercase tracking-widest">{tab === "prep" ? "Coût moyen / unité de rendement" : "Coût moyen / portion"}</span>
               <div className="w-10 h-10 rounded-full bg-primary-container/20 flex items-center justify-center text-primary-container"><Coins size={18} /></div>
             </div>
-            <h3 className="text-2xl font-extrabold text-on-surface tabular-nums">{avgCostPerPortion.toFixed(2)} €</h3>
+            <h3 className="text-2xl font-extrabold text-on-surface tabular-nums">{eur(avgCostPerPortion)}</h3>
           </div>
         </section>
       )}
@@ -808,14 +809,14 @@ export default function RecipesClient({ tva = TVA_DEFAUT, restaurantId, initialR
               <div className="bg-gray-50 border border-[#E5E7EB] rounded-lg px-4 py-3 flex justify-between items-center">
                 <div>
                   <p className="text-xs text-gray-500">Coût total de la recette</p>
-                  <p className="text-lg font-medium text-gray-900">{totalCost.toFixed(2)} €</p>
+                  <p className="text-lg font-medium text-gray-900">{eur(totalCost)}</p>
                 </div>
                 <div className="text-right">
                   <p className="text-xs text-gray-500">
                     Coût par {YIELD_UNITS.find((u) => u.value === yieldUnit)?.label ?? yieldUnit}
                     {" "}(rendement {yieldPortions || 1})
                   </p>
-                  <p className="text-lg font-medium text-emerald-700">{costPerPortion.toFixed(2)} €</p>
+                  <p className="text-lg font-medium text-emerald-700">{eur(costPerPortion)}</p>
                 </div>
               </div>
             </div>
@@ -919,8 +920,8 @@ export default function RecipesClient({ tva = TVA_DEFAUT, restaurantId, initialR
                     </span>
                   )}
                   <div className="text-right shrink-0">
-                    <p className="text-sm font-semibold text-on-surface tabular-nums">{recipe.total_cost.toFixed(2)} €</p>
-                    <p className="text-xs text-primary tabular-nums">{costPerPortion.toFixed(2)} € / {yUnit}</p>
+                    <p className="text-sm font-semibold text-on-surface tabular-nums">{eur(recipe.total_cost)}</p>
+                    <p className="text-xs text-primary tabular-nums">{eur(costPerPortion)} / {yUnit}</p>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <Link href={`${recipe.is_prep ? "/mises-en-place" : "/recipes"}/${recipe.id}`} onClick={(e) => e.stopPropagation()}
@@ -996,7 +997,7 @@ export default function RecipesClient({ tva = TVA_DEFAUT, restaurantId, initialR
                         <tr className="border-t border-outline-variant/20">
                           <td className="pt-2 text-2xs font-bold text-on-surface-variant/50 uppercase tracking-wide">Total recette</td>
                           <td />
-                          <td className="pt-2 text-right font-semibold text-on-surface tabular-nums">{recipe.total_cost.toFixed(2)} €</td>
+                          <td className="pt-2 text-right font-semibold text-on-surface tabular-nums">{eur(recipe.total_cost)}</td>
                         </tr>
                       </tfoot>
                     </table>

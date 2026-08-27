@@ -11,6 +11,7 @@ import {
   displayUnitLabel, perDisplayUnit, priceTTC,
   qtyToDisplay, qtyFromDisplay, fmtNum,
 } from "@/lib/ingredient-helpers";
+import { eur } from "@/lib/format";
 
 type Supplier = { id: string; name: string };
 type Article = {
@@ -460,8 +461,8 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
 
                   {cpb > 0 && (
                     <p className="text-xs text-gray-500">
-                      1 {a.pack_type || "colis"} = <b>{fmtNum(packTotal(parseFloat(a.pack_units) || 1, sizeOf(a)))} {unitShort(unit)}</b> · TTC {ttc.toFixed(2)} € ·
-                      <span className="text-emerald-600 font-medium"> {cpb.toFixed(2)} €/{uLabel}</span>
+                      1 {a.pack_type || "colis"} = <b>{fmtNum(packTotal(parseFloat(a.pack_units) || 1, sizeOf(a)))} {unitShort(unit)}</b> · TTC {eur(ttc)} ·
+                      <span className="text-emerald-600 font-medium"> {eur(cpb)}/{uLabel}</span>
                     </p>
                   )}
                 </div>
