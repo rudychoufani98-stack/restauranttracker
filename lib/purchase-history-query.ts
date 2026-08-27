@@ -3,7 +3,7 @@
 //
 // Source de vérité : les factures VALIDÉES. Un brouillon de facture ne
 // compte pas — tant qu'elle n'est pas validée, le prix n'est pas confirmé.
-import { buildPurchaseHistory, type Purchase } from "./cost-history";
+import { buildPurchaseHistory, STATUT_ANNULEE, type Purchase } from "./cost-history";
 import { selectIngredients } from "./ingredients-query";
 
 /** Lecture par paquets : PostgREST limite la taille d'un filtre `in`. */
@@ -53,6 +53,15 @@ export async function loadPurchaseHistory(supabase: any, restaurantId: string): 
   ]);
 
   const ingredients = ingRes.data ?? [];
+
+  // Le compteur doit dire la même chose que les chiffres qu'il accompagne :
+  // une facture rattachée à une commande annulée ne pèse plus sur les prix,
+  // elle ne doit donc pas être annoncée comme « analysée ».
+  const annulees = new Set(
+    (pos ?? []).filter((p: any) => p.status === STATUT_ANNULEE).map((p: any) => p.id),
+  );
+  const retenues = (invoices ?? []).filter((i: any) => !i.po_id || !annulees.has(i.po_id));
+
   return {
     byIngredient: buildPurchaseHistory({
       invoices: invoices ?? [],
@@ -62,6 +71,6 @@ export async function loadPurchaseHistory(supabase: any, restaurantId: string): 
     }),
     ingredients,
     ingById: new Map<string, any>(ingredients.map((i: any) => [i.id, i])),
-    invoiceCount: invoiceIds.length,
+    invoiceCount: retenues.length,
   };
 }
