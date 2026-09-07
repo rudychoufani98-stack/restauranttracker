@@ -2,58 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getRestaurant } from "@/lib/auth";
 import { ASSISTANT_SYSTEM_PROMPT } from "@/lib/assistant-knowledge";
+import { buildSnapshot } from "@/lib/assistant-contexte";
 
-// Quantité de base (g/ml/pièce) → affichage lisible (kg/L/pièce)
-function fmtStock(qty: number, unit: string): string {
-  if (unit === "kg" || unit === "g") return (qty / 1000).toFixed(1) + " kg";
-  if (unit === "l" || unit === "ml") return (qty / 1000).toFixed(1) + " L";
-  return qty.toFixed(0) + " pce";
-}
-
-// Instantané compact des données du restaurant connecté, injecté dans le
-// contexte du modèle pour des réponses personnalisées ("ton plat le plus
-// rentable est…"). Sécurité : la RLS limite chaque requête au restaurant
-// de l'utilisateur — jamais les données d'un autre client.
-async function buildSnapshot(supabase: ReturnType<typeof createClient>, restaurantId: string, restaurantName: string): Promise<string> {
-  const [ings, recipes, orders, suppliers] = await Promise.all([
-    supabase.from("ingredients").select("name, unit, stock_qty, cmup, cost_per_base_unit, selling_price, reorder_threshold").eq("restaurant_id", restaurantId).order("name"),
-    supabase.from("recipes").select("name, category, total_cost, menu_price, yield_portions").eq("restaurant_id", restaurantId).eq("is_prep", false).order("name"),
-    supabase.from("purchase_orders").select("order_number, status, expected_total, created_at, suppliers(name)").eq("restaurant_id", restaurantId).order("created_at", { ascending: false }).limit(8),
-    supabase.from("suppliers").select("name, email, min_order_amount").eq("restaurant_id", restaurantId),
-  ]);
-
-  const lines: string[] = [`# DONNÉES ACTUELLES DU RESTAURANT « ${restaurantName} » (valorisées au coût actuel)`];
-
-  lines.push("## PLATS DE LA CARTE (nom | coût/portion | prix vente | food cost %)");
-  for (const r of recipes.data ?? []) {
-    const cpp = Number(r.total_cost ?? 0) / (Number(r.yield_portions) || 1);
-    const price = Number(r.menu_price ?? 0);
-    const fc = price > 0 ? ((cpp / price) * 100).toFixed(1) + "%" : "prix non défini";
-    lines.push(`${r.name} | ${cpp.toFixed(2)}€ | ${price > 0 ? price.toFixed(2) + "€" : "—"} | ${fc}`);
-  }
-
-  lines.push("## INGRÉDIENTS (nom | stock | coût moyen ; « ⚠ SOUS LE SEUIL » = à recommander)");
-  for (const i of ings.data ?? []) {
-    const stock = Number(i.stock_qty ?? 0);
-    const cmup = Number(i.cmup ?? i.cost_per_base_unit ?? 0);
-    const per = i.unit === "kg" || i.unit === "g" ? "€/kg" : i.unit === "l" || i.unit === "ml" ? "€/L" : "€/pce";
-    const thr = Number(i.reorder_threshold ?? 0);
-    lines.push(`${i.name} | ${fmtStock(stock, i.unit)} | ${(cmup * (per === "€/pce" ? 1 : 1000)).toFixed(2)}${per}${thr > 0 && stock <= thr ? " | ⚠ SOUS LE SEUIL — à commander" : ""}`);
-  }
-
-  lines.push("## DERNIÈRES COMMANDES (n° | fournisseur | statut | total)");
-  for (const o of orders.data ?? []) {
-    lines.push(`${o.order_number ?? "—"} | ${(o as any).suppliers?.name ?? "—"} | ${o.status} | ${Number(o.expected_total ?? 0).toFixed(2)}€`);
-  }
-
-  lines.push("## FOURNISSEURS (nom | email | franco)");
-  for (const s of suppliers.data ?? []) {
-    lines.push(`${s.name} | ${s.email ?? "pas d'email"} | ${Number(s.min_order_amount ?? 0) > 0 ? Number(s.min_order_amount).toFixed(0) + "€" : "—"}`);
-  }
-
-  // Garde le contexte compact (quota du palier gratuit)
-  return lines.join("\n").slice(0, 15000);
-}
+// Deux appels de modèle au pire (Gemini puis bascule Anthropic) : la durée
+// par défaut de Vercel ne suffirait pas et la fonction serait tuee au milieu.
+export const maxDuration = 30;
 
 // Assistant d'aide intégré : répond aux questions des restaurateurs sur le
 // fonctionnement de la plateforme.
@@ -62,6 +15,12 @@ async function buildSnapshot(supabase: ReturnType<typeof createClient>, restaura
 
 const MAX_HISTORY = 12;      // messages conservés (contexte court = quota préservé)
 const MAX_MESSAGE_LEN = 2000;
+const TIMEOUT_MS = 12000;    // au-delà, on bascule plutôt que de faire attendre
+
+/** Erreur d'un moteur, avec le statut HTTP pour distinguer un quota du reste. */
+class ErreurModele extends Error {
+  constructor(message: string, readonly statut: number) { super(message); }
+}
 
 async function askGemini(apiKey: string, system: string, history: { role: string; content: string }[]) {
   const res = await fetch(
@@ -69,6 +28,7 @@ async function askGemini(apiKey: string, system: string, history: { role: string
     {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey.trim() },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
       body: JSON.stringify({
         system_instruction: { parts: [{ text: system }] },
         contents: history.map((m) => ({
@@ -79,7 +39,7 @@ async function askGemini(apiKey: string, system: string, history: { role: string
       }),
     }
   );
-  if (!res.ok) throw new Error(`Gemini ${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`);
+  if (!res.ok) throw new ErreurModele(`Gemini ${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`, res.status);
   const json = await res.json();
   return ((json?.candidates?.[0]?.content?.parts ?? []) as any[])
     .map((p) => p?.text ?? "")
@@ -91,6 +51,7 @@ async function askAnthropic(apiKey: string, system: string, history: { role: str
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+    signal: AbortSignal.timeout(TIMEOUT_MS),
     body: JSON.stringify({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 700,
@@ -98,7 +59,7 @@ async function askAnthropic(apiKey: string, system: string, history: { role: str
       messages: history,
     }),
   });
-  if (!res.ok) throw new Error(`Anthropic ${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`);
+  if (!res.ok) throw new ErreurModele(`Anthropic ${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`, res.status);
   const json = await res.json();
   return ((json?.content ?? []) as any[])
     .filter((b) => b?.type === "text")
@@ -111,7 +72,7 @@ export async function POST(req: NextRequest) {
   try {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+    if (!user) return NextResponse.json({ error: "Session expirée — reconnecte-toi pour continuer." }, { status: 401 });
 
     const gemini = process.env.GEMINI_API_KEY;
     const anthropic = process.env.ANTHROPIC_API_KEY;
@@ -135,28 +96,57 @@ export async function POST(req: NextRequest) {
     if (history.length === 0 || history[history.length - 1].role !== "user") {
       return NextResponse.json({ error: "Requête invalide" }, { status: 400 });
     }
+    const question = history[history.length - 1].content;
 
     // Instantané des données du restaurant connecté (RLS : uniquement les siennes)
     let snapshot = "";
     try {
       const restaurant = await getRestaurant();
-      if (restaurant) snapshot = await buildSnapshot(supabase, restaurant.id, restaurant.name);
+      if (restaurant) snapshot = await buildSnapshot(supabase, restaurant, question);
     } catch (e) {
       console.error("[assistant] snapshot:", (e as Error).message); // best-effort : l'aide générale reste disponible
     }
     const system = ASSISTANT_SYSTEM_PROMPT +
       "\n\nRÈGLE DE FORME : réponds en TEXTE BRUT, sans markdown (pas de **, pas de #).\n\n" +
-      (snapshot ? snapshot + "\n\nUtilise ces données pour répondre aux questions sur CE restaurant (chiffres, plats les plus rentables, stocks, alertes). Elles sont à jour à l'instant de la question." : "");
+      (snapshot ? snapshot + "\n\nUtilise ces données pour répondre aux questions sur CE restaurant (chiffres, plats les plus rentables, stocks, alertes). Elles sont à jour à l'instant de la question. Quand un bloc COMPOSITION est présent, réponds AVEC son contenu plutôt que de renvoyer vers une page. Ne donne jamais un coût ni un food cost pour une fiche marquée NON CHIFFRÉE : dis qu'elle n'a pas encore d'ingrédients ou de prix." : "");
+
+    // Un seul moteur qui tousse ne doit pas suffire à couper l'assistant :
+    // on bascule sur l'autre quand les deux clés existent.
+    const moteurs: { nom: string; run: () => Promise<string> }[] = [];
+    if (gemini) moteurs.push({ nom: "gemini", run: () => askGemini(gemini, system, history) });
+    if (anthropic) moteurs.push({ nom: "anthropic", run: () => askAnthropic(anthropic, system, history) });
 
     let reply = "";
-    try {
-      reply = gemini ? await askGemini(gemini, system, history) : await askAnthropic(anthropic!, system, history);
-    } catch (e) {
-      console.error("[assistant]", (e as Error).message);
-      return NextResponse.json({ error: "L'assistant est momentanément indisponible." }, { status: 502 });
+    let derniere: ErreurModele | Error | null = null;
+    for (const m of moteurs) {
+      try {
+        reply = await m.run();
+        if (reply) break;
+        console.error(`[assistant] ${m.nom} : réponse vide`);
+      } catch (e) {
+        derniere = e as Error;
+        console.error(`[assistant] ${m.nom} :`, (e as Error).message);
+      }
     }
 
-    return NextResponse.json({ reply: reply || "Désolé, je n'ai pas de réponse — reformule ta question ?" });
+    if (!reply) {
+      // Un quota atteint n'est pas une panne : le dire, avec la conduite à tenir.
+      const statut = derniere instanceof ErreurModele ? derniere.statut : 0;
+      const quota = statut === 429;
+      const lent = (derniere as any)?.name === "TimeoutError" || (derniere as any)?.name === "AbortError";
+      return NextResponse.json(
+        {
+          error: quota
+            ? "Trop de questions d'affilée : le quota de l'assistant est atteint. Réessaie dans une minute."
+            : lent
+              ? "L'assistant a mis trop de temps à répondre. Réessaie — ta question est conservée."
+              : "L'assistant est momentanément indisponible. Réessaie dans un instant.",
+        },
+        { status: quota ? 429 : 502 }
+      );
+    }
+
+    return NextResponse.json({ reply });
   } catch (e) {
     console.error("[assistant] error:", (e as Error).message);
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
