@@ -24,7 +24,10 @@ export async function GET(
 
     if (!restaurant) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-    const { data: po } = await supabase
+    // supplier_label arrive avec supabase/designation_fournisseur.sql : tant
+    // que le SQL n'est pas passé, on réessaie sans la colonne pour ne jamais
+    // casser un bon de commande (même logique que lib/ingredients-query.ts).
+    const selectPo = (cols: string) => supabase
       .from("purchase_orders")
       .select(`
         id, order_number, created_at, expected_total,
@@ -32,12 +35,17 @@ export async function GET(
         purchase_order_lines(
           quantity, expected_price,
           ingredients(name, unit, vat_rate, pack_quantity, pack_units, unit_size, secondary_unit_label, secondary_unit_size,
-            ingredient_suppliers(supplier_id, pack_type, pack_units, unit_size, pack_label, unit))
+            ingredient_suppliers(${cols}))
         )
       `)
       .eq("id", params.id)
       .eq("restaurant_id", restaurant.id)
       .single();
+    const artCols = "supplier_id, pack_type, pack_units, unit_size, pack_label, unit";
+    // `any` : le select est construit dynamiquement, le parseur de types de
+    // supabase-js ne sait pas l'analyser (les colonnes, elles, sont fixes).
+    let po: any = (await selectPo(`${artCols}, supplier_label`)).data;
+    if (!po) po = (await selectPo(artCols)).data;
 
     if (!po) return NextResponse.json({ error: "Order not found" }, { status: 404 });
 
@@ -80,7 +88,9 @@ export async function GET(
           ? (packUnits > 1 ? `${packUnits} × ${unitSize} ${unitShort(baseUnit)}` : `${unitSize} ${unitShort(baseUnit)}`)
           : "";
       return {
-        name: ing?.name ?? "—",
+        // Le fournisseur reconnaît SA désignation (« AUBERGINE CAL 3/4 CAT1 »),
+        // pas forcément notre nom générique — elle prime sur le bon de commande.
+        name: (art?.supplier_label ?? "").trim() || ing?.name || "—",
         quantity: Number(l.quantity),
         unit: packType,          // conditionnement de commande (colis, caisse…)
         pack_detail: packDetail, // taille du conditionnement (ex. "2 kg")
