@@ -104,6 +104,7 @@ type Article = {
   supplier_id: string | null; supplier_reference: string | null;
   pack_units: number | null; unit_size: number | null; unit: string | null;
   pack_price: number | null; pack_label: string | null; pack_type?: string | null; is_preferred?: boolean;
+  supplier_label?: string | null;
 };
 type Ingredient = {
   id: string; name: string; unit: string; pack_price: number; pack_quantity: number; cost_per_base_unit: number;
@@ -374,7 +375,8 @@ export default function OrdersClient({ restaurantId, restaurantName, initialOrde
       lines: po.purchase_order_lines.map((l) => {
         const ing = l.ingredient_id ? ingredients.find((i) => i.id === l.ingredient_id) : undefined;
         const art = ing && po.supplier_id ? articleFor(ing, po.supplier_id) : null;
-        return { name: l.ingredients?.name ?? "Produit", qty: l.quantity, packType: art ? packTypeOf(art) : "colis", ref: art?.supplier_reference };
+        // La désignation du catalogue fournisseur prime : c'est elle qu'il reconnaît.
+        return { name: (art?.supplier_label ?? "").trim() || l.ingredients?.name || "Produit", qty: l.quantity, packType: art ? packTypeOf(art) : "colis", ref: art?.supplier_reference };
       }),
       total: Number(po.expected_total ?? 0),
       hidePrices: pricesHiddenFor(po),

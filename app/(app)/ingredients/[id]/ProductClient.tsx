@@ -18,6 +18,7 @@ type Article = {
   id?: string;
   supplier_id: string;
   supplier_reference: string;
+  supplier_label: string;
   pack_units: string;
   unit_size: string;
   pack_price: string;
@@ -57,6 +58,7 @@ function initialArticles(ing: Ingredient): Article[] {
       id: s.id,
       supplier_id: s.supplier_id ?? "",
       supplier_reference: s.supplier_reference ?? "",
+      supplier_label: s.supplier_label ?? "",
       pack_units: String(s.pack_units ?? 1),
       unit_size: String(s.unit_size ?? ""),
       pack_price: String(s.pack_price ?? ""),
@@ -72,6 +74,7 @@ function initialArticles(ing: Ingredient): Article[] {
   return [{
     supplier_id: ing.supplier_id ?? "",
     supplier_reference: ing.supplier_reference ?? "",
+    supplier_label: "",
     pack_units: String(ing.pack_units ?? 1),
     unit_size: String(ing.unit_size ?? ing.pack_quantity ?? ""),
     pack_price: String(ing.pack_price ?? ""),
@@ -125,7 +128,7 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
   }
   function addArticle() {
     setArticles((p) => [...p, {
-      supplier_id: "", supplier_reference: "", pack_units: "1", unit_size: "",
+      supplier_id: "", supplier_reference: "", supplier_label: "", pack_units: "1", unit_size: "",
       pack_price: "", vat_rate: "5.5", pack_type: "colis", pack_label: "", is_preferred: false,
     }]);
   }
@@ -197,6 +200,7 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
       ingredient_id: ingredient.id,
       supplier_id: a.supplier_id || null,
       supplier_reference: a.supplier_reference || null,
+      supplier_label: a.supplier_label.trim() || null,
       pack_units: parseFloat(a.pack_units) || 1,
       unit_size: sizeOf(a) || 1,
       unit,
@@ -435,6 +439,7 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
                     </select>
                     <button onClick={() => removeArticle(i)} title="Supprimer cet article" aria-label="Supprimer cet article" className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition shrink-0"><Trash2 size={14} /></button>
                   </div>
+                  <input value={a.supplier_label} onChange={(e) => updateArticle(i, "supplier_label", e.target.value)} placeholder="Désignation chez ce fournisseur (ex. « AUBERGINE CAL 3/4 CAT1 — Belgique ») — imprimée sur le bon de commande" className="w-full px-2.5 py-1.5 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:border-primary" />
 
                   <p className="text-2xs font-medium text-gray-400 uppercase tracking-wide">Conditionnement de commande (colissage)</p>
                   <div className="flex flex-wrap items-end gap-2">
