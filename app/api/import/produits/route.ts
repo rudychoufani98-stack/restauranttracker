@@ -23,7 +23,6 @@ const COLONNES_MODELE = [
   ["Nom", "Tomate grappe", "Obligatoire. Le nom qui apparaîtra dans l'app."],
   ["Catégorie", "Légumes", "Laisse vide et le produit ira dans « Autre »."],
   ["Fournisseur", "Metro", "Créé automatiquement s'il n'existe pas encore."],
-  ["Désignation fournisseur", "AUBERGINE CAL 3/4 CAT1 — Belgique", "Le nom EXACT du catalogue fournisseur. Le « Nom », lui, reste générique — c'est la désignation qui part sur les bons de commande."],
   ["Référence", "REF-1234", "La référence du fournisseur, pour tes bons de commande."],
   ["Unité", "kg", "Obligatoire. kg, L ou pièce."],
   ["Nombre par colis", 1, "Combien d'unités dans un colis. 24 pour une caisse de 24 canettes."],
@@ -52,7 +51,7 @@ async function modele() {
   ws.getRow(r).values = entetes;
   styleHeader(ws, r);
   ws.addRow(COLONNES_MODELE.map((c) => c[1]));
-  ws.addRow(["Coca 33 cl", "Boissons", "Metro", "", "", "pièce", 24, 1, 10.8, 20, 100, 24, 48, 2.5, ""]);
+  ws.addRow(["Coca 33 cl", "Boissons", "Metro", "", "pièce", 24, 1, 10.8, 20, 100, 24, 48, 2.5, ""]);
 
   const aide = wb.addWorksheet("Mode d'emploi");
   autoWidth(aide, [22, 18, 80]);
@@ -129,21 +128,8 @@ async function catalogue(supabase: any, restaurant: any) {
   const { data: produits } = await selectIngredients(
     supabase,
     restaurant.id,
-    "id, name, category, unit, pack_units, unit_size, pack_price, vat_rate, yield_pct, reorder_threshold, stock_qty, selling_price, supplier_id, supplier_reference, internal_ref, suppliers(name)",
+    "id, name, category, unit, pack_units, unit_size, pack_price, vat_rate, yield_pct, reorder_threshold, stock_qty, selling_price, supplier_reference, internal_ref, suppliers(name)",
   );
-
-  // Désignations fournisseur des articles. Requête à part et tolérante : tant
-  // que supabase/designation_fournisseur.sql n'est pas passé, la colonne
-  // n'existe pas — le catalogue s'exporte alors simplement sans elle.
-  const labels = new Map<string, string>();
-  const { data: arts } = await supabase
-    .from("ingredient_suppliers")
-    .select("ingredient_id, supplier_id, supplier_label, is_preferred");
-  for (const a of arts ?? []) {
-    if (!a.supplier_label) continue;
-    // L'article du fournisseur principal (ou le préféré) donne sa désignation.
-    if (!labels.has(a.ingredient_id) || a.is_preferred) labels.set(a.ingredient_id, a.supplier_label);
-  }
 
   const wb = newWorkbook();
   const ws = wb.addWorksheet("Produits");
@@ -170,7 +156,6 @@ async function catalogue(supabase: any, restaurant: any) {
       p.name,
       p.category ?? "",
       p.suppliers?.name ?? "",
-      labels.get(p.id) ?? "",
       p.supplier_reference ?? "",
       displayUnit(p.unit),
       Number(p.pack_units ?? 1),
@@ -311,7 +296,6 @@ export async function PUT(req: Request) {
       };
 
       const existantId = ctx.existants.get(normalise(p.name)) ?? null;
-      let ingredientId = existantId;
       if (existantId) {
         // Le stock d'un produit DÉJÀ suivi ne se réécrit pas depuis un fichier :
         // il appartient aux réceptions et aux inventaires. On l'ignore ici.
@@ -326,49 +310,15 @@ export async function PUT(req: Request) {
         if (ref != null) refsPrises.add(ref);
 
         // Le CMUP part du prix d'achat : sans lui, un stock initial ne vaudrait rien.
-        const { data: cree, error } = await supabase.from("ingredients").insert({
+        const { error } = await supabase.from("ingredients").insert({
           ...payload,
           restaurant_id: restaurant.id,
           stock_qty: p.stock_qty ?? 0,
           cmup: p.cost_per_base_unit,
           ...(ref != null ? { internal_ref: ref } : {}),
-        }).select("id").single();
+        });
         if (error) throw new Error(error.message);
-        ingredientId = cree.id;
         crees++;
-      }
-
-      // Désignation fournisseur : posée sur l'article de CE fournisseur
-      // (créé au besoin). Le nom du produit reste générique ; la désignation
-      // est ce qui part sur les bons de commande. Échec non bloquant : le
-      // produit est déjà écrit — tant que supabase/designation_fournisseur.sql
-      // n'est pas passé, la colonne n'existe pas et on continue sans elle.
-      if (ingredientId && supplier_id && p.supplier_label) {
-        try {
-          const { data: artExistants } = await supabase
-            .from("ingredient_suppliers")
-            .select("id, supplier_id")
-            .eq("ingredient_id", ingredientId);
-          const art = (artExistants ?? []).find((a: any) => a.supplier_id === supplier_id);
-          if (art) {
-            await supabase.from("ingredient_suppliers")
-              .update({ supplier_label: p.supplier_label, supplier_reference: p.supplier_reference })
-              .eq("id", art.id);
-          } else {
-            await supabase.from("ingredient_suppliers").insert({
-              ingredient_id: ingredientId,
-              supplier_id,
-              supplier_reference: p.supplier_reference,
-              supplier_label: p.supplier_label,
-              pack_units: p.pack_units,
-              unit_size: p.unit_size,
-              unit: p.unit,
-              pack_price: p.pack_price,
-              vat_rate: p.vat_rate,
-              is_preferred: (artExistants ?? []).length === 0,
-            });
-          }
-        } catch { /* colonne pas encore migrée — le produit est importé quand même */ }
       }
     } catch (e) {
       echecs.push({ nom: p.name, raison: (e as Error).message });

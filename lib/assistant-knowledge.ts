@@ -26,7 +26,6 @@ Chaque produit se mesure dans UNE unité simple : kg, litre ou pièce. C'est la 
 
 ## Articles fournisseurs (fiche produit → « Conditionnement de commande »)
 Comment on ACHÈTE le produit chez chaque fournisseur : conditionnement (colis, carton, bidon, sac, seau, kg…), taille (ex. carton de 12 × 75 cl), prix HT, TVA, référence fournisseur. Sert uniquement aux commandes — jamais aux recettes ni à l'inventaire. Un produit peut avoir plusieurs articles (un par fournisseur) : le moins cher sert de référence.
-Chaque article porte aussi une « Désignation chez ce fournisseur » : le nom EXACT du catalogue fournisseur (ex. « AUBERGINE CAL 3/4 CAT1 — Belgique »). Le nom du produit dans l'app reste générique (« Aubergine ») ; c'est la désignation qui s'imprime sur les bons de commande (PDF et email), car c'est elle que le fournisseur reconnaît. À l'import Excel, la colonne « Désignation fournisseur » la renseigne automatiquement.
 
 ## CMUP (coût moyen unitaire pondéré)
 Le coût d'un ingrédient = moyenne pondérée de tous les achats. Formule à chaque réception : (stock actuel × CMUP + quantité reçue × prix d'achat) ÷ nouveau stock. C'est le standard du métier. Les recettes sont costées au CMUP. Après une hausse de prix, le CMUP monte progressivement (il est « dilué » par l'ancien stock).

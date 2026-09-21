@@ -103,17 +103,6 @@ describe("Analyse d'une ligne", () => {
     expect(r.produit!.cost_per_base_unit).toBeCloseTo(0.45, 8);
   });
 
-  it("sépare le nom générique de la désignation fournisseur", () => {
-    const c2 = detecteColonnes(["Nom", "Désignation fournisseur", "Fournisseur", "Unité", "Contenance", "Prix HT"]);
-    const r = analyseLigne(
-      { ligne: 2, cellules: L("Aubergine", "AUBERGINE CAL 3/4 CAT1 — Belgique", "Metro", "kg", 5, 12.5) },
-      c2, ctx(), new Map(),
-    );
-    expect(r.statut).toBe("creer");
-    expect(r.produit!.name).toBe("Aubergine");
-    expect(r.produit!.supplier_label).toBe("AUBERGINE CAL 3/4 CAT1 — Belgique");
-  });
-
   it("met à jour un produit déjà présent au lieu d'en créer un second", () => {
     const c = ctx({ existants: new Map([["tomate grappe", "id-1"]]) });
     const r = analyse(L("TOMATE GRAPPE", "Légumes", "Metro", "kg", 1, 5, 12.5), c);

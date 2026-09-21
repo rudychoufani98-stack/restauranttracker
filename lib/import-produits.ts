@@ -18,7 +18,7 @@ import { calcCostPerBase, packTotal, qtyFromDisplay } from "./ingredient-helpers
 export type Statut = "creer" | "mettre_a_jour" | "erreur";
 
 export type Champ =
-  | "nom" | "categorie" | "fournisseur" | "designation_fournisseur" | "reference" | "unite"
+  | "nom" | "categorie" | "fournisseur" | "reference" | "unite"
   | "colis_nombre" | "colis_taille" | "prix_ht" | "tva" | "reference_interne"
   | "rendement" | "seuil" | "stock" | "prix_vente";
 
@@ -27,9 +27,6 @@ export const ENTETES: Record<Champ, string[]> = {
   nom: ["nom", "produit", "designation", "libelle", "article", "ingredient"],
   categorie: ["categorie", "famille", "rayon"],
   fournisseur: ["fournisseur", "supplier"],
-  // Le nom EXACT du catalogue fournisseur (« AUBERGINE CAL 3/4 CAT1 — Belgique »).
-  // Le « Nom », lui, reste le nom générique utilisé dans l'app (« Aubergine »).
-  designation_fournisseur: ["designation fournisseur", "libelle fournisseur", "nom fournisseur", "nom chez le fournisseur", "designation article"],
   // Déclaré AVANT « reference » : sinon l'alias « reference » du fournisseur
   // capterait la colonne « Référence interne » du fichier.
   reference_interne: ["reference interne", "ref interne", "numero interne", "code interne", "numero"],
@@ -116,8 +113,6 @@ export type ProduitImporte = {
   stock_qty: number | null;
   selling_price: number | null;
   supplier_reference: string | null;
-  /** Désignation du catalogue fournisseur, portée par l'article fournisseur. */
-  supplier_label: string | null;
   /** Numéro interne demandé dans le fichier. Null = attribué plus tard. */
   internal_ref: number | null;
   /** Nom du fournisseur tel qu'écrit dans le fichier (résolu à l'écriture). */
@@ -253,7 +248,6 @@ export function analyseLigne(
     stock_qty: stock !== null && stock >= 0 ? qtyFromDisplay(stock, unit!) : null,
     selling_price: prixVente !== null && prixVente > 0 ? prixVente : null,
     supplier_reference: texte("reference") || null,
-    supplier_label: texte("designation_fournisseur") || null,
     internal_ref,
     fournisseur,
   };
@@ -317,7 +311,6 @@ export const CHAMP_LABEL: Record<Champ, string> = {
   nom: "Nom",
   categorie: "Catégorie",
   fournisseur: "Fournisseur",
-  designation_fournisseur: "Désignation fournisseur",
   reference_interne: "Référence interne",
   reference: "Référence fournisseur",
   unite: "Unité",
