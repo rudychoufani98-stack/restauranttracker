@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Trash2, X, ChevronDown, ChevronUp, RefreshCw, Copy, Search, ChefHat, Percent, Coins, Layers, ClipboardCheck } from "lucide-react";
+import { Plus, Trash2, X, ChevronDown, ChevronUp, RefreshCw, Copy, Search, ChefHat, Percent, Coins, Layers, ClipboardCheck, Upload } from "lucide-react";
 import clsx from "clsx";
 import { Pastille, BadgeType, LegendeTypes } from "@/components/TypeIdentite";
 import { TYPE_IDENTITE, typeDeRecette } from "@/lib/type-article";
@@ -547,6 +547,14 @@ export default function RecipesClient({ tva = TVA_DEFAUT, restaurantId, initialR
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Link
+            href="/recipes/import"
+            title="Charger les ingrédients de plusieurs fiches depuis un fichier Excel"
+            className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-on-surface-variant bg-surface-container-low border border-outline-variant/40 rounded-xl hover:bg-surface-container-high transition"
+          >
+            <Upload size={14} />
+            Importer
+          </Link>
           <button
             onClick={handleRecalcAll}
             disabled={recalcing}
