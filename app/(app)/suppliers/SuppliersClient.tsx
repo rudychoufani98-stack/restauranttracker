@@ -12,6 +12,15 @@ const EMPTY = { name: "", email: "", contact: "", category: "Autre", min_order_a
 
 interface Props { restaurantId: string; initialSuppliers: Supplier[] }
 
+/** Le nom de colonne ne dit rien à un restaurateur : on lui parle du champ. */
+const LIBELLE_COLONNE: Record<string, string> = {
+  customer_reference: "la référence client",
+  min_order_amount: "le franco de port",
+  contact: "la personne de contact",
+  email: "l'email",
+  category: "la catégorie",
+};
+
 export default function SuppliersClient({ restaurantId, initialSuppliers }: Props) {
   const notify = useAlert();
   const confirm = useConfirm();
@@ -23,6 +32,8 @@ export default function SuppliersClient({ restaurantId, initialSuppliers }: Prop
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Enregistré, mais pas tout à fait comme demandé — voir handleSave.
+  const [avertissement, setAvertissement] = useState<string | null>(null);
 
   function openAdd() { setEditingId(null); setForm({ ...EMPTY }); setError(null); setShowForm(true); }
   function openEdit(s: Supplier) {
@@ -51,15 +62,48 @@ export default function SuppliersClient({ restaurantId, initialSuppliers }: Prop
       restaurant_id: restaurantId,
     };
 
-    if (editingId) {
-      const { data, error: err } = await supabase.from("suppliers").update(payload).eq("id", editingId).select().single();
-      if (err) { setError(err.message); setSaving(false); return; }
-      setSuppliers((p) => p.map((s) => s.id === editingId ? data : s));
-    } else {
-      const { data, error: err } = await supabase.from("suppliers").insert(payload).select().single();
-      if (err) { setError(err.message); setSaving(false); return; }
-      setSuppliers((p) => [...p, data]);
+    // Certains champs sont arrivés après coup (migrations.sql : franco,
+    // référence client…). Tant que la colonne n'existe pas en base, PostgREST
+    // refuse TOUT l'enregistrement et le restaurateur lit
+    // « Could not find the 'min_order_amount' column of 'suppliers' in the
+    // schema cache » — un message qui ne lui dit rien, pour un champ
+    // facultatif, et qui l'empêche de créer son fournisseur.
+    //
+    // On retire donc la colonne que PostgREST nomme, et on réessaie, jusqu'à
+    // ce que l'enregistrement passe. Les champs abandonnés sont annoncés : un
+    // silence laisserait croire que tout a été gardé.
+    const OBLIGATOIRES = ["name", "restaurant_id"];
+    const nomColonneAbsente = (e: { message?: string } | null): string | null => {
+      const m = e?.message?.match(/Could not find the '([^']+)' column/i);
+      const col = m?.[1];
+      return col && !OBLIGATOIRES.includes(col) ? col : null;
+    };
+
+    const enregistre = async (p: Record<string, unknown>) =>
+      editingId
+        ? supabase.from("suppliers").update(p).eq("id", editingId).select().single()
+        : supabase.from("suppliers").insert(p).select().single();
+
+    const corps: Record<string, unknown> = { ...payload };
+    const abandonnees: string[] = [];
+    let { data, error: err } = await enregistre(corps);
+    // Borné au nombre de champs : une boucle ne peut pas s'emballer.
+    for (let i = 0; i < Object.keys(payload).length; i++) {
+      const col = nomColonneAbsente(err);
+      if (!col || !(col in corps)) break;
+      if (corps[col] !== null && corps[col] !== "" && corps[col] !== 0) abandonnees.push(LIBELLE_COLONNE[col] ?? col);
+      delete corps[col];
+      ({ data, error: err } = await enregistre(corps));
     }
+    setAvertissement(
+      !err && abandonnees.length > 0
+        ? `Fournisseur enregistré, mais ${abandonnees.join(" et ")} n'${abandonnees.length > 1 ? "ont" : "a"} pas pu être gardé${abandonnees.length > 1 ? "s" : ""} : ${abandonnees.length > 1 ? "ces champs ne sont" : "ce champ n'est"} pas encore activé${abandonnees.length > 1 ? "s" : ""} sur ta base. Préviens ton interlocuteur Restointelligence.`
+        : null,
+    );
+    if (err) { setError(err.message); setSaving(false); return; }
+
+    if (editingId) setSuppliers((p) => p.map((s) => s.id === editingId ? data : s));
+    else setSuppliers((p) => [...p, data]);
     setSaving(false); setShowForm(false);
   }
 
@@ -95,6 +139,11 @@ export default function SuppliersClient({ restaurantId, initialSuppliers }: Prop
           <p className="text-sm text-on-surface-variant/70 mt-1">
             {suppliers.length} fournisseur{suppliers.length !== 1 ? "s" : ""} enregistré{suppliers.length !== 1 ? "s" : ""}.
           </p>
+          {avertissement && (
+            <p className="text-sm text-amber-dark bg-amber-light border border-amber/30 rounded-lg px-3 py-2 mt-2 max-w-xl">
+              {avertissement}
+            </p>
+          )}
         </div>
         <button onClick={openAdd}
           className="flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary text-sm font-semibold rounded-xl hover:bg-primary-container transition shadow-lg hover:nav-active-glow active:scale-[0.98]">
