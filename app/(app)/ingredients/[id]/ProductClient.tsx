@@ -28,6 +28,26 @@ type Article = {
   is_preferred: boolean;
 };
 
+/**
+ * Un champ avec son libellé AU-DESSUS, pas seulement en placeholder.
+ *
+ * Un placeholder disparaît dès qu'on tape : on remplit un formulaire, on
+ * s'interrompt, on revient — et plus rien ne dit ce qu'est « 18 ». Releve
+ * sur l'écran des articles, où sept champs d'affilée n'avaient aucun
+ * libellé.
+ */
+function Champ({ label, aide, children, large }: {
+  label: string; aide?: string; children: React.ReactNode; large?: boolean;
+}) {
+  return (
+    <div className={large ? "flex-1 min-w-[180px]" : undefined}>
+      <label className="block text-2xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{label}</label>
+      {children}
+      {aide && <p className="text-2xs text-gray-400 mt-1">{aide}</p>}
+    </div>
+  );
+}
+
 const PACK_TYPES = ["colis", "caisse", "carton", "sac", "bidon", "cagette", "barquette", "bouteille", "pièce", "palette"];
 type Ingredient = {
   id: string; name: string; category: string; unit: string;
@@ -439,35 +459,60 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
                     </select>
                     <button onClick={() => removeArticle(i)} title="Supprimer cet article" aria-label="Supprimer cet article" className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition shrink-0"><Trash2 size={14} /></button>
                   </div>
-                  <input value={a.supplier_label} onChange={(e) => updateArticle(i, "supplier_label", e.target.value)} placeholder="Désignation chez ce fournisseur (ex. « AUBERGINE CAL 3/4 CAT1 — Belgique ») — imprimée sur le bon de commande" className="w-full px-2.5 py-1.5 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:border-primary" />
+                  <Champ label="Désignation chez ce fournisseur" aide="Telle qu'elle apparaît sur sa facture — imprimée sur ton bon de commande.">
+                    <input value={a.supplier_label} onChange={(e) => updateArticle(i, "supplier_label", e.target.value)}
+                      placeholder="ex. AUBERGINE CAL 3/4 CAT1 — Belgique"
+                      className="w-full px-2.5 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary" />
+                  </Champ>
 
-                  <p className="text-2xs font-medium text-gray-400 uppercase tracking-wide">Conditionnement de commande (colissage)</p>
-                  <div className="flex flex-wrap items-end gap-2">
-                    <span className="text-xs text-gray-500 pb-2">1</span>
-                    <input list="pack-types" value={a.pack_type} onChange={(e) => updateArticle(i, "pack_type", e.target.value)} placeholder="colis" className="w-24 px-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary" />
-                    <span className="text-xs text-gray-500 pb-2">=</span>
-                    <input type="number" min="1" step="any" value={a.pack_units} onChange={(e) => updateArticle(i, "pack_units", e.target.value)} placeholder="1" className="w-16 px-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary" />
-                    <span className="text-gray-400 pb-2">×</span>
-                    <input type="number" min="0" step="any" value={a.unit_size} onChange={(e) => updateArticle(i, "unit_size", e.target.value)} placeholder="18" className="w-20 px-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary" />
-                    <span className="text-sm text-gray-500 pb-2">{unitShort(unit)}</span>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <div className="relative w-28">
-                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">€</span>
-                      <input type="number" min="0" step="0.01" value={a.pack_price} onChange={(e) => updateArticle(i, "pack_price", e.target.value)} placeholder="prix HT" className="w-full pl-5 pr-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary" />
+                  <Champ label="Ce que tu commandes" aide={`Un ${a.pack_type || "colis"}, c'est combien d'unités de quelle taille ?`}>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs text-gray-500">1</span>
+                      <input list="pack-types" value={a.pack_type} onChange={(e) => updateArticle(i, "pack_type", e.target.value)} placeholder="colis" className="w-24 px-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary" />
+                      <span className="text-xs text-gray-500">=</span>
+                      <input type="number" min="1" step="any" value={a.pack_units} onChange={(e) => updateArticle(i, "pack_units", e.target.value)} placeholder="1" className="w-16 px-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary" />
+                      <span className="text-gray-400">×</span>
+                      <input type="number" min="0" step="any" value={a.unit_size} onChange={(e) => updateArticle(i, "unit_size", e.target.value)} placeholder="18" className="w-20 px-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary" />
+                      <span className="text-sm text-gray-500">{unitShort(unit)}</span>
                     </div>
-                    <select value={a.vat_rate} onChange={(e) => updateArticle(i, "vat_rate", e.target.value)} className="w-36 px-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary">
-                      {VAT_PRESETS.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
-                    </select>
-                    <input value={a.supplier_reference} onChange={(e) => updateArticle(i, "supplier_reference", e.target.value)} placeholder="réf. / code article" className="flex-1 min-w-[120px] px-2.5 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary" />
-                  </div>
-                  <input value={a.pack_label} onChange={(e) => updateArticle(i, "pack_label", e.target.value)} placeholder="Conditionnement (texte libre, ex. « 75 cl / bouteille », « sac 18 kg »)" className="w-full px-2.5 py-1.5 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:border-primary" />
+                  </Champ>
 
-                  {cpb > 0 && (
-                    <p className="text-xs text-gray-500">
-                      1 {a.pack_type || "colis"} = <b>{fmtNum(packTotal(parseFloat(a.pack_units) || 1, sizeOf(a)))} {unitShort(unit)}</b> · TTC {eur(ttc)} ·
-                      <span className="text-emerald-600 font-medium"> {eur(cpb)}/{uLabel}</span>
+                  <div className="flex flex-wrap gap-3">
+                    <Champ label="Prix du colis (HT)" aide="Ce que tu payes, hors taxes.">
+                      <div className="relative w-32">
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">€</span>
+                        <input type="number" min="0" step="0.01" value={a.pack_price} onChange={(e) => updateArticle(i, "pack_price", e.target.value)} placeholder="0,00" className="w-full pl-5 pr-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary" />
+                      </div>
+                    </Champ>
+                    <Champ label="TVA">
+                      <select value={a.vat_rate} onChange={(e) => updateArticle(i, "vat_rate", e.target.value)} className="w-40 px-2 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary">
+                        {VAT_PRESETS.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
+                      </select>
+                    </Champ>
+                    <Champ large label="Référence article" aide="Le code du fournisseur, pour qu'il retrouve le produit.">
+                      <input value={a.supplier_reference} onChange={(e) => updateArticle(i, "supplier_reference", e.target.value)} placeholder="ex. JOV1" className="w-full px-2.5 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary" />
+                    </Champ>
+                  </div>
+
+                  <Champ label="Conditionnement, en clair" aide="Ce que tu veux lire sur ton bon de commande.">
+                    <input value={a.pack_label} onChange={(e) => updateArticle(i, "pack_label", e.target.value)}
+                      placeholder="ex. sac 25 kg — Jova, Mexique"
+                      className="w-full px-2.5 py-1.5 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:border-primary" />
+                  </Champ>
+
+                  {/* Le calcul se fait sous les yeux : personne ne devrait sortir
+                      une calculette pour savoir ce que vaut son kilo. */}
+                  {cpb > 0 ? (
+                    <div className="rounded-lg bg-emerald-50 border border-emerald-100 px-3 py-2">
+                      <p className="text-sm text-gray-700">
+                        1 {a.pack_type || "colis"} = <b>{fmtNum(packTotal(parseFloat(a.pack_units) || 1, sizeOf(a)))} {unitShort(unit)}</b>
+                        {" "}· soit <b className="text-emerald-700">{eur(cpb)}/{uLabel}</b>
+                        <span className="text-gray-400"> · {eur(ttc)} TTC le colis</span>
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-400">
+                      Renseigne la taille et le prix du colis : le prix au {uLabel} s&apos;affichera ici.
                     </p>
                   )}
                 </div>
