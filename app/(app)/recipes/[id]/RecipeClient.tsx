@@ -142,6 +142,39 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
     const tb = toBase(tQtyNum, tUnit);
     return yb > 0 ? tb / yb : 0;
   })();
+  // Une part n'a de sens que si le rendement se mesure : 40 % d'un kilo,
+  // oui ; 40 % d'« une portion », non.
+  const enRatio = yieldUnit === "kg" || yieldUnit === "g" || yieldUnit === "l" || yieldUnit === "ml";
+  const rendementBase = toBase(parseFloat(yieldPortions) || 1, yieldUnit);
+
+  /** La part de cette ligne dans le rendement, en %, arrondie au dixième. */
+  function partDe(l: DraftLine): string {
+    const q = parseFloat(l.quantity);
+    if (!(q > 0) || !(rendementBase > 0)) return "";
+    return String(Math.round((toBase(q, l.unit) / rendementBase) * 1000) / 10);
+  }
+
+  /** Saisir une part réécrit la quantité, dans l'unité déjà choisie. */
+  function majPart(idx: number, l: DraftLine, valeur: string) {
+    const p = parseFloat(valeur.replace(",", "."));
+    if (!Number.isFinite(p) || p < 0 || !(rendementBase > 0)) {
+      if (valeur === "") updateLine(idx, "quantity", "");
+      return;
+    }
+    const base = (p / 100) * rendementBase;
+    const facteur = l.unit === "kg" || l.unit === "l" ? 1000 : 1;
+    const q = base / facteur;
+    updateLine(idx, "quantity", String(Math.round(q * 10000) / 10000));
+  }
+
+  /** Somme des parts : au-delà de 100 %, la préparation perd du poids. */
+  const totalParts = enRatio
+    ? lines.reduce((s, l) => {
+        const q = parseFloat(l.quantity);
+        return s + (q > 0 && rendementBase > 0 ? (toBase(q, l.unit) / rendementBase) * 100 : 0);
+      }, 0)
+    : 0;
+
   const scalableLines = lines.filter((l) => (l.ingredient_id || l.sub_recipe_id) && parseFloat(l.quantity) > 0);
   const lineName = (l: DraftLine) =>
     l.type === "ingredient"
@@ -401,11 +434,40 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
                 <select value={line.unit} onChange={(e) => updateLine(idx, "unit", e.target.value)} className="w-16 px-2 py-2 text-xs border border-gray-200 rounded-lg bg-white outline-none focus:border-primary">
                   {subUnits.map((u) => <option key={u} value={u}>{u === "portion" ? "port." : u}</option>)}
                 </select>
+                {/* La part, pour les préparations qui se dosent au poids ou au
+                    volume : un chef pense « 40 % de pois chiches », pas
+                    « 0,4 kg par kilo ». Les deux champs écrivent la même
+                    chose — la quantité reste la vérité, sinon une
+                    préparation qui gonfle ou qui réduit deviendrait fausse. */}
+                {enRatio && (
+                  <div className="relative w-20">
+                    <input
+                      type="number" min="0" step="any"
+                      value={partDe(line)}
+                      onChange={(e) => majPart(idx, line, e.target.value)}
+                      placeholder="part"
+                      title="Part de cette ligne dans le rendement de la préparation"
+                      className="w-full pl-2 pr-6 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-primary"
+                    />
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">%</span>
+                  </div>
+                )}
                 <div className="w-16 text-right text-xs text-gray-500 pt-2.5">{calcLineCost(line, ingredients, allRecipes).toFixed(3)} €</div>
                 <button onClick={() => removeLine(idx)} title="Retirer cette ligne" aria-label="Retirer cette ligne" className="pt-2 text-gray-300 hover:text-red-400 transition"><Trash2 size={14} /></button>
               </div>
             );
           })}
+
+          {/* Le total des parts dit tout de suite si la préparation gonfle ou
+              réduit : 100 %, rien ne se perd ; moins, elle absorbe (pois
+              chiches qui cuisent) ; plus, elle réduit (sauce qui s évapore). */}
+          {enRatio && lines.some((l) => parseFloat(l.quantity) > 0) && (
+            <p className="text-xs text-gray-500 pt-1">
+              Total des parts : <b className={totalParts > 101 ? "text-amber-600" : "text-gray-700"}>{Math.round(totalParts * 10) / 10} %</b>
+              {totalParts < 99 && <span className="text-gray-400"> — la préparation prend du poids à la cuisson (hydratation).</span>}
+              {totalParts > 101 && <span className="text-gray-400"> — la préparation réduit ; vérifie que c&apos;est voulu.</span>}
+            </p>
+          )}
         </div>
       </Section>
 
