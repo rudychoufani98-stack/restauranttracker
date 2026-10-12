@@ -374,7 +374,11 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
             )}
           </div>
           <div className="w-44 shrink-0">
-            <label className="block text-2xs font-medium text-gray-500 uppercase tracking-wide mb-1">Catégorie</label>
+            {/* « Rayon d'achat », pas « Catégorie » : c'est la liste des
+                ACHATS, distincte des sections de la carte et des postes de
+                cuisine. Et c'est elle qui donne le premier chiffre du
+                numéro interne — 4001 est forcément de la crèmerie. */}
+            <label className="block text-2xs font-medium text-gray-500 uppercase tracking-wide mb-1">Rayon d&apos;achat</label>
             <select value={category} onChange={(e) => setCategory(e.target.value)} className={clsx(inputCls, "py-1.5")}>
               {Array.from(new Set([...categories, category].filter(Boolean))).map((c) => <option key={c}>{c}</option>)}
             </select>

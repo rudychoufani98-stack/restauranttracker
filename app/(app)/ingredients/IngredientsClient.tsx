@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { Fragment, useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -10,6 +10,7 @@ import clsx from "clsx";
 import { useConfirm, useAlert } from "@/components/ConfirmDialog";
 import { formatRef, attribueReferences, normaliseRefCaisse, nomDeBloc, TAILLE_BLOC } from "@/lib/references";
 import { eur } from "@/lib/format";
+import { grouperParCategorie } from "@/lib/rangement";
 
 // L'interface ne parle que kg / L / pièce (g/ml restent internes).
 const UNIT_CHOICES = [
@@ -197,6 +198,10 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
       const matchState = filterState === "all" || (filterState === "active" ? active : !active);
       return matchSearch && matchCat && matchTag && matchState;
     }), [ingredients, search, filterCategory, filterTagId, filterState]);
+
+  // Les produits, coupés par rayon d'achat, dans l'ordre des réglages —
+  // qui est aussi celui des numéros internes (1xxx viandes, 4xxx crèmerie…).
+  const groupes = useMemo(() => grouperParCategorie(filtered, CATEGORIES), [filtered, CATEGORIES]);
 
   function openAdd() {
     setEditingId(null);
@@ -765,7 +770,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
               <Input label="Nom" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
                 placeholder="ex. Huile d'olive" className="col-span-2" />
 
-              <Select label="Catégorie" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+              <Select label="Rayon d'achat" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
                 {Array.from(new Set([...CATEGORIES, form.category].filter(Boolean))).map((c) => <option key={c}>{c}</option>)}
               </Select>
 
@@ -1117,7 +1122,6 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                         donc hors écran, après défilement horizontal. */}
                     <th className="px-5 py-3 text-left text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60" title="Numéro interne : le premier chiffre donne la famille">Réf.</th>
                     <th className="px-5 py-3 text-left text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Nom</th>
-                    <th className="px-5 py-3 text-left text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Catégorie</th>
                     <th className="px-5 py-3 text-left text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Conditionnement</th>
                     <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60" title="Ce que te coûte vraiment un kilo, un litre ou une pièce">Coût réel</th>
                     <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60" title="Ce que tu paies au fournisseur pour un colis entier">Prix du colis</th>
@@ -1127,7 +1131,21 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-outline-variant/10">
-                  {filtered.map((ing) => {
+                  {/* Coupé par rayon. La colonne « Catégorie » répétait le
+                      même mot sur dix lignes d'affilée sans jamais montrer
+                      qu'il existait des rayons : le titre le dit une fois,
+                      et libère une colonne. */}
+                  {groupes.map((groupe) => (
+                  <Fragment key={groupe.categorie}>
+                    <tr className="bg-surface-container-low/70">
+                      <td colSpan={8} className="px-5 py-2.5 border-t border-outline-variant/20">
+                        <span className="text-2xs font-extrabold text-primary uppercase tracking-widest">{groupe.categorie}</span>
+                        <span className="ml-2 text-2xs font-bold text-on-surface-variant/40 tabular-nums">
+                          {groupe.articles.length} produit{groupe.articles.length > 1 ? "s" : ""}
+                        </span>
+                      </td>
+                    </tr>
+                  {groupe.articles.map((ing) => {
                     const ttc = priceTTC(ing.pack_price, ing.vat_rate ?? 0);
                     const tags = (ing.ingredient_tags ?? []).map((it) => it.tags).filter(Boolean);
                     return (
@@ -1163,11 +1181,6 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                               </span>
                             ))}
                           </div>
-                        </td>
-                        <td className="px-5 py-4">
-                          <span className="inline-flex px-2.5 py-1 rounded-full bg-surface-container text-on-surface-variant text-2xs font-bold uppercase tracking-wide">
-                            {ing.category}
-                          </span>
                         </td>
                         <td className="px-5 py-4 text-sm text-on-surface-variant/70">
                           {baseCondText(ing.unit)}
@@ -1263,6 +1276,8 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                       </tr>
                     );
                   })}
+                  </Fragment>
+                  ))}
                 </tbody>
               </table>
             </div>

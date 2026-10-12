@@ -1,12 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getRestaurant } from "@/lib/auth";
+import { CATEGORIES_EXEMPLES, compter } from "@/lib/rangement";
 import CategoriesClient from "./CategoriesClient";
-
-const DEFAULTS: Record<string, string[]> = {
-  menu: ["Entrée", "Plat", "Accompagnement", "Dessert", "Boisson", "Menu"],
-  prep: ["Sauce", "Fond/Bouillon", "Pâte", "Garniture", "Marinade", "Base"],
-  ingredient: ["Légumes/Fruits", "Viande", "Poisson", "Produits laitiers", "Épicerie", "Boissons", "Autre"],
-};
 
 export default async function CategoriesPage() {
   const supabase = createClient();
@@ -20,7 +15,7 @@ export default async function CategoriesPage() {
 
   // Seed defaults on first visit
   if (!cats || cats.length === 0) {
-    const rows = Object.entries(DEFAULTS).flatMap(([type, names]) =>
+    const rows = Object.entries(CATEGORIES_EXEMPLES).flatMap(([type, names]) =>
       names.map((name, i) => ({ restaurant_id: restaurant!.id, type, name, position: i }))
     );
     await supabase.from("categories").insert(rows);
@@ -39,11 +34,27 @@ export default async function CategoriesPage() {
     .eq("restaurant_id", restaurant!.id)
     .order("name");
 
+  // Combien d'articles chaque rayon range VRAIMENT. Sans ce chiffre, une
+  // liste de catégories est une liste d'intentions : chez le premier
+  // client, quatre rayons sur treize ne classaient rien du tout et
+  // personne ne pouvait le voir.
+  const [{ data: produits }, { data: recettes }] = await Promise.all([
+    supabase.from("ingredients").select("category").eq("restaurant_id", restaurant!.id),
+    supabase.from("recipes").select("category, is_prep").eq("restaurant_id", restaurant!.id),
+  ]);
+
+  const comptes = {
+    ingredient: Object.fromEntries(compter(produits ?? [])),
+    prep: Object.fromEntries(compter((recettes ?? []).filter((r) => r.is_prep))),
+    menu: Object.fromEntries(compter((recettes ?? []).filter((r) => !r.is_prep))),
+  };
+
   return (
     <CategoriesClient
       restaurantId={restaurant!.id}
       initialCategories={cats ?? []}
       initialTags={tags ?? []}
+      comptes={comptes}
     />
   );
 }

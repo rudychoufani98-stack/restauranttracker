@@ -8,9 +8,10 @@ import { ArrowLeft, Check, Plus, Trash2, Loader2, Scale, ListChecks, ChefHat, So
 import clsx from "clsx";
 import { Pastille, BadgeType } from "@/components/TypeIdentite";
 import { TYPE_IDENTITE, typeDeRecette } from "@/lib/type-article";
+import { grouperParCategorie, ordreParFamille } from "@/lib/rangement";
 
-type Ingredient = { id: string; name: string; cost_per_base_unit: number; cmup?: number | null; unit: string; yield_pct?: number | null; is_active?: boolean };
-type RecipeRef = { id: string; name: string; total_cost: number; yield_portions: number; yield_unit: string; is_prep: boolean };
+type Ingredient = { id: string; name: string; category?: string | null; cost_per_base_unit: number; cmup?: number | null; unit: string; yield_pct?: number | null; is_active?: boolean };
+type RecipeRef = { id: string; name: string; category?: string | null; total_cost: number; yield_portions: number; yield_unit: string; is_prep: boolean };
 type RecipeLine = { ingredient_id: string | null; sub_recipe_id: string | null; quantity: number; unit: string };
 type Recipe = {
   id: string; name: string; category: string; yield_portions: number; yield_unit: string;
@@ -116,6 +117,26 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
 
   const cats = isPrep ? prepCategories : menuCategories;
   const subRecipeOptions = allRecipes.filter((r) => r.id !== recipe.id && r.is_prep);
+
+  // Le sélecteur de ligne, coupé par rayon.
+  const groupesMep = useMemo(
+    () => grouperParCategorie(subRecipeOptions, prepCategories),
+    [subRecipeOptions, prepCategories],
+  );
+  const ordreRayons = useMemo(
+    () => ordreParFamille(ingredients.map((i) => i.category ?? "")),
+    [ingredients],
+  );
+  /**
+   * Un produit désactivé ne peut plus être AJOUTÉ. On le garde tout de même
+   * dans la liste s'il est déjà choisi sur cette ligne : sinon le sélecteur
+   * s'afficherait vide et un enregistrement effacerait la ligne sans le dire.
+   */
+  const groupesIngredients = (line: DraftLine) =>
+    grouperParCategorie(
+      ingredients.filter((i) => i.is_active !== false || line.ingredient_id === i.id),
+      ordreRayons,
+    );
 
   const totalCost = useMemo(() => lines.reduce((s, l) => s + calcLineCost(l, ingredients, allRecipes), 0), [lines, ingredients, allRecipes]);
   const yp = parseFloat(yieldPortions) || 1;
@@ -325,10 +346,28 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
             <input value={name} onChange={(e) => setName(e.target.value)} className={clsx(inputCls, "text-base font-semibold")} />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Catégorie</label>
+            {/* Le mot « Catégorie » ne dit pas DE QUELLE liste il s'agit.
+                Un plat se range dans une section de la CARTE, une mise en
+                place dans un POSTE de cuisine, un produit dans un RAYON
+                d'achat : trois listes séparées, que rien n'annonçait. */}
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              {isPrep ? "Poste de cuisine" : "Section de la carte"}
+            </label>
             <select value={category} onChange={(e) => setCategory(e.target.value)} className={inputCls}>
               {Array.from(new Set([...cats, category].filter(Boolean))).map((c) => <option key={c}>{c}</option>)}
             </select>
+            {category && !cats.includes(category) ? (
+              <p className="text-2xs text-amber-600 mt-1">
+                « {category} » ne fait pas partie {isPrep ? "des postes de cuisine" : "des sections de ta carte"} —
+                choisis-en {isPrep ? "un" : "une"} dans la liste, ou ajoute{isPrep ? "-le" : "-la"} dans Réglages.
+              </p>
+            ) : (
+              <p className="text-2xs text-gray-400 mt-1">
+                {isPrep
+                  ? "Où cette préparation se fabrique. Elle restera rangée là dans Mises en place."
+                  : "Où ce plat apparaît sur ta carte. Il restera rangé là dans Recettes."}
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -412,23 +451,24 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
               <div key={idx} className="flex gap-2 items-start">
                 <select value={lineValue(line)} onChange={(e) => selectItem(idx, e.target.value)} className="flex-1 px-2 py-2 text-sm border border-gray-200 rounded-lg bg-white outline-none focus:border-primary">
                   <option value="">Choisir un ingrédient ou une mise en place…</option>
-                  {subRecipeOptions.length > 0 && (
-                    <optgroup label="Mises en place">
-                      {subRecipeOptions.map((r) => <option key={r.id} value={`mep:${r.id}`}>{r.name}</option>)}
+                  {/* Une liste à plat de 170 entrées ne se lit pas : on y
+                      cherche. Coupée par rayon, et chaque titre dit s'il
+                      s'agit d'un produit acheté ou d'une préparation
+                      maison — la distinction que personne ne devine. */}
+                  {groupesMep.map((g) => (
+                    <optgroup key={g.categorie} label={`Mise en place · ${g.categorie}`}>
+                      {g.articles.map((r) => <option key={r.id} value={`mep:${r.id}`}>{r.name}</option>)}
                     </optgroup>
-                  )}
-                  <optgroup label="Ingrédients">
-                    {/* Un produit désactivé ne peut plus être AJOUTÉ. On le garde tout de même
-                        dans la liste s’il est déjà choisi sur cette ligne : sinon le sélecteur
-                        s’afficherait vide et un enregistrement effacerait la ligne sans le dire. */}
-                    {ingredients
-                      .filter((i) => i.is_active !== false || line.ingredient_id === i.id)
-                      .map((i) => (
+                  ))}
+                  {groupesIngredients(line).map((g) => (
+                    <optgroup key={g.categorie} label={`Ingrédient · ${g.categorie}`}>
+                      {g.articles.map((i) => (
                         <option key={i.id} value={`ing:${i.id}`}>
                           {i.name}{i.is_active === false ? " — inactif, à remplacer" : ""}
                         </option>
                       ))}
-                  </optgroup>
+                    </optgroup>
+                  ))}
                 </select>
                 <input type="number" min="0" step="any" value={line.quantity} onChange={(e) => updateLine(idx, "quantity", e.target.value)} placeholder="Qté" className="w-20 px-2 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-primary" />
                 <select value={line.unit} onChange={(e) => updateLine(idx, "unit", e.target.value)} className="w-16 px-2 py-2 text-xs border border-gray-200 rounded-lg bg-white outline-none focus:border-primary">

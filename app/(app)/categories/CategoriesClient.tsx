@@ -5,15 +5,20 @@ import { createClient } from "@/lib/supabase/client";
 import { Plus, Trash2, Check, X, Pencil, ChevronUp, ChevronDown } from "lucide-react";
 import clsx from "clsx";
 import { useConfirm } from "@/components/ConfirmDialog";
+import RangementPanel from "./RangementPanel";
 
 type Category = { id: string; type: string; name: string; position: number };
 type Tag = { id: string; name: string; color: string };
 type TabKey = "menu" | "prep" | "ingredient" | "tags";
 
+// Trois listes SÉPARÉES, et c'est le point que personne ne devine : une
+// section de carte (« Mezzés chauds ») n'a rien à faire sur un sac de
+// farine, et un rayon d'achat (« Épicerie ») n'a rien à faire sur un
+// plat. Chaque onglet dit donc où sa liste apparaît dans l'application.
 const TABS: { key: TabKey; label: string; help: string }[] = [
-  { key: "menu", label: "Menu", help: "Catégories de la carte : recettes vendues et produits de revente (Entrée, Plat, Boisson…)." },
-  { key: "prep", label: "Mises en place", help: "Catégories des préparations de base (Sauce, Fond, Pâte…)." },
-  { key: "ingredient", label: "Ingrédients", help: "Catégories d'achat des ingrédients (Viande, Épicerie…)." },
+  { key: "menu", label: "Menu", help: "Les sections de ta CARTE — Mezzés, Grillades, Desserts… Elles classent tes recettes vendues, et rien d'autre. Tu les retrouves dans Recettes et Ma carte." },
+  { key: "prep", label: "Mises en place", help: "Les postes de ta CUISINE — Sauces, Marinades, Pâtisseries… Ils classent tes préparations de base, celles que tes recettes réutilisent. Tu les retrouves dans Mises en place." },
+  { key: "ingredient", label: "Ingrédients", help: "Les rayons de tes ACHATS — Viandes, Crèmerie, Épicerie… Ils classent les produits que tu commandes, et donnent le premier chiffre de leur numéro interne (4001 = crèmerie). Tu les retrouves dans Ingrédients." },
   { key: "tags", label: "Tags", help: "Étiquettes libres pour marquer des produits — ex. « Fournitures », « Local », « Premium ». Un produit peut porter plusieurs tags, alors qu'il n'a qu'une seule catégorie." },
 ];
 
@@ -33,9 +38,11 @@ interface Props {
   restaurantId: string;
   initialCategories: Category[];
   initialTags?: Tag[];
+  /** Combien d'articles chaque rayon range, par type. */
+  comptes?: Record<string, Record<string, number>>;
 }
 
-export default function CategoriesClient({ restaurantId, initialCategories, initialTags = [] }: Props) {
+export default function CategoriesClient({ restaurantId, initialCategories, initialTags = [], comptes = {} }: Props) {
   const confirm = useConfirm();
   const supabase = createClient();
   const [cats, setCats] = useState<Category[]>(initialCategories);
@@ -183,6 +190,8 @@ export default function CategoriesClient({ restaurantId, initialCategories, init
         <p className="text-sm text-on-surface-variant/70 mt-1">Les deux façons de classer tes produits : une <b>catégorie</b> unique par produit, et autant de <b>tags</b> que tu veux.</p>
       </div>
 
+      <RangementPanel />
+
       {/* Glass tab selector */}
       <div className="glass-card rounded-2xl p-2 flex flex-wrap gap-1 w-fit mb-4">
         {TABS.map((t) => {
@@ -316,6 +325,20 @@ export default function CategoriesClient({ restaurantId, initialCategories, init
               ) : (
                 <>
                   <span className="flex-1 font-semibold text-on-surface">{c.name}</span>
+                  {/* Ce que ce rayon range vraiment. « 0 article » est
+                      l'information la plus utile de l'écran : c'est elle
+                      qui désigne les rayons d'exemple à retirer. */}
+                  {(() => {
+                    const n = comptes[tab]?.[c.name] ?? 0;
+                    return (
+                      <span className={clsx(
+                        "px-2.5 py-1 rounded-full text-2xs font-bold uppercase tracking-wide whitespace-nowrap",
+                        n > 0 ? "bg-surface-container text-on-surface-variant/70" : "bg-amber-light text-amber-dark"
+                      )}>
+                        {n > 0 ? `${n} ${tab === "ingredient" ? "produit" : tab === "prep" ? "préparation" : "fiche"}${n > 1 ? "s" : ""}` : "vide"}
+                      </span>
+                    );
+                  })()}
                   <button
                     onClick={() => { setEditingId(c.id); setEditName(c.name); }}
                     className="p-2 rounded-lg text-on-surface-variant/50 hover:text-primary hover:bg-surface-container-high transition"

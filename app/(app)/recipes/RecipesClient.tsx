@@ -13,9 +13,10 @@ import { foodCostPct, estAlcool, tauxDeVente, TVA_DEFAUT, type ReglagesTva } fro
 import { useConfirm, useAlert } from "@/components/ConfirmDialog";
 import { eur } from "@/lib/format";
 import { estChiffree, aUnPrix, moyenneSur } from "@/lib/chiffrage";
+import { grouperParCategorie, ordreParFamille } from "@/lib/rangement";
 
 
-type Ingredient = { id: string; name: string; cost_per_base_unit: number; cmup?: number | null; unit: string; yield_pct?: number | null; is_active?: boolean };
+type Ingredient = { id: string; name: string; category?: string | null; cost_per_base_unit: number; cmup?: number | null; unit: string; yield_pct?: number | null; is_active?: boolean };
 type RecipeLine = {
   id?: string;
   ingredient_id: string | null;
@@ -177,6 +178,15 @@ export default function RecipesClient({ tva = TVA_DEFAUT, restaurantId, initialR
     if (!q) return base;
     return base.filter((r) => r.name.toLowerCase().includes(q) || (r.category ?? "").toLowerCase().includes(q));
   }, [tab, menuRecipes, prepRecipes, search]);
+
+  // Les fiches, coupées par section de carte (ou par poste pour les mises
+  // en place), dans l'ordre choisi dans Réglages — pas dans l'alphabet.
+  const ordreRayons = useMemo(() => ordreParFamille(ingredients.map((i) => i.category ?? "")), [ingredients]);
+
+  const groupes = useMemo(
+    () => grouperParCategorie(visibleRecipes, tab === "prep" ? prepCategories : menuCategories),
+    [visibleRecipes, tab, prepCategories, menuCategories],
+  );
 
   // ── Read-only stat cards, all derived from the live recipes (no placeholders) ──
   const statBase = tab === "recipe" ? menuRecipes : prepRecipes;
@@ -769,26 +779,26 @@ export default function RecipesClient({ tva = TVA_DEFAUT, restaurantId, initialR
                       <select value={lineValue(line)} onChange={(e) => selectItem(idx, e.target.value)}
                         className="flex-1 px-2 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-primary bg-white transition">
                         <option value="">Choisir un ingrédient ou une mise en place…</option>
-                        {(() => {
-                          const meps = allRecipes.filter((r) => r.id !== editingId && r.is_prep);
-                          return meps.length > 0 ? (
-                            <optgroup label="Mises en place">
-                              {meps.map((r) => <option key={r.id} value={`mep:${r.id}`}>{r.name}</option>)}
-                            </optgroup>
-                          ) : null;
-                        })()}
-                        <optgroup label="Ingrédients">
-                          {/* Un produit désactivé ne peut plus être AJOUTÉ. On le garde tout de même
-                              dans la liste s’il est déjà choisi sur cette ligne : sinon le sélecteur
-                              s’afficherait vide et un enregistrement effacerait la ligne sans le dire. */}
-                          {ingredients
-                            .filter((i) => i.is_active !== false || line.ingredient_id === i.id)
-                            .map((i) => (
+                        {/* Coupé par rayon, comme dans la fiche : chaque titre
+                            dit s'il s'agit d'un produit acheté ou d'une
+                            préparation maison, et de quel rayon. */}
+                        {grouperParCategorie(allRecipes.filter((r) => r.id !== editingId && r.is_prep), prepCategories).map((g) => (
+                          <optgroup key={g.categorie} label={`Mise en place · ${g.categorie}`}>
+                            {g.articles.map((r) => <option key={r.id} value={`mep:${r.id}`}>{r.name}</option>)}
+                          </optgroup>
+                        ))}
+                        {/* Un produit désactivé ne peut plus être AJOUTÉ. On le garde tout de même
+                            dans la liste s’il est déjà choisi sur cette ligne : sinon le sélecteur
+                            s’afficherait vide et un enregistrement effacerait la ligne sans le dire. */}
+                        {grouperParCategorie(ingredients.filter((i) => i.is_active !== false || line.ingredient_id === i.id), ordreRayons).map((g) => (
+                          <optgroup key={g.categorie} label={`Ingrédient · ${g.categorie}`}>
+                            {g.articles.map((i) => (
                               <option key={i.id} value={`ing:${i.id}`}>
                                 {i.name}{i.is_active === false ? " — inactif, à remplacer" : ""}
                               </option>
                             ))}
-                        </optgroup>
+                          </optgroup>
+                        ))}
                       </select>
 
                       <input type="number" min="0" step="any" value={line.quantity}
@@ -904,8 +914,22 @@ export default function RecipesClient({ tva = TVA_DEFAUT, restaurantId, initialR
         </div>
         )
       ) : (
-        <div className="space-y-3">
-          {visibleRecipes.map((recipe) => {
+        /* Coupé par rayon. Une colonne de 111 fiches triée par ordre
+           alphabétique, avec une pastille de catégorie au bout de chaque
+           ligne, ne montre aucun classement : il faut lire les 111 lignes
+           pour deviner qu'il en existe un. */
+        <div className="space-y-7">
+          {groupes.map((groupe) => (
+          <section key={groupe.categorie}>
+            <div className="flex items-baseline gap-2.5 mb-2 px-1">
+              <h2 className="text-xs font-extrabold text-primary uppercase tracking-widest">{groupe.categorie}</h2>
+              <span className="text-2xs font-bold text-on-surface-variant/40 tabular-nums">
+                {groupe.articles.length} {tab === "prep" ? "préparation" : "fiche"}{groupe.articles.length > 1 ? "s" : ""}
+              </span>
+              <span className="flex-1 border-b border-outline-variant/25" />
+            </div>
+            <div className="space-y-3">
+          {groupe.articles.map((recipe) => {
             const isExpanded = expandedId === recipe.id;
             const costPerPortion = recipe.total_cost / (recipe.yield_portions || 1);
             const yUnit = YIELD_UNITS.find((u) => u.value === (recipe.yield_unit || "portion"))?.label ?? recipe.yield_unit;
@@ -1049,6 +1073,9 @@ export default function RecipesClient({ tva = TVA_DEFAUT, restaurantId, initialR
               </div>
             );
           })}
+            </div>
+          </section>
+          ))}
         </div>
       )}
     </div>

@@ -16,10 +16,10 @@ export default async function RecipePage({ params }: { params: { id: string } })
       .eq("id", params.id)
       .eq("restaurant_id", restaurant!.id)
       .single(),
-    selectIngredients(supabase, restaurant!.id, "id, name, cost_per_base_unit, cmup, unit, yield_pct, is_active"),
+    selectIngredients(supabase, restaurant!.id, "id, name, category, cost_per_base_unit, cmup, unit, yield_pct, is_active"),
     supabase
       .from("recipes")
-      .select("id, name, total_cost, yield_portions, yield_unit, is_prep")
+      .select("id, name, category, total_cost, yield_portions, yield_unit, is_prep")
       .eq("restaurant_id", restaurant!.id)
       .order("name"),
     supabase
