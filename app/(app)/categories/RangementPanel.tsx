@@ -76,7 +76,7 @@ export default function RangementPanel() {
       if (!r.ok) throw new Error(j?.error ?? "Rangement impossible");
       setFait(
         `${j.produits} produit${j.produits > 1 ? "s" : ""} et ${j.meps} préparation${j.meps > 1 ? "s" : ""} rangés · ` +
-        `${j.creees} rayon${j.creees > 1 ? "x" : ""} créé${j.creees > 1 ? "s" : ""}, ${j.retirees} retiré${j.retirees > 1 ? "s" : ""}.`
+        `${j.creees} rayon${j.creees > 1 ? "s" : ""} créé${j.creees > 1 ? "s" : ""}, ${j.retirees} retiré${j.retirees > 1 ? "s" : ""}.`
       );
       setPlan(null); setOuvert(false);
       router.refresh();
