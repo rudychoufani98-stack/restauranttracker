@@ -40,3 +40,6 @@ next-env.d.ts
 
 # Exports Excel générés par les tests (tests/samples.test.ts)
 tmp-exports/
+
+.vercel
+.env*

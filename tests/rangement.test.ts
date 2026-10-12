@@ -269,3 +269,41 @@ describe("Une liste coupée en rayons", () => {
     expect(g.reduce((s, x) => s + x.articles.length, 0)).toBe(37);
   });
 });
+
+describe("Le classement parle le vocabulaire du restaurant", () => {
+  it("reprend le nom que la maison donne déjà à la famille", () => {
+    // Sept produits dorment dans « Viande » : la viande hachée les
+    // rejoint, elle ne fonde pas un rayon « Viandes » à côté.
+    const { deplacements } = rangerProduits([
+      { id: "a", name: "Entrecôte", category: "Viande" },
+      { id: "b", name: "Viande hachée", category: "Autre" },
+      { id: "c", name: "Poulet désossé", category: "Autre" },
+    ]);
+    expect(deplacements.map((d) => d.apres)).toEqual(["Viande", "Viande"]);
+  });
+
+  it("retombe sur le nom standard quand plusieurs rayons se partagent la famille", () => {
+    const { deplacements } = rangerProduits([
+      { id: "a", name: "Ksara rouge", category: "Vins rouges" },
+      { id: "b", name: "Ksara blanc", category: "Vins blancs" },
+      { id: "c", name: "Château Kefraya", category: "Autre" },
+    ]);
+    expect(deplacements[0].apres).toBe("Vins & champagnes");
+  });
+
+  it("et ne crée donc pas de rayon jumeau", () => {
+    const produits = [
+      { id: "a", name: "Entrecôte", category: "Viande" },
+      { id: "b", name: "Viande hachée", category: "Autre" },
+    ];
+    const { deplacements } = rangerProduits(produits);
+    const apres = new Map(deplacements.map((d) => [d.id, d.apres]));
+    const plan = planCategoriesIngredient(
+      cat(["Viande", "Autre"]),
+      compter(produits.map((p) => ({ category: apres.get(p.id) ?? p.category }))),
+      ["Viande", "Autre"],
+    );
+    expect(plan.aCreer.map((c) => c.name)).not.toContain("Viandes");
+    expect(plan.aRetirer.map((c) => c.name)).toContain("Autre");
+  });
+});

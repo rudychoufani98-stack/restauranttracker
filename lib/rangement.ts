@@ -62,11 +62,30 @@ export function rangerProduits(produits: ProduitARanger[]): {
   const deplacements: Deplacement[] = [];
   const nonReconnus: { id: string; nom: string }[] = [];
 
+  // Le nom que CE restaurant donne deja a chaque famille. Sans cela, le
+  // classement cree des jumeaux : la viande hachee serait partie dans
+  // « Viandes » pendant que sept produits dorment dans « Viande ».
+  // Une famille que plusieurs rayons se partagent — « Vins rouges »,
+  // « Vins blancs », « Vins roses » — ne tranche pas toute seule : on
+  // reprend alors le nom standard, et le patron reclasse a la couleur.
+  const parFamille = new Map<number, Set<string>>();
+  for (const p of produits) {
+    const c = (p.category ?? "").trim();
+    if (!c || categorieGenerique(c)) continue;
+    const f = familleDe(c);
+    if (!f) continue;
+    parFamille.set(f.debut, (parFamille.get(f.debut) ?? new Set()).add(c));
+  }
+  const libelleMaison = (bloc: number): string | null => {
+    const noms = parFamille.get(bloc);
+    return noms && noms.size === 1 ? Array.from(noms)[0] : null;
+  };
+
   for (const p of produits) {
     const avant = (p.category ?? "").trim();
     if (!categorieGenerique(avant)) continue; // deja range
     const bloc = familleDuNom(p.name);
-    const apres = bloc === null ? null : nomDeBloc(bloc);
+    const apres = bloc === null ? null : (libelleMaison(bloc) ?? nomDeBloc(bloc));
     if (!apres) {
       nonReconnus.push({ id: p.id, nom: p.name });
       continue;
