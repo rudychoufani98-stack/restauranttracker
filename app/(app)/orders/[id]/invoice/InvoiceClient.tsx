@@ -442,7 +442,7 @@ export default function InvoiceClient({ po, deliveryNote, deliveryNotes, restaur
           </span>
           <span className="text-sm text-gray-600">
             par rapport au bon de commande — {ecart.lignes} prix {ecart.lignes > 1 ? "ont changé" : "a changé"}
-            {ecart.pire && <> , surtout <b className="font-semibold">{ecart.pire}</b></>}.
+            {ecart.pire && <>, surtout <b className="font-semibold">{ecart.pire}</b></>}.
           </span>
         </div>
       )}
