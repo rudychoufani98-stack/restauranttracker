@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { ArrowLeft, Check, Plus, Trash2, Loader2, Package, Boxes, GitMerge, Pencil, ChefHat, Soup, Link2 } from "lucide-react";
+import { ArrowLeft, Check, Plus, Trash2, Loader2, Package, Boxes, GitMerge, ChefHat, Soup, Link2 } from "lucide-react";
 import clsx from "clsx";
 import {
   UNIT_OPTIONS, VAT_PRESETS, ALLERGENS, packTotal, calcCostPerBase, unitShort,
@@ -12,6 +12,8 @@ import {
   qtyToDisplay, qtyFromDisplay, fmtNum,
 } from "@/lib/ingredient-helpers";
 import { eur } from "@/lib/format";
+import EnteteFiche from "@/components/EnteteFiche";
+import SectionFiche from "@/components/SectionFiche";
 
 type Supplier = { id: string; name: string };
 type Article = {
@@ -129,7 +131,6 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
   const [showMerge, setShowMerge] = useState(false);
   const [mergeTargetId, setMergeTargetId] = useState("");
   const [merging, setMerging] = useState(false);
-  const [editingName, setEditingName] = useState(false);
 
   const yPct = parseFloat(yieldPct) || 100;
 
@@ -356,48 +357,39 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
 
       {error && <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</div>}
 
-      {/* Identity */}
-      <div className="bg-white border border-gray-100 rounded-card shadow-card p-5 mb-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex-1 min-w-0">
-            {editingName ? (
-              <input value={name} onChange={(e) => setName(e.target.value)} autoFocus
-                onBlur={() => setEditingName(false)} onKeyDown={(e) => { if (e.key === "Enter") setEditingName(false); }}
-                className={clsx(inputCls, "text-xl font-bold")} />
-            ) : (
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold text-gray-900 truncate">{name || "Sans nom"}</h1>
-                <button onClick={() => setEditingName(true)} className="p-1 text-gray-300 hover:text-gray-600 transition" title="Modifier le nom">
-                  <Pencil size={14} />
-                </button>
-              </div>
-            )}
-          </div>
-          <div className="w-44 shrink-0">
-            {/* « Rayon d'achat », pas « Catégorie » : c'est la liste des
-                ACHATS, distincte des sections de la carte et des postes de
-                cuisine. Et c'est elle qui donne le premier chiffre du
-                numéro interne — 4001 est forcément de la crèmerie. */}
-            <label className="block text-2xs font-medium text-gray-500 uppercase tracking-wide mb-1">Rayon d&apos;achat</label>
-            <select value={category} onChange={(e) => setCategory(e.target.value)} className={clsx(inputCls, "py-1.5")}>
-              {Array.from(new Set([...categories, category].filter(Boolean))).map((c) => <option key={c}>{c}</option>)}
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* 1. Conditionnement d'usage */}
-      <Section teinte="usage" icon={<Package size={16} />} title="Conditionnement d'usage — recettes & inventaires" subtitle="L'unité dans laquelle tu l'utilises en recette et la comptes en inventaire (kg, L ou pièce). C'est la base de tout. Le conditionnement de commande (colis) se règle plus bas, il ne sert qu'aux commandes.">
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Unité d'usage</label>
+      {/* Le nom en grand — il fallait trouver un crayon gris pour le
+          modifier. « Rayon d'achat », pas « Catégorie » : c'est la liste
+          des ACHATS, et c'est elle qui donne le premier chiffre du
+          numéro interne — 4001 est forcément de la crèmerie. */}
+      <EnteteFiche
+        nom={name} onNom={setName} placeholder="Nom du produit"
+        libelleClassement="Rayon d'achat"
+        classement={category} onClassement={setCategory} options={categories}
+        aide="Le rayon décide du premier chiffre du numéro interne. L'unité d'usage est celle de tes recettes et de ton inventaire."
+        extra={
+          <div className="w-full lg:w-40">
+            <label className="block text-2xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Unité d&apos;usage</label>
             <select value={unit} onChange={(e) => setUnit(e.target.value)} className={inputCls}>
               {UNIT_OPTIONS.map((u) => <option key={u.value} value={u.value}>{u.label}</option>)}
-              {/* Ancien produit pas encore migré (g/ml) : on montre son unité réelle, convertie à l'enregistrement du script de migration */}
               {!UNIT_OPTIONS.some((u) => u.value === unit) && <option value={unit}>{unit} (ancien format)</option>}
             </select>
-            <p className="text-2xs text-gray-400 mt-1">recettes & inventaires dans cette unité</p>
           </div>
+        }
+      />
+
+      {/* Ce bloc ouvrait la fiche avec trois réglages dont deux ne servent
+          qu'une fois : la part utilisable et le seuil d'alerte. L'unité,
+          elle, a rejoint le titre — c'est la base de tout. */}
+      <SectionFiche teinte="usage" icon={<Package size={16} />} title="Réglages fins"
+        subtitle="Perte au parage, alerte de stock, et comment tu comptes ce produit à l'inventaire."
+        repliable
+        ouvertParDefaut={(parseFloat(yieldPct) || 100) < 100 || (parseFloat(reorder) || 0) > 0 || !!secLabel.trim()}
+        resume={[
+          (parseFloat(yieldPct) || 100) < 100 ? `${yieldPct} % utilisable` : null,
+          (parseFloat(reorder) || 0) > 0 ? `alerte sous ${reorder} ${uLabel}` : null,
+          secLabel.trim() ? `compté en ${secLabel.trim()}` : null,
+        ].filter(Boolean).join(" · ") || "Rien de particulier — tout est utilisable, pas d'alerte."}>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Part utilisable (%)</label>
             <input type="number" min="1" max="100" step="any" value={yieldPct} onChange={(e) => setYieldPct(e.target.value)} className={inputCls} />
@@ -440,10 +432,10 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
             Pour compter l&apos;inventaire dans ce conditionnement plutôt qu&apos;en {uLabel} — ex. « 1 bouteille = 0,75 L » : tu saisiras « 12 bouteilles » et le stock sera converti automatiquement.
           </p>
         </div>
-      </Section>
+      </SectionFiche>
 
       {/* 2. Articles */}
-      <Section teinte="achat" icon={<Boxes size={16} />} title="Conditionnement de commande — articles fournisseurs"
+      <SectionFiche teinte="achat" icon={<Boxes size={16} />} title="Conditionnement de commande — articles fournisseurs"
         subtitle="Un article par fournisseur : sa référence, son conditionnement de commande (colis / caisse…) et son prix. Sert uniquement pour passer les commandes et le bon de commande — jamais pour les recettes ni l'inventaire."
         action={<button onClick={addArticle} className="flex items-center gap-1 text-xs font-medium text-emerald-600 hover:text-emerald-700"><Plus size={13} /> Ajouter un article</button>}>
         {articles.length === 0 ? (
@@ -525,10 +517,12 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
             <p className="text-2xs text-gray-400">Le coût des recettes suit le prix réellement payé (CMUP). En commande, chaque fournisseur propose son article avec son colissage et son prix.</p>
           </div>
         )}
-      </Section>
+      </SectionFiche>
 
       {/* 3. Allergènes */}
-      <Section title="Allergènes" subtitle="14 allergènes réglementaires UE — hérités automatiquement par les recettes.">
+      <SectionFiche teinte="allergene" title="Allergènes" subtitle="14 allergènes réglementaires UE — hérités automatiquement par les recettes."
+        repliable ouvertParDefaut={allergens.length > 0}
+        resume={allergens.length > 0 ? allergens.join(" · ") : "Aucun allergène déclaré."}>
         <div className="flex flex-wrap gap-1.5">
           {ALLERGENS.map((a) => {
             const on = allergens.includes(a);
@@ -541,10 +535,12 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
             );
           })}
         </div>
-      </Section>
+      </SectionFiche>
 
       {/* 4. Revente directe */}
-      <Section teinte="vente" title="Revente directe (optionnel)" subtitle="Si ce produit est vendu tel quel (canette, bouteille…).">
+      <SectionFiche teinte="vente" title="Revente directe" subtitle="Si ce produit est vendu tel quel (canette, bouteille…)."
+        repliable ouvertParDefaut={!!sellingPrice}
+        resume={sellingPrice ? `Vendu ${sellingPrice} € TTC` : "Ce produit n'est pas revendu tel quel."}>
         <div className="grid grid-cols-2 gap-3 items-end">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Prix de vente TTC</label>
@@ -554,10 +550,11 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
             </div>
           </div>
         </div>
-      </Section>
+      </SectionFiche>
 
       {/* Utilisé dans — recettes & mises en place */}
-      <Section teinte="lien" icon={<Link2 size={16} />} title="Utilisé dans" subtitle={`${usedIn.length} recette(s) / mise(s) en place utilisent ce produit`}>
+      <SectionFiche teinte="lien" icon={<Link2 size={16} />} title="Utilisé dans" subtitle={`${usedIn.length} recette(s) / mise(s) en place utilisent ce produit`}
+        repliable resume={usedIn.length > 0 ? `${usedIn.length} recette${usedIn.length > 1 ? "s" : ""} ou préparation${usedIn.length > 1 ? "s" : ""}` : "Pas encore utilisé."}>
         {usedIn.length === 0 ? (
           <p className="text-sm text-gray-400">Ce produit n&apos;est utilisé dans aucune recette ni mise en place pour l&apos;instant.</p>
         ) : (
@@ -590,16 +587,17 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
             )}
           </div>
         )}
-      </Section>
+      </SectionFiche>
 
       {/* 5. Fusionner */}
-      <Section teinte="danger" icon={<GitMerge size={16} />} title="Fusionner avec un autre produit" subtitle="Réunit deux produits identiques (même unité) en un seul. Les articles, recettes et stock sont regroupés.">
+      <SectionFiche teinte="danger" icon={<GitMerge size={16} />} title="Fusionner avec un autre produit" subtitle="Réunit deux produits identiques (même unité) en un seul. Les articles, recettes et stock sont regroupés."
+        repliable resume="En cas de doublon dans le catalogue.">
         <button onClick={() => { setShowMerge(true); setMergeTargetId(""); }} disabled={mergeTargets.length === 0}
           className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition">
           Fusionner ce produit…
         </button>
         {mergeTargets.length === 0 && <p className="text-xs text-gray-400 mt-2">Aucun autre produit en {uLabel} avec lequel fusionner.</p>}
-      </Section>
+      </SectionFiche>
 
       {/* Merge modal */}
       {showMerge && (
@@ -635,43 +633,3 @@ export default function ProductClient({ ingredient, suppliers, categories, allIn
   );
 }
 
-/**
- * Teintes des sections d'une fiche produit. Elles ne décorent pas : chacune
- * dit à quoi sert le bloc, et surtout d'où vient le chiffre.
- *
- *   usage    marine  — l'unité de tes recettes et de tes inventaires
- *   achat    orange  — l'argent qui sort, le colisage du fournisseur
- *   vente    vert    — l'argent qui rentre
- *   lien     bleu    — ce qui relie ce produit à tes fiches
- *   danger   rouge   — une action difficile à défaire
- */
-const TEINTES = {
-  usage:  { bord: "border-l-4 border-l-primary",     pastille: "bg-tertiary-fixed text-primary",   titre: "text-primary" },
-  achat:  { bord: "border-l-4 border-l-brand-orange", pastille: "bg-brand-orange/10 text-brand-orange-deep", titre: "text-brand-orange-deep" },
-  vente:  { bord: "border-l-4 border-l-green",       pastille: "bg-green-light text-green-dark",   titre: "text-green-dark" },
-  lien:   { bord: "border-l-4 border-l-blue",        pastille: "bg-blue-light text-blue-dark",     titre: "text-blue-dark" },
-  danger: { bord: "border-l-4 border-l-red",         pastille: "bg-red-light text-red",            titre: "text-red" },
-  neutre: { bord: "",                              pastille: "bg-gray-100 text-gray-500",        titre: "text-gray-900" },
-} as const;
-
-function Section({ icon, title, subtitle, action, teinte = "neutre", children }: {
-  icon?: React.ReactNode; title: string; subtitle?: string; action?: React.ReactNode;
-  teinte?: keyof typeof TEINTES; children: React.ReactNode;
-}) {
-  const t = TEINTES[teinte];
-  return (
-    <div className={clsx("bg-white border border-gray-100 rounded-card shadow-card p-5 mb-4", t.bord)}>
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex items-start gap-2.5">
-          {icon && <div className={clsx("w-8 h-8 rounded-lg flex items-center justify-center shrink-0", t.pastille)}>{icon}</div>}
-          <div>
-            <h2 className={clsx("text-sm font-semibold", t.titre)}>{title}</h2>
-            {subtitle && <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>}
-          </div>
-        </div>
-        {action}
-      </div>
-      {children}
-    </div>
-  );
-}

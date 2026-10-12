@@ -9,6 +9,8 @@ import clsx from "clsx";
 import { Pastille, BadgeType } from "@/components/TypeIdentite";
 import { TYPE_IDENTITE, typeDeRecette } from "@/lib/type-article";
 import { grouperParCategorie, ordreParFamille } from "@/lib/rangement";
+import EnteteFiche from "@/components/EnteteFiche";
+import SectionFiche from "@/components/SectionFiche";
 
 type Ingredient = { id: string; name: string; category?: string | null; cost_per_base_unit: number; cmup?: number | null; unit: string; yield_pct?: number | null; is_active?: boolean };
 type RecipeRef = { id: string; name: string; category?: string | null; total_cost: number; yield_portions: number; yield_unit: string; is_prep: boolean };
@@ -334,59 +336,43 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
 
       {error && <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</div>}
 
-      {/* Identity */}
-      <div className={clsx("bg-white border border-gray-100 rounded-card shadow-card p-5 mb-4 border-l-4", idNature.bordure)}>
-        <div className="flex items-center gap-2.5 mb-3">
-          <Pastille type={nature} taille="sm" />
-          <BadgeType type={nature} />
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="sm:col-span-2">
-            <label className="block text-xs font-medium text-gray-600 mb-1">{isPrep ? "Nom de la préparation" : "Nom du plat"}</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} className={clsx(inputCls, "text-base font-semibold")} />
-          </div>
-          <div>
-            {/* Le mot « Catégorie » ne dit pas DE QUELLE liste il s'agit.
-                Un plat se range dans une section de la CARTE, une mise en
-                place dans un POSTE de cuisine, un produit dans un RAYON
-                d'achat : trois listes séparées, que rien n'annonçait. */}
-            <label className="block text-xs font-medium text-gray-600 mb-1">
-              {isPrep ? "Poste de cuisine" : "Section de la carte"}
+      {/* Le titre, le classement et le rendement tiennent ensemble : ce
+          sont les trois choses qui identifient la fiche. Le rendement
+          occupait une carte entière pour deux champs. */}
+      <EnteteFiche
+        accent={clsx("border-l-4", idNature.bordure)}
+        badge={<><Pastille type={nature} taille="sm" /><BadgeType type={nature} /></>}
+        nom={name} onNom={setName}
+        placeholder={isPrep ? "Nom de la préparation" : "Nom du plat"}
+        libelleClassement={isPrep ? "Poste de cuisine" : "Section de la carte"}
+        classement={category} onClassement={setCategory} options={cats}
+        alerte={category && !cats.includes(category)
+          ? `« ${category} » ne fait pas partie ${isPrep ? "des postes de cuisine" : "des sections de ta carte"} — choisis${isPrep ? "-en un" : "-en une"} dans la liste, ou ajoute${isPrep ? "-le" : "-la"} dans Réglages.`
+          : null}
+        aide={isPrep
+          ? "Range la préparation dans Mises en place. Le rendement dit ce qu'une fabrication produit en tout."
+          : "Range le plat dans Recettes. Le rendement dit combien de portions sort une fois la recette faite."}
+        extra={
+          <div className="w-full lg:w-auto">
+            <label className="block text-2xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+              {isPrep ? "Produit en tout" : "Rendement"}
             </label>
-            <select value={category} onChange={(e) => setCategory(e.target.value)} className={inputCls}>
-              {Array.from(new Set([...cats, category].filter(Boolean))).map((c) => <option key={c}>{c}</option>)}
-            </select>
-            {category && !cats.includes(category) ? (
-              <p className="text-2xs text-amber-600 mt-1">
-                « {category} » ne fait pas partie {isPrep ? "des postes de cuisine" : "des sections de ta carte"} —
-                choisis-en {isPrep ? "un" : "une"} dans la liste, ou ajoute{isPrep ? "-le" : "-la"} dans Réglages.
-              </p>
-            ) : (
-              <p className="text-2xs text-gray-400 mt-1">
-                {isPrep
-                  ? "Où cette préparation se fabrique. Elle restera rangée là dans Mises en place."
-                  : "Où ce plat apparaît sur ta carte. Il restera rangé là dans Recettes."}
-              </p>
-            )}
+            <div className="flex gap-2">
+              <input type="number" min="0" step="any" value={yieldPortions} onChange={(e) => setYieldPortions(e.target.value)}
+                className={clsx(inputCls, "w-20")} />
+              <select value={yieldUnit} onChange={(e) => setYieldUnit(e.target.value)} className={clsx(inputCls, "w-28")}>
+                {(recipe.is_prep ? YIELD_UNITS : YIELD_UNITS.filter((u) => u.value === "portion" || u.value === "piece"))
+                  .map((u) => <option key={u.value} value={u.value}>{u.label}</option>)}
+              </select>
+            </div>
           </div>
-        </div>
-      </div>
-
-      {/* Rendement */}
-      <Section accent={accentNature} icon={<Scale size={16} />} title="Rendement / conditionnement" subtitle={isPrep ? "Quantité totale produite (ex. 2 kg de sauce)." : "Combien cette recette produit (souvent en portions)."}>
-        <div className="flex gap-2 max-w-xs">
-          <input type="number" min="0" step="any" value={yieldPortions} onChange={(e) => setYieldPortions(e.target.value)} className={clsx(inputCls, "w-28")} />
-          <select value={yieldUnit} onChange={(e) => setYieldUnit(e.target.value)} className={inputCls}>
-            {/* Un plat VENDU se compte en portions/pièces (voir RecipesClient) */}
-            {(recipe.is_prep ? YIELD_UNITS : YIELD_UNITS.filter((u) => u.value === "portion" || u.value === "piece"))
-              .map((u) => <option key={u.value} value={u.value}>{u.label}</option>)}
-          </select>
-        </div>
-      </Section>
+        }
+      />
 
       {/* Ratio / mise à l'échelle */}
-      <Section teinte="outil" icon={<Scale size={16} />} title="Ratio / mise à l'échelle"
-        subtitle={`Lot de base : ${fmtNum(yQtyNum)} ${unitLabel(yieldUnit)}. Choisis la quantité que tu veux produire — toutes les quantités se recalculent au prorata.`}>
+      <SectionFiche teinte="outil" icon={<Scale size={16} />} title="Calculer pour une autre quantité"
+        subtitle={`Lot de base : ${fmtNum(yQtyNum)} ${unitLabel(yieldUnit)}. Choisis la quantité que tu veux produire — toutes les quantités se recalculent au prorata.`}
+        repliable resume="Outil de calcul — ne modifie pas la fiche.">
         {scalableLines.length === 0 ? (
           <p className="text-xs text-gray-400">Ajoute des ingrédients avec des quantités pour utiliser le ratio.</p>
         ) : (
@@ -437,10 +423,10 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
             <p className="text-2xs text-gray-400 mt-2">Outil de calcul uniquement — ne modifie pas la fiche enregistrée.</p>
           </>
         )}
-      </Section>
+      </SectionFiche>
 
       {/* Ingredients */}
-      <Section teinte="matiere" icon={<ListChecks size={16} />} title="Ingrédients & mises en place" subtitle="Ajoute des ingrédients bruts et/ou des mises en place. Quand la recette est vendue, les ingrédients (y compris ceux des MEP) sont déstockés."
+      <SectionFiche teinte="matiere" icon={<ListChecks size={16} />} title="Ingrédients & mises en place" subtitle="Ajoute des ingrédients bruts et/ou des mises en place. Quand la recette est vendue, les ingrédients (y compris ceux des MEP) sont déstockés."
         action={<button onClick={addLine} className="flex items-center gap-1 text-xs font-medium text-emerald-600 hover:text-emerald-700"><Plus size={13} /> Ligne</button>}>
         <div className="space-y-2">
           {lines.map((line, idx) => {
@@ -509,10 +495,12 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
             </p>
           )}
         </div>
-      </Section>
+      </SectionFiche>
 
       {/* Allergènes (auto) */}
-      <Section teinte="allergene" title="Allergènes" subtitle="Calculés automatiquement depuis les ingrédients (mis à jour à l'enregistrement).">
+      <SectionFiche teinte="allergene" title="Allergènes" subtitle="Calculés automatiquement depuis les ingrédients (mis à jour à l'enregistrement)."
+        repliable ouvertParDefaut={(recipe.allergens?.length ?? 0) > 0}
+        resume={(recipe.allergens?.length ?? 0) > 0 ? recipe.allergens!.join(" · ") : "Aucun allergène sur les ingrédients de cette fiche."}>
         {(recipe.allergens?.length ?? 0) > 0 ? (
           <div className="flex flex-wrap gap-1.5">
             {recipe.allergens!.map((a) => <span key={a} className="px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700">{a}</span>)}
@@ -520,13 +508,14 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
         ) : (
           <p className="text-xs text-gray-400">Aucun allergène déclaré sur les ingrédients de cette recette.</p>
         )}
-      </Section>
+      </SectionFiche>
 
       {/* Utilisé dans — recettes qui utilisent cette recette / mise en place */}
-      <Section teinte="lien" icon={<Link2 size={16} />} title="Utilisé dans"
+      <SectionFiche teinte="lien" icon={<Link2 size={16} />} title="Utilisé dans"
         subtitle={isPrep
           ? `${usedIn.length} recette(s) / mise(s) en place utilisent cette mise en place`
-          : `${usedIn.length} recette(s) / mise(s) en place utilisent cette recette`}>
+          : `${usedIn.length} recette(s) / mise(s) en place utilisent cette recette`}
+        repliable resume={usedIn.length > 0 ? `${usedIn.length} fiche${usedIn.length > 1 ? "s" : ""}` : "Pas encore utilisée ailleurs."}>
         {usedIn.length === 0 ? (
           <p className="text-sm text-gray-400">
             {isPrep
@@ -563,51 +552,8 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
             )}
           </div>
         )}
-      </Section>
+      </SectionFiche>
     </div>
   );
 }
 
-/**
- * Teintes des sections d'une fiche. Elles ne décorent pas : chacune dit ce
- * que le bloc décide, et d'où vient le chiffre.
- *
- *   fiche      la couleur de la NATURE — ambre pour une MEP, marine pour
- *              une fiche technique. C'est ce qui évite de confondre les
- *              deux écrans, qui se ressemblent beaucoup.
- *   matiere    marine pâle — ce qui entre dans la recette et la coûte
- *   outil      neutre      — une aide au calcul, elle ne décide de rien
- *   allergene  rouge       — une affaire de sécurité, pas de gestion
- *   lien       bleu        — ce qui relie cette fiche aux autres
- */
-const TEINTES = {
-  matiere:   { bord: "border-l-4 border-l-primary/60", pastille: "bg-tertiary-fixed text-primary", titre: "text-primary" },
-  outil:     { bord: "",                             pastille: "bg-gray-100 text-gray-500",      titre: "text-gray-900" },
-  allergene: { bord: "border-l-4 border-l-red",        pastille: "bg-red-light text-red",          titre: "text-red" },
-  lien:      { bord: "border-l-4 border-l-blue",       pastille: "bg-blue-light text-blue-dark",   titre: "text-blue-dark" },
-} as const;
-
-function Section({ icon, title, subtitle, action, teinte = "outil", accent, children }: {
-  icon?: React.ReactNode; title: string; subtitle?: string; action?: React.ReactNode;
-  teinte?: keyof typeof TEINTES;
-  /** Surcharge : la couleur de la nature de la fiche (MEP ou recette). */
-  accent?: { bord: string; pastille: string; titre: string };
-  children: React.ReactNode;
-}) {
-  const t = accent ?? TEINTES[teinte];
-  return (
-    <div className={clsx("bg-white border border-gray-100 rounded-card shadow-card p-5 mb-4", t.bord)}>
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex items-start gap-2.5">
-          {icon && <div className={clsx("w-8 h-8 rounded-lg flex items-center justify-center shrink-0", t.pastille)}>{icon}</div>}
-          <div>
-            <h2 className={clsx("text-sm font-semibold", t.titre)}>{title}</h2>
-            {subtitle && <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>}
-          </div>
-        </div>
-        {action}
-      </div>
-      {children}
-    </div>
-  );
-}
