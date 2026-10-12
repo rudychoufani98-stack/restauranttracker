@@ -1111,17 +1111,17 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
               <table className="w-full border-collapse">
                 <thead className="bg-surface-container-low/50 border-b border-outline-variant/20">
                   <tr>
+                    {/* Le coût au kilo est LE chiffre d'un chef : il passe devant
+                        le prix du colis. Avant, il arrivait en 9ᵉ position,
+                        derrière trois colonnes qui parlaient toutes du colis —
+                        donc hors écran, après défilement horizontal. */}
                     <th className="px-5 py-3 text-left text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60" title="Numéro interne : le premier chiffre donne la famille">Réf.</th>
                     <th className="px-5 py-3 text-left text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Nom</th>
                     <th className="px-5 py-3 text-left text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Catégorie</th>
-                    <th className="px-5 py-3 text-left text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Tags</th>
                     <th className="px-5 py-3 text-left text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Conditionnement</th>
-                    <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Prix HT</th>
-                    <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">TVA</th>
-                    <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Prix TTC</th>
-                    <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Coût / kg · L · pce</th>
-                    <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Prix vente</th>
-                    <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Marge</th>
+                    <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60" title="Ce que te coûte vraiment un kilo, un litre ou une pièce">Coût réel</th>
+                    <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60" title="Ce que tu paies au fournisseur pour un colis entier">Prix du colis</th>
+                    <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Vente</th>
                     <th className="px-5 py-3 text-left text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Fournisseur</th>
                     <th className="px-5 py-3 text-right text-2xs font-bold uppercase tracking-wider text-on-surface-variant/60">Actions</th>
                   </tr>
@@ -1154,6 +1154,14 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                                 <Archive size={10} /> Inactif
                               </span>
                             )}
+                            {/* Les tags tenaient une colonne entière pour être
+                                vides neuf fois sur dix : ils vivent près du nom. */}
+                            {tags.map((tag) => (
+                              <span key={tag.id} className="px-2 py-0.5 rounded-full text-2xs font-medium text-white shrink-0"
+                                style={{ backgroundColor: tag.color }}>
+                                {tag.name}
+                              </span>
+                            ))}
                           </div>
                         </td>
                         <td className="px-5 py-4">
@@ -1161,61 +1169,56 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                             {ing.category}
                           </span>
                         </td>
-                        <td className="px-5 py-4">
-                          <div className="flex flex-wrap gap-1">
-                            {tags.length > 0
-                              ? tags.map((tag) => (
-                                  <span key={tag.id} className="px-2 py-0.5 rounded-full text-xs font-medium text-white"
-                                    style={{ backgroundColor: tag.color }}>
-                                    {tag.name}
-                                  </span>
-                                ))
-                              : <span className="text-on-surface-variant/30 text-xs">—</span>}
-                          </div>
-                        </td>
                         <td className="px-5 py-4 text-sm text-on-surface-variant/70">
                           {baseCondText(ing.unit)}
                           {(ing.yield_pct ?? 100) < 100 && (
                             <span className="ml-1.5 px-1.5 py-0.5 rounded bg-amber-light text-amber-dark text-2xs font-medium">rdt {ing.yield_pct}%</span>
                           )}
                         </td>
-                        <td className="px-5 py-4 text-right text-sm text-on-surface-variant/80 tabular-nums">{eur(Number(ing.pack_price))}</td>
-                        <td className="px-5 py-4 text-right text-sm text-on-surface-variant/60 tabular-nums">{ing.vat_rate ?? 0}%</td>
-                        <td className="px-5 py-4 text-right text-sm text-on-surface-variant/80 tabular-nums">{eur(ttc)}</td>
+                        {/* Coût réel — ce qu'un chef regarde. */}
                         <td className="px-5 py-4 text-right tabular-nums">
                           {(() => {
                             const y = Number(ing.yield_pct ?? 100);
                             const netBase = y > 0 ? Number(ing.cost_per_base_unit) / (y / 100) : Number(ing.cost_per_base_unit);
                             const net = perDisplayUnit(netBase, ing.unit);
                             const gross = perDisplayUnit(Number(ing.cost_per_base_unit), ing.unit);
+                            if (!(net > 0)) return <span className="text-on-surface-variant/30 text-xs">à chiffrer</span>;
                             return (
-                              <span className="font-semibold text-primary">
-                                {eur(net)}/{displayUnitLabel(ing.unit)}
+                              <span className="font-bold text-primary text-sm">
+                                {eur(net)}<span className="font-normal text-on-surface-variant/50">/{displayUnitLabel(ing.unit)}</span>
                                 {y < 100 && <span className="block text-2xs text-on-surface-variant/40 font-normal">brut {eur(gross)}</span>}
                               </span>
                             );
                           })()}
                         </td>
-                        <td className="px-5 py-4 text-right text-sm tabular-nums">
-                          {ing.selling_price != null
-                            ? <span className="text-on-surface-variant/80">{eur(Number(ing.selling_price))}</span>
-                            : <span className="text-on-surface-variant/30 text-xs">—</span>}
+                        {/* Prix du colis : le HT, et dessous le TTC avec son taux —
+                            trois colonnes n'étaient pas nécessaires pour ça. */}
+                        <td className="px-5 py-4 text-right tabular-nums">
+                          {Number(ing.pack_price) > 0 ? (
+                            <>
+                              <span className="text-sm text-on-surface-variant/80">{eur(Number(ing.pack_price))}</span>
+                              <span className="block text-2xs text-on-surface-variant/40">{eur(ttc)} TTC · {ing.vat_rate ?? 0}%</span>
+                            </>
+                          ) : <span className="text-on-surface-variant/30 text-xs">—</span>}
                         </td>
-                        <td className="px-5 py-4 text-right text-sm tabular-nums">
-                          {ing.selling_price != null
-                            ? (() => {
-                                // Marge à l'unité vendue : prix de vente − CMUP (coût moyen réel
-                                // du stock), même base que Caisse / Ventes & marges / dashboard.
-                                const unitCost = perDisplayUnit(Number(ing.cmup ?? ing.cost_per_base_unit ?? 0), ing.unit);
-                                const marge = ing.selling_price - unitCost;
-                                const pct = ing.selling_price > 0 ? (marge / ing.selling_price) * 100 : 0;
-                                return (
-                                  <span className={marge >= 0 ? "font-semibold text-emerald-600" : "font-semibold text-red"}>
-                                    {eur(marge)} <span className="text-xs text-on-surface-variant/40">({pct.toFixed(0)}%)</span>
-                                  </span>
-                                );
-                              })()
-                            : <span className="text-on-surface-variant/30 text-xs">—</span>}
+                        {/* Vente : prix et marge réunis — ces deux colonnes étaient
+                            vides pour tout ce qui n'est pas revendu tel quel. */}
+                        <td className="px-5 py-4 text-right tabular-nums">
+                          {ing.selling_price != null ? (() => {
+                            // Marge à l'unité vendue : prix de vente − CMUP (coût moyen réel
+                            // du stock), même base que Caisse / Ventes & marges / dashboard.
+                            const unitCost = perDisplayUnit(Number(ing.cmup ?? ing.cost_per_base_unit ?? 0), ing.unit);
+                            const marge = ing.selling_price - unitCost;
+                            const pct = ing.selling_price > 0 ? (marge / ing.selling_price) * 100 : 0;
+                            return (
+                              <>
+                                <span className="text-sm text-on-surface-variant/80">{eur(Number(ing.selling_price))}</span>
+                                <span className={clsx("block text-2xs font-medium", marge >= 0 ? "text-emerald-600" : "text-red")}>
+                                  {eur(marge)} de marge ({pct.toFixed(0)}%)
+                                </span>
+                              </>
+                            );
+                          })() : <span className="text-on-surface-variant/30 text-xs">—</span>}
                         </td>
                         <td className="px-5 py-4 text-sm text-on-surface-variant/70">
                           {(() => {
