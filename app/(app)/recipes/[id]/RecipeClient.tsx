@@ -342,7 +342,7 @@ export default function RecipeClient({ recipe, restaurantId, ingredients, allRec
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="sm:col-span-2">
-            <label className="block text-xs font-medium text-gray-600 mb-1">Nom de la recette</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1">{isPrep ? "Nom de la préparation" : "Nom du plat"}</label>
             <input value={name} onChange={(e) => setName(e.target.value)} className={clsx(inputCls, "text-base font-semibold")} />
           </div>
           <div>

@@ -673,7 +673,9 @@ export default function RecipesClient({ tva = TVA_DEFAUT, restaurantId, initialR
               <div className="flex items-center gap-2.5">
                 <Pastille type={isPrep ? "mep" : "recette"} taille="sm" />
                 <h2 className="text-base font-medium text-gray-900">
-                  {editingId ? "Modifier" : "Nouveau"} {isPrep ? "— mise en place" : "— fiche technique"}
+                  {editingId
+                    ? (isPrep ? "Modifier la mise en place" : "Modifier la fiche technique")
+                    : (isPrep ? "Nouvelle mise en place" : "Nouvelle fiche technique")}
                 </h2>
               </div>
               <button onClick={() => setShowForm(false)} title="Fermer" aria-label="Fermer" className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
@@ -684,12 +686,12 @@ export default function RecipesClient({ tva = TVA_DEFAUT, restaurantId, initialR
 
               <div className="grid grid-cols-3 gap-4">
                 <div className="col-span-2">
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Nom de la recette</label>
-                  <input value={name} onChange={(e) => setName(e.target.value)} placeholder="ex. Velouté de tomates"
+                  <label className="block text-xs font-medium text-gray-600 mb-1">{isPrep ? "Nom de la préparation" : "Nom du plat"}</label>
+                  <input value={name} onChange={(e) => setName(e.target.value)} placeholder={isPrep ? "ex. Sauce tomate" : "ex. Velouté de tomates"}
                     className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary transition" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Catégorie</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">{isPrep ? "Poste de cuisine" : "Section de la carte"}</label>
                   <select value={category} onChange={(e) => setCategory(e.target.value)}
                     className="w-full px-3 py-2 text-sm border border-[#E5E7EB] rounded-lg outline-none focus:border-primary bg-white transition">
                     {Array.from(new Set([...(isPrep ? prepCategories : menuCategories), category].filter(Boolean))).map((c) => <option key={c}>{c}</option>)}
@@ -866,7 +868,7 @@ export default function RecipesClient({ tva = TVA_DEFAUT, restaurantId, initialR
               </button>
               <button onClick={handleSave} disabled={saving}
                 className="flex-1 py-2 text-sm text-white bg-primary rounded-lg hover:bg-primary-container disabled:opacity-50 transition">
-                {saving ? "Enregistrement…" : editingId ? "Enregistrer" : "Créer la recette"}
+                {saving ? "Enregistrement…" : editingId ? "Enregistrer" : isPrep ? "Créer la mise en place" : "Créer la fiche"}
               </button>
             </div>
           </div>

@@ -8,6 +8,7 @@ import { defaultPackType } from "@/lib/order-email";
 import { revalueOnInvoice } from "@/lib/costing";
 import { useConfirm, useAlert } from "@/components/ConfirmDialog";
 import { eur } from "@/lib/format";
+import clsx from "clsx";
 
 type Ingredient = { id: string; name: string; unit: string; pack_price: number; cost_per_base_unit: number; pack_quantity: number };
 type POLine = { id: string; ingredient_id: string | null; quantity: number; expected_price: number | null; ingredients?: Ingredient | null };
@@ -105,6 +106,7 @@ export default function InvoiceClient({ po, deliveryNote, deliveryNotes, restaur
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().slice(0, 10));
   const [miscFees, setMiscFees] = useState(priorInvoice?.misc_fees ? String(priorInvoice.misc_fees) : "");
   const [miscLabel, setMiscLabel] = useState(priorInvoice?.misc_fees_label || "Frais divers");
+  const [fraisOuverts, setFraisOuverts] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -120,6 +122,20 @@ export default function InvoiceClient({ po, deliveryNote, deliveryNotes, restaur
   const linesTotal = lines.reduce((s, l) => s + (parseFloat(l.invoice_price) || 0) * (parseFloat(l.qty) || 0), 0);
   const misc = parseFloat(miscFees) || 0;
   const total = linesTotal + misc;
+
+  /** Ce que cette facture coûte de plus (ou de moins) que le prévu. */
+  const ecart = (() => {
+    let montant = 0, lignes = 0, pireNom: string | null = null, pireDelta = 0;
+    for (const l of lines) {
+      const q = parseFloat(l.qty) || 0;
+      const p = parseFloat(l.invoice_price) || 0;
+      if (Math.abs(p - l.expected_price) <= 0.001) continue;
+      const d = (p - l.expected_price) * q;
+      montant += d; lignes++;
+      if (Math.abs(d) > Math.abs(pireDelta)) { pireDelta = d; pireNom = l.ingredient_name; }
+    }
+    return { montant: Math.round(montant * 100) / 100, lignes, pire: pireNom };
+  })();
 
   async function handleValidate() {
     setError(null);
@@ -415,6 +431,22 @@ export default function InvoiceClient({ po, deliveryNote, deliveryNotes, restaur
         </div>
       </div>
 
+      {/* La seule question qu'on se pose une facture à la main : est-ce
+          qu'on me facture ce qui était prévu ? Elle était lisible ligne
+          par ligne, jamais en un chiffre. */}
+      {ecart.lignes > 0 && (
+        <div className={clsx("mb-4 px-4 py-3 rounded-card border flex flex-wrap items-center gap-x-2 gap-y-1",
+          ecart.montant > 0 ? "bg-amber-50 border-amber-200" : "bg-emerald-50 border-emerald-200")}>
+          <span className={clsx("text-sm font-semibold", ecart.montant > 0 ? "text-amber-700" : "text-emerald-700")}>
+            {ecart.montant > 0 ? "+" : ""}{eur(ecart.montant)}
+          </span>
+          <span className="text-sm text-gray-600">
+            par rapport au bon de commande — {ecart.lignes} prix {ecart.lignes > 1 ? "ont changé" : "a changé"}
+            {ecart.pire && <> , surtout <b className="font-semibold">{ecart.pire}</b></>}.
+          </span>
+        </div>
+      )}
+
       {/* Invoice lines */}
       <div className="bg-white border border-[#E5E7EB] rounded-card overflow-hidden mb-5">
         <div className="px-5 py-3 border-b border-[#E5E7EB] bg-gray-50">
@@ -465,9 +497,17 @@ export default function InvoiceClient({ po, deliveryNote, deliveryNotes, restaur
             );
           })}
         </div>
-        {/* Frais divers (optionnel) — taxes alcool, livraison… n'affecte pas le stock */}
-        <div className="px-5 py-4 border-t border-[#E5E7EB]">
-          <label className="block text-xs font-medium text-gray-600 mb-1.5">Frais divers (optionnel)</label>
+        {/* Frais divers — taxes alcool, livraison… n'affecte pas le stock.
+            Repliés : ils servent une facture sur dix et occupaient une
+            ligne de formulaire sur toutes les autres. */}
+        <div className="px-5 py-3 border-t border-[#E5E7EB]">
+          {!fraisOuverts && misc === 0 ? (
+            <button type="button" onClick={() => setFraisOuverts(true)}
+              className="text-xs font-medium text-gray-400 hover:text-gray-600 transition">
+              + Ajouter des frais (livraison, taxe alcool…)
+            </button>
+          ) : (<>
+          <label className="block text-xs font-medium text-gray-600 mb-1.5">Frais divers</label>
           <div className="flex items-center gap-2">
             <input type="text" value={miscLabel} onChange={(e) => setMiscLabel(e.target.value)}
               placeholder="ex. Taxe alcool, frais de livraison…"
@@ -480,6 +520,7 @@ export default function InvoiceClient({ po, deliveryNote, deliveryNotes, restaur
             </div>
           </div>
           <p className="text-2xs text-gray-400 mt-1.5">Ajouté au total, sans effet sur le stock.</p>
+          </>)}
         </div>
         <div className="px-5 py-4 border-t border-[#E5E7EB] bg-gray-50 space-y-1">
           <div className="flex justify-between items-center text-sm text-gray-500">

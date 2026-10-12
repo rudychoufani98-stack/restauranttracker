@@ -176,6 +176,14 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [showTagDropdown, setShowTagDropdown] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  /**
+   * Créer un produit demandait de traverser quatre blocs toujours
+   * ouverts — autres fournisseurs, revente directe, quatorze cases
+   * d'allergènes, tags — pour écrire « Tomate, 1 kg, 2,30 € ». Ils
+   * restent accessibles, repliés derrière un seul lien, et s'ouvrent
+   * d'eux-mêmes sur une fiche qui les utilise déjà.
+   */
+  const [showDetails, setShowDetails] = useState(false);
 
   // Live calculations
   const priceHT = parseFloat(form.pack_price) || 0;
@@ -210,11 +218,20 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
     setSelectedAllergens([]);
     setSupplierLines([]);
     setShowAdvanced(false);
+    setShowDetails(false);
     setError(null);
     setShowForm(true);
   }
 
   function openEdit(ing: Ingredient) {
+    // Une fiche déjà renseignée s'ouvre complète : masquer ce qui est
+    // rempli ferait croire à une perte de données.
+    setShowDetails(
+      !!ing.supplier_reference || !!ing.selling_price ||
+      (ing.allergens?.length ?? 0) > 0 ||
+      (ing.ingredient_tags?.length ?? 0) > 0 ||
+      (ing.ingredient_suppliers?.length ?? 0) > 0,
+    );
     setEditingId(ing.id);
     setForm({
       name: ing.name, category: ing.category, supplier_id: ing.supplier_id ?? "",
@@ -774,14 +791,10 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                 {Array.from(new Set([...CATEGORIES, form.category].filter(Boolean))).map((c) => <option key={c}>{c}</option>)}
               </Select>
 
-              <Select label="Fournisseur principal" value={form.supplier_id} onChange={(e) => setForm({ ...form, supplier_id: e.target.value })}>
+              <Select label="Fournisseur" value={form.supplier_id} onChange={(e) => setForm({ ...form, supplier_id: e.target.value })}>
                 <option value="">Sans fournisseur</option>
                 {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </Select>
-
-              <Input label="Référence fournisseur (code article)" value={form.supplier_reference}
-                onChange={(e) => setForm({ ...form, supplier_reference: e.target.value })}
-                placeholder="ex. BAVFLA2 — apparaît sur le bon de commande" className="col-span-2" />
             </div>
 
             {/* Comment tu l'achètes — bloc unique et simple */}
@@ -895,6 +908,21 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                 </div>
               )}
             </div>
+
+            {/* Un seul lien pour tout ce qui ne sert pas à créer le produit :
+                la référence, les autres fournisseurs, la revente, les
+                allergènes, les tags. On les complète quand on en a besoin,
+                pas pour écrire « Tomate, 1 kg, 2,30 € ». */}
+            <button type="button" onClick={() => setShowDetails((v) => !v)}
+              className="w-full flex items-center justify-center gap-1.5 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 border border-dashed border-gray-200 rounded-lg hover:border-gray-300 transition">
+              <ChevronDown size={14} className={clsx("transition", showDetails && "rotate-180")} />
+              {showDetails ? "Masquer les détails" : "Référence, autres fournisseurs, allergènes, revente…"}
+            </button>
+
+            {showDetails && (<>
+            <Input label="Référence fournisseur (code article)" value={form.supplier_reference}
+              onChange={(e) => setForm({ ...form, supplier_reference: e.target.value })}
+              placeholder="ex. BAVFLA2 — apparaît sur le bon de commande" />
 
             {/* Autres fournisseurs pour ce produit (références multiples) */}
             <div className="rounded-lg p-4 border border-gray-200 space-y-3">
@@ -1090,6 +1118,7 @@ export default function IngredientsClient({ restaurantId, initialIngredients, su
                 )}
               </div>
             )}
+            </>)}
           </div>
         </Modal>
       )}
