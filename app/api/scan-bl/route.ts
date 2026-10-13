@@ -19,11 +19,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { consigne, lireReponse, type Attendu } from "@/lib/scan-document";
+import { ordreDEssai } from "@/lib/gemini-modeles";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 Mo
 const ALLOWED_MIME = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
 const TIMEOUT_MS = 45000; // une page dense met du temps ; plus long que le chat
-const MODELE = "gemini-3.6-flash";
+const MODELE_PREFERE = "gemini-3.6-flash";
 
 /** Erreur du lecteur, avec son statut HTTP — un 503 se reessaie, pas un 400. */
 class ErreurLecteur extends Error {
@@ -36,9 +37,9 @@ const passager = (e: unknown) =>
     ? e.statut === 503 || e.statut === 429 || e.statut >= 500
     : (e as any)?.name === "TimeoutError" || (e as any)?.name === "AbortError";
 
-async function lireAvecGemini(apiKey: string, base64: string, mime: string, texte: string): Promise<string> {
+async function lireAvecGemini(apiKey: string, modele: string, base64: string, mime: string, texte: string): Promise<string> {
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${MODELE}:generateContent`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${modele}:generateContent`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey.trim() },
@@ -52,7 +53,7 @@ async function lireAvecGemini(apiKey: string, base64: string, mime: string, text
       }),
     },
   );
-  if (!res.ok) throw new ErreurLecteur(`Gemini ${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`, res.status);
+  if (!res.ok) throw new ErreurLecteur(`${modele} ${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`, res.status);
   const json = await res.json();
   return ((json?.candidates?.[0]?.content?.parts ?? []) as any[]).map((p) => p?.text ?? "").join("\n").trim();
 }
@@ -118,18 +119,52 @@ export async function POST(req: NextRequest) {
         }));
     } catch { attendus = []; }
 
+    const texte = consigne(type, attendus);
+    // Le modèle préféré d'abord, SEUL : demander au compte la liste de ses
+    // modèles coûte un aller-retour, et neuf fois sur dix le premier
+    // répond. On n'ira chercher les autres que s'il flanche.
+    let modeles = [MODELE_PREFERE];
+    let essaye = 0;
+
     let brut = "";
-    try {
-      brut = await avecReprises(() => lireAvecGemini(gemini, base64, file.type, consigne(type, attendus)));
-    } catch (e) {
-      console.error("[scan] lecture impossible :", (e as Error).message);
+    let derniere: unknown = null;
+    for (let i = 0; i < modeles.length; i++) {
+      const modele = modeles[i];
+      essaye++;
+      try {
+        // Deux reprises sur le modèle préféré (une surcharge passe souvent
+        // en quelques secondes), une seule sur les suivants : au-delà, le
+        // restaurateur attend plus longtemps qu'il ne retaperait.
+        brut = await avecReprises(
+          () => lireAvecGemini(gemini, modele, base64, file.type, texte),
+          modele === MODELE_PREFERE ? 2 : 1,
+        );
+        if (brut) break;
+        console.error(`[scan] ${modele} : réponse vide`);
+      } catch (e) {
+        derniere = e;
+        console.error(`[scan] ${modele} :`, (e as Error).message);
+        // Une clé refusée ne se répare pas en changeant de modèle.
+        if (e instanceof ErreurLecteur && (e.statut === 400 || e.statut === 401 || e.statut === 403)) break;
+        // Un modèle saturé, en revanche, si : on va voir ce que le compte
+        // propose d'autre. Relevé en production — trois 503 d'affilée sur
+        // le modèle préféré pendant que les autres dormaient.
+        if (i === modeles.length - 1 && modeles.length === 1) {
+          modeles = await ordreDEssai(gemini, MODELE_PREFERE);
+        }
+      }
+    }
+
+    if (!brut && derniere) {
+      const e = derniere;
+      console.error("[scan] aucun modèle n'a répondu :", (e as Error).message);
       // Dire ce qui s'est passé : « réessaie » et « saisis à la main » ne
       // sont pas le même conseil, et une photo plus nette n'a jamais
       // réparé un service débordé.
       return NextResponse.json(
         {
           error: passager(e)
-            ? "Le lecteur est débordé en ce moment. Attends une minute et relance la lecture — ta facture est toujours là."
+            ? `Les lecteurs sont débordés en ce moment (${essaye} modèle${essaye > 1 ? "s" : ""} essayé${essaye > 1 ? "s" : ""}). Attends une minute et relance — ta facture est toujours là.`
             : "La lecture du document a échoué. Réessaie avec une photo nette et cadrée sur le tableau des articles, ou saisis les lignes à la main.",
         },
         { status: 502 },
