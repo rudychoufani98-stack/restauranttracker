@@ -37,25 +37,79 @@ const passager = (e: unknown) =>
     ? e.statut === 503 || e.statut === 429 || e.statut >= 500
     : (e as any)?.name === "TimeoutError" || (e as any)?.name === "AbortError";
 
-async function lireAvecGemini(apiKey: string, modele: string, base64: string, mime: string, texte: string): Promise<string> {
+/**
+ * La forme EXIGÉE de la réponse.
+ *
+ * Demander du JSON dans la consigne et espérer qu'il arrive propre, ça
+ * marche souvent et pas toujours : un modèle qui préface par « Voici le
+ * résultat » ou qui enrobe dans un bloc de code, et la lecture retombe
+ * à zéro ligne sans que rien n'ait planté. L'API sait contraindre la
+ * sortie : autant le lui demander.
+ */
+const SCHEMA = {
+  type: "object",
+  properties: {
+    numero: { type: "string", nullable: true },
+    date: { type: "string", nullable: true },
+    total_ht: { type: "number", nullable: true },
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          quantity: { type: "number", nullable: true },
+          price: { type: "number", nullable: true },
+        },
+        required: ["name"],
+      },
+    },
+  },
+  required: ["items"],
+};
+
+async function appelGemini(apiKey: string, modele: string, corps: any) {
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${modele}:generateContent`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey.trim() },
       signal: AbortSignal.timeout(TIMEOUT_MS),
-      body: JSON.stringify({
-        contents: [{
-          role: "user",
-          parts: [{ inline_data: { mime_type: mime, data: base64 } }, { text: texte }],
-        }],
-        generationConfig: { maxOutputTokens: 2048, temperature: 0 },
-      }),
+      body: JSON.stringify(corps),
     },
   );
-  if (!res.ok) throw new ErreurLecteur(`${modele} ${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`, res.status);
+  if (!res.ok) throw new ErreurLecteur(`${modele} ${res.status}: ${(await res.text().catch(() => "")).slice(0, 300)}`, res.status);
   const json = await res.json();
-  return ((json?.candidates?.[0]?.content?.parts ?? []) as any[]).map((p) => p?.text ?? "").join("\n").trim();
+  const texte = ((json?.candidates?.[0]?.content?.parts ?? []) as any[]).map((p) => p?.text ?? "").join("\n").trim();
+  // Une reponse coupee en plein JSON n est pas une reponse : le dire,
+  // plutot que de rendre zero ligne sans explication.
+  const fin = json?.candidates?.[0]?.finishReason;
+  if (!texte && fin) throw new ErreurLecteur(`${modele} : réponse vide (${fin})`, 0);
+  return { texte, fin };
+}
+
+async function lireAvecGemini(apiKey: string, modele: string, base64: string, mime: string, texte: string): Promise<string> {
+  const contents = [{
+    role: "user",
+    parts: [{ inline_data: { mime_type: mime, data: base64 } }, { text: texte }],
+  }];
+  const base = { maxOutputTokens: 4096, temperature: 0 };
+
+  try {
+    const r = await appelGemini(apiKey, modele, {
+      contents,
+      generationConfig: { ...base, responseMimeType: "application/json", responseSchema: SCHEMA },
+    });
+    if (r.fin && r.fin !== "STOP") console.warn(`[scan] ${modele} : fin ${r.fin}`);
+    return r.texte;
+  } catch (e) {
+    // Tous les modeles n acceptent pas un schema. Un refus de la requete
+    // (400) ne doit pas condamner la lecture : on redemande en clair.
+    if (!(e instanceof ErreurLecteur) || e.statut !== 400) throw e;
+    console.warn(`[scan] ${modele} : schéma refusé, nouvel essai en texte libre`);
+    const r = await appelGemini(apiKey, modele, { contents, generationConfig: base });
+    return r.texte;
+  }
 }
 
 /**
@@ -180,6 +234,15 @@ export async function POST(req: NextRequest) {
     }
 
     const lecture = lireReponse(brut);
+    if (lecture.items.length === 0) {
+      // Sans cette trace, « aucune ligne » est un mur : on ne sait pas si
+      // le modele a refuse, bavarde, ou lu une page blanche.
+      console.error("[scan] 0 ligne extraite. Début de la réponse :", brut.slice(0, 400));
+      return NextResponse.json(
+        { error: "Le lecteur n'a trouvé aucune ligne d'article sur ce document. Vérifie que la page montre bien le tableau des articles, ou saisis les lignes à la main." },
+        { status: 502 },
+      );
+    }
     // `items` reste en sortie : l ecran de reception le lit deja sous ce nom.
     return NextResponse.json({ ...lecture, items: lecture.items });
   } catch (e: any) {
