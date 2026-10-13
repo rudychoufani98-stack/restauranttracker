@@ -23,6 +23,38 @@ const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 Mo
 const ALLOWED_MIME = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
 const TIMEOUT_MS = 45000; // une page dense met du temps ; plus long que le chat
 
+/** Erreur d un lecteur, avec son statut HTTP — un 503 ne se traite pas
+ *  comme une cle invalide : l un se reessaie, l autre jamais. */
+class ErreurLecteur extends Error {
+  constructor(message: string, readonly statut: number) { super(message); }
+}
+
+/** Le service est debordé (ou on va trop vite) : ca vaut le coup d insister. */
+const passager = (e: unknown) =>
+  e instanceof ErreurLecteur ? e.statut === 503 || e.statut === 429 || e.statut >= 500
+    : (e as any)?.name === "TimeoutError" || (e as any)?.name === "AbortError";
+
+/**
+ * Reessaie tant que l echec est passager.
+ *
+ * Releve en production : Gemini a renvoye « This model is currently
+ * experiencing high demand » sur la toute premiere facture deposee. Une
+ * seule tentative transformait un contretemps de deux secondes en
+ * « la lecture a echoue », et le restaurateur retapait sa facture.
+ */
+async function avecReprises<T>(nom: string, fn: () => Promise<T>, essais = 3): Promise<T> {
+  let derniere: unknown;
+  for (let i = 0; i < essais; i++) {
+    try { return await fn(); } catch (e) {
+      derniere = e;
+      if (!passager(e) || i === essais - 1) throw e;
+      console.warn(`[scan] ${nom} : tentative ${i + 1} échouée, on réessaie`);
+      await new Promise((r) => setTimeout(r, 1200 * (i + 1)));
+    }
+  }
+  throw derniere;
+}
+
 /** Grok (x.ai) — le lecteur historique. */
 async function lireAvecGrok(apiKey: string, base64: string, mime: string, texte: string): Promise<string> {
   // L API vision de x.ai ne prend que des images : un PDF part en JPEG
@@ -44,7 +76,7 @@ async function lireAvecGrok(apiKey: string, base64: string, mime: string, texte:
       }],
     }),
   });
-  if (!res.ok) throw new Error(`Grok ${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`);
+  if (!res.ok) throw new ErreurLecteur(`Grok ${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`, res.status);
   const json = await res.json();
   return json.choices?.[0]?.message?.content ?? "";
 }
@@ -66,7 +98,7 @@ async function lireAvecGemini(apiKey: string, base64: string, mime: string, text
       }),
     },
   );
-  if (!res.ok) throw new Error(`Gemini ${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`);
+  if (!res.ok) throw new ErreurLecteur(`Gemini ${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`, res.status);
   const json = await res.json();
   return ((json?.candidates?.[0]?.content?.parts ?? []) as any[]).map((p) => p?.text ?? "").join("\n").trim();
 }
@@ -113,28 +145,40 @@ export async function POST(req: NextRequest) {
     } catch { attendus = []; }
 
     const texte = consigne(type, attendus);
+    // Gemini en premier : il lit les PDF nativement, et c'est la clé que
+    // l'assistant utilise déjà tous les jours — donc la seule dont on
+    // sache qu'elle est valide.
     const lecteurs: { nom: string; run: () => Promise<string> }[] = [];
-    if (grok) lecteurs.push({ nom: "grok", run: () => lireAvecGrok(grok, base64, file.type, texte) });
-    if (gemini) lecteurs.push({ nom: "gemini", run: () => lireAvecGemini(gemini, base64, file.type, texte) });
+    if (gemini) lecteurs.push({ nom: "gemini", run: () => avecReprises("gemini", () => lireAvecGemini(gemini, base64, file.type, texte)) });
+    if (grok) lecteurs.push({ nom: "grok", run: () => avecReprises("grok", () => lireAvecGrok(grok, base64, file.type, texte)) });
 
     let brut = "";
     let lecteurRetenu = "";
-    let derniere: Error | null = null;
+    let derniere: unknown = null;
     for (const l of lecteurs) {
       try {
         brut = await l.run();
         if (brut) { lecteurRetenu = l.nom; break; }
         console.error(`[scan] ${l.nom} : réponse vide`);
       } catch (e) {
-        derniere = e as Error;
+        derniere = e;
         console.error(`[scan] ${l.nom} :`, (e as Error).message);
       }
     }
 
     if (!brut) {
-      console.error("[scan] aucun lecteur n'a répondu :", derniere?.message);
+      console.error("[scan] aucun lecteur n'a répondu :", (derniere as Error)?.message);
+      // Dire ce qui s'est passé : « réessaie » et « saisis à la main » ne
+      // sont pas le même conseil, et une photo plus nette n'a jamais
+      // réparé un service débordé.
+      const statut = derniere instanceof ErreurLecteur ? derniere.statut : 0;
+      const surcharge = statut === 503 || statut === 429 || (derniere as any)?.name === "TimeoutError";
       return NextResponse.json(
-        { error: "La lecture du document a échoué. Réessaie avec une photo plus nette, ou saisis les lignes à la main." },
+        {
+          error: surcharge
+            ? "Le lecteur est débordé en ce moment. Attends une minute et relance la lecture — ta facture est toujours là."
+            : "La lecture du document a échoué. Réessaie avec une photo nette et cadrée sur le tableau des articles, ou saisis les lignes à la main.",
+        },
         { status: 502 },
       );
     }
