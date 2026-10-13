@@ -51,9 +51,9 @@ export default async function InvoicePage({ params }: { params: { id: string } }
   // Supplier conditionnement (colis…) so quantities are shown consistently.
   const { data: supplierArticles } = await supabase
     .from("ingredient_suppliers")
-    .select("ingredient_id, pack_type, pack_units, unit_size, pack_label, unit")
+    .select("ingredient_id, pack_type, pack_units, unit_size, pack_label, unit, supplier_label")
     .eq("supplier_id", (po as any).supplier_id);
-  const orderCond: Record<string, { type: string; detail: string; basePerPack: number }> = {};
+  const orderCond: Record<string, { type: string; detail: string; basePerPack: number; designation?: string }> = {};
   for (const a of supplierArticles ?? []) {
     const units = Number(a.pack_units ?? 1) || 1;
     const size = Number(a.unit_size ?? 0) || 0;
@@ -63,6 +63,9 @@ export default async function InvoicePage({ params }: { params: { id: string } }
       type: a.pack_type || "colis",
       detail: a.pack_label || (size > 0 ? (units > 1 ? `${units} × ${size} ${unitShort(u)}` : `${size} ${unitShort(u)}`) : ""),
       basePerPack: units * size * factor,
+      // Le nom que CE fournisseur imprime sur sa facture — c'est par lui
+      // que la lecture automatique reconnaît le produit.
+      designation: a.supplier_label ?? undefined,
     };
   }
 

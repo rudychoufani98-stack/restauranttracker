@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Check, Loader2, FileText } from "lucide-react";
+import { Check, Loader2, FileText, Camera } from "lucide-react";
+import { rapprocher } from "@/lib/scan-document";
 import { defaultPackType } from "@/lib/order-email";
 import { revalueOnInvoice } from "@/lib/costing";
 import { useConfirm, useAlert } from "@/components/ConfirmDialog";
@@ -29,7 +30,7 @@ type InvoiceLine = {
   cost_per_base_unit: number;
 };
 
-type OrderCond = Record<string, { type: string; detail: string; basePerPack?: number }>;
+type OrderCond = Record<string, { type: string; detail: string; basePerPack?: number; designation?: string }>;
 interface Props {
   po: PO;
   deliveryNote: DeliveryNote | null;          // la plus récente (n° BL, rattachement)
@@ -107,6 +108,71 @@ export default function InvoiceClient({ po, deliveryNote, deliveryNotes, restaur
   const [miscFees, setMiscFees] = useState(priorInvoice?.misc_fees ? String(priorInvoice.misc_fees) : "");
   const [miscLabel, setMiscLabel] = useState(priorInvoice?.misc_fees_label || "Frais divers");
   const [fraisOuverts, setFraisOuverts] = useState(false);
+  const [factureFile, setFactureFile] = useState<File | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanMsg, setScanMsg] = useState<{ ok: boolean; texte: string } | null>(null);
+
+  /**
+   * Lit la facture et REMPLIT les champs — sans rien enregistrer.
+   *
+   * Le rapprochement passe par la désignation du fournisseur quand on
+   * la connaît : une facture imprime « FROMAGE GRILL & FRYKOLIOS
+   * 40x250G », jamais « Halloumi ».
+   */
+  async function handleScan() {
+    if (!factureFile) return;
+    setScanning(true); setScanMsg(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", factureFile);
+      fd.append("document", "facture");
+      fd.append("lines", JSON.stringify(lines.map((l) => ({
+        ingredient_id: l.ingredient_id,
+        nom: l.ingredient_name,
+        designations: [orderCond[l.ingredient_id]?.designation].filter(Boolean),
+      }))));
+
+      const res = await fetch("/api/scan-bl", { method: "POST", body: fd });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? "Lecture impossible");
+
+      const { trouves, orphelines } = rapprocher(json.items ?? [], lines.map((l) => ({
+        ingredient_id: l.ingredient_id,
+        nom: l.ingredient_name,
+        designations: [orderCond[l.ingredient_id]?.designation].filter(Boolean) as string[],
+      })));
+
+      setLines((prev) => prev.map((l) => {
+        const lu = trouves.get(l.ingredient_id);
+        if (!lu) return l;
+        return {
+          ...l,
+          qty: lu.quantity !== null ? String(lu.quantity) : l.qty,
+          invoice_price: lu.price !== null ? String(lu.price) : l.invoice_price,
+        };
+      }));
+      if (json.numero) setInvoiceNumber(String(json.numero));
+      if (json.date) setInvoiceDate(String(json.date));
+
+      // Dire ce qui a ete lu ET ce qui ne l a pas ete : une ligne
+      // silencieusement laissee de cote se decouvre a l inventaire.
+      const n = trouves.size;
+      setScanMsg({
+        ok: n > 0,
+        texte: n === 0
+          ? "Aucune ligne reconnue. Vérifie que la photo est nette et lisible, ou saisis les lignes à la main."
+          : `${n} ligne${n > 1 ? "s" : ""} remplie${n > 1 ? "s" : ""}` +
+            (orphelines.length > 0
+              ? ` · ${orphelines.length} ligne${orphelines.length > 1 ? "s" : ""} de la facture sans produit correspondant (${orphelines.slice(0, 3).map((o) => o.name).join(", ")}${orphelines.length > 3 ? "…" : ""})`
+              : "") +
+            " — relis les montants avant de valider.",
+      });
+    } catch (e: any) {
+      setScanMsg({ ok: false, texte: e?.message ?? "Lecture impossible" });
+    } finally {
+      setScanning(false);
+    }
+  }
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -399,6 +465,40 @@ export default function InvoiceClient({ po, deliveryNote, deliveryNotes, restaur
         <p className="text-sm text-gray-500 mt-0.5">
           {po.suppliers?.name} · BDC {po.order_number ?? po.id.slice(0, 8)} — {isEdit ? "corrige les quantités et prix, le stock est réajusté" : "confirme les quantités et prix de la facture"}
         </p>
+      </div>
+
+      {/* Photographier la facture plutôt que la retaper. Ce qui en sort
+          n'est jamais écrit tel quel : les champs se remplissent, et
+          c'est toujours toi qui valides — un chiffre lu sur une photo
+          n'a pas l'autorité d'un chiffre saisi. */}
+      <div className="bg-white border border-[#E5E7EB] rounded-card p-5 mb-5">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-tertiary-fixed flex items-center justify-center text-primary shrink-0">
+            <Camera size={17} />
+          </div>
+          <div className="flex-1 min-w-[180px]">
+            <h2 className="text-sm font-semibold text-gray-900">Lire la facture à ma place</h2>
+            <p className="text-xs text-gray-500">
+              Photo ou PDF. Les quantités et les prix se remplissent tout seuls — tu relis, tu corriges, tu valides.
+            </p>
+          </div>
+          <label className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-200 rounded-xl hover:bg-gray-50 transition cursor-pointer shrink-0">
+            {factureFile ? factureFile.name.slice(0, 22) : "Choisir un fichier"}
+            <input type="file" accept="image/*,application/pdf" className="hidden"
+              onChange={(e) => { setFactureFile(e.target.files?.[0] ?? null); setScanMsg(null); }} />
+          </label>
+          <button type="button" onClick={handleScan} disabled={!factureFile || scanning}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm font-semibold rounded-xl hover:bg-primary-container transition disabled:opacity-40 shrink-0">
+            {scanning ? <Loader2 size={15} className="animate-spin" /> : <Camera size={15} />}
+            {scanning ? "Lecture…" : "Lire"}
+          </button>
+        </div>
+        {scanMsg && (
+          <p className={clsx("mt-3 text-sm rounded-xl px-3 py-2 border",
+            scanMsg.ok ? "bg-emerald-50 border-emerald-200 text-emerald-800" : "bg-amber-50 border-amber-200 text-amber-800")}>
+            {scanMsg.texte}
+          </p>
+        )}
       </div>
 
       {/* Invoice header */}

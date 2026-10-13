@@ -4,6 +4,7 @@ import { useState, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Upload, Check, Loader2, Plus, Trash2 } from "lucide-react";
+import { rapprocher } from "@/lib/scan-document";
 import clsx from "clsx";
 import { defaultPackType } from "@/lib/order-email";
 import { applyReception } from "@/lib/costing";
@@ -34,7 +35,7 @@ type ReceiveLine = {
   added?: boolean; // true when the user added it (not on the original order)
 };
 
-type OrderCond = Record<string, { type: string; detail: string; basePerPack?: number; packPrice?: number | null }>;
+type OrderCond = Record<string, { type: string; detail: string; basePerPack?: number; packPrice?: number | null; designation?: string }>;
 interface Props {
   po: PO; restaurantId: string; allIngredients: IngredientOption[]; orderCond: OrderCond;
   /** Quantités déjà reçues (réceptions validées) par ingrédient */
@@ -153,32 +154,45 @@ export default function ReceiveClient({ po, restaurantId, allIngredients, orderC
     if (!blFile) return;
     setScanning(true); setError(null); setScanMessage(null);
 
+    const attendus = lines.map((l) => ({
+      ingredient_id: l.ingredient_id,
+      nom: l.ingredient_name,
+      designations: [orderCond[l.ingredient_id]?.designation].filter(Boolean) as string[],
+    }));
+
     const formData = new FormData();
     formData.append("file", blFile);
-    formData.append("lines", JSON.stringify(lines.map((l) => ({ name: l.ingredient_name, expected_price: l.expected_price }))));
+    formData.append("document", "bl");
+    formData.append("lines", JSON.stringify(attendus));
 
     try {
       const res = await fetch("/api/scan-bl", { method: "POST", body: formData });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Échec de l'analyse");
 
-      // Merge scanned values
-      const scanned: { name: string; price: number; quantity: number }[] = json.items ?? [];
+      // Rapprochement partagé avec la facture : désignation fournisseur
+      // d'abord, puis le nom, puis les mots en commun — et abstention
+      // quand deux lignes se disputent le même produit.
+      const { trouves, orphelines } = rapprocher(json.items ?? [], attendus);
       setLines((prev) =>
         prev.map((line) => {
-          const match = scanned.find((s) =>
-            s.name.toLowerCase().includes(line.ingredient_name.toLowerCase().slice(0, 4)) ||
-            line.ingredient_name.toLowerCase().includes(s.name.toLowerCase().slice(0, 4))
-          );
-          if (!match) return line;
+          const lu = trouves.get(line.ingredient_id);
+          if (!lu) return line;
           return {
             ...line,
-            actual_price: match.price ? String(match.price) : line.actual_price,
-            qty_received: match.quantity ? String(match.quantity) : line.qty_received,
+            actual_price: lu.price !== null ? String(lu.price) : line.actual_price,
+            qty_received: lu.quantity !== null ? String(lu.quantity) : line.qty_received,
           };
         })
       );
-      setScanMessage(`${scanned.length} ligne${scanned.length !== 1 ? "s" : ""} lue${scanned.length !== 1 ? "s" : ""} sur le bon de livraison. Vérifie et confirme ci-dessous.`);
+      const n = trouves.size;
+      setScanMessage(
+        n === 0
+          ? "Aucune ligne reconnue. Vérifie que la photo est nette, ou saisis les quantités à la main."
+          : `${n} ligne${n > 1 ? "s" : ""} remplie${n > 1 ? "s" : ""}` +
+            (orphelines.length > 0 ? ` · ${orphelines.length} ligne${orphelines.length > 1 ? "s" : ""} du bon sans produit correspondant` : "") +
+            " — vérifie et confirme ci-dessous."
+      );
     } catch (e: any) {
       setError(e.message);
     }
