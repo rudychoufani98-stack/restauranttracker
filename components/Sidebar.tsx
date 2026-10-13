@@ -25,6 +25,7 @@ import {
   FileSpreadsheet,
   LineChart,
   Menu,
+  FileText,
 } from "lucide-react";
 import clsx from "clsx";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -51,6 +52,9 @@ const NAV_GROUPS = [
     label: "Achats & stock",
     items: [
       { href: "/orders",      label: "Commandes",    icon: ShoppingCart },
+      // Une facture sans bon de commande : le cas le plus courant des
+      // achats d un restaurant, et le seul qui se saisissait a la main.
+      { href: "/factures",    label: "Déposer une facture", icon: FileText },
       { href: "/suppliers",   label: "Fournisseurs", icon: Truck },
       { href: "/inventaire?vue=inventaire", label: "Inventaire", icon: ClipboardList },
       { href: "/inventaire",  label: "Stock",        icon: Warehouse },
